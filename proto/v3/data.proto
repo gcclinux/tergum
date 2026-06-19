@@ -1,0 +1,96 @@
+syntax = "proto3";
+
+package tergum.v3;
+
+option go_package = "github.com/ricardopadilha/tergum/internal/grpc/proto";
+
+// DataService handles data-plane operations on port 7401.
+service DataService {
+  rpc Upload(stream FileChunk) returns (UploadSummary);
+  rpc Download(RestoreRequest) returns (stream FileChunk);
+  rpc SyncDatabase(stream DatabaseChunk) returns (SyncResponse);
+  rpc ExchangeManifest(Manifest) returns (ManifestDiff);
+}
+
+// FileChunk represents a chunk of file data in the upload/download stream.
+// The stream follows the pattern: FileHeader -> data chunks -> FileTrailer.
+message FileChunk {
+  oneof payload {
+    FileHeader header = 1;
+    bytes data = 2;
+    FileTrailer trailer = 3;
+  }
+}
+
+// FileHeader contains file metadata sent at the beginning of a file stream.
+message FileHeader {
+  string blake3_hash = 1;
+  string file_name = 2;
+  string file_path = 3;
+  string file_ext = 4;
+  int64 file_size = 5;
+  int64 created_at = 6;
+  int64 modified_at = 7;
+  int64 accessed_at = 8;
+  uint32 permissions = 9;
+  string owner = 10;
+  string file_group = 11;
+  bool hidden = 12;
+  bool symlink = 13;
+  string symlink_target = 14;
+  string os = 15;
+  bytes encrypted_dek = 16;
+  bytes nonce = 17;
+}
+
+// FileTrailer is sent at the end of a file stream for verification.
+message FileTrailer {
+  string blake3_hash = 1;
+  int64 bytes_total = 2;
+}
+
+// Manifest represents the client's file manifest for deduplication.
+message Manifest {
+  repeated ManifestEntry entries = 1;
+  string client_id = 2;
+  string backup_id = 3;
+}
+
+// ManifestEntry represents a single file in the manifest.
+message ManifestEntry {
+  string blake3_hash = 1;
+  string file_path = 2;
+  int64 file_size = 3;
+  int64 modified_at = 4;
+}
+
+// ManifestDiff is the server's response indicating which files it still needs.
+message ManifestDiff {
+  repeated string needed_hashes = 1;
+  int32 dedup_count = 2;
+  int32 total_files = 3;
+}
+
+// UploadSummary is returned after a complete upload stream.
+message UploadSummary {
+  int64 files_received = 1;
+  int64 bytes_total = 2;
+  int64 dedup_count = 3;
+}
+
+// RestoreRequest is sent to initiate a file download.
+message RestoreRequest {
+  string blake3_hash = 1;
+  string client_id = 2;
+}
+
+// DatabaseChunk is used for streaming client database sync.
+message DatabaseChunk {
+  bytes data = 1;
+}
+
+// SyncResponse is returned after database sync completes.
+message SyncResponse {
+  bool success = 1;
+  string message = 2;
+}

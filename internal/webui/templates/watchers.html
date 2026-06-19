@@ -1,0 +1,44 @@
+{{template "header" .}}
+<h1 class="text-lg font-bold p-4">Watcher Status</h1>
+<div class="bg-white rounded shadow p-4 m-4">
+    <h2 class="font-bold">Watched Paths</h2>
+    <div hx-get="/api/watchers" hx-trigger="every 10s" hx-swap="innerHTML">
+        <table>
+            <thead>
+                <tr>
+                    <th class="p-4">Path</th>
+                    <th class="p-4">Recursive</th>
+                    <th class="p-4">Enabled</th>
+                    <th class="p-4">Last Event</th>
+                    <th class="p-4">Event Count</th>
+                    <th class="p-4">Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {{range .WatchPaths}}
+                <tr>
+                    <td class="p-4">{{.Path}}</td>
+                    <td class="p-4">{{if .Recursive}}Yes{{else}}No{{end}}</td>
+                    <td class="p-4">{{if .Enabled}}Yes{{else}}No{{end}}</td>
+                    <td class="p-4">{{.LastEvent}}</td>
+                    <td class="p-4">{{.EventCount}}</td>
+                    <td class="p-4">
+                        <button hx-delete="/api/watchers" hx-confirm="Remove watcher?">Remove</button>
+                    </td>
+                </tr>
+                {{end}}
+            </tbody>
+        </table>
+    </div>
+</div>
+<div class="bg-white rounded shadow p-4 m-4">
+    <h2 class="font-bold">Add Watch Path</h2>
+    <form hx-post="/api/watchers" hx-swap="outerHTML">
+        <label class="p-4">Path: <input type="text" name="path" required></label>
+        <label class="p-4"><input type="checkbox" name="recursive" checked> Recursive</label>
+        <div class="p-4">
+            <button type="submit" class="bg-gray-100 rounded p-4">Add Path</button>
+        </div>
+    </form>
+</div>
+{{template "footer" .}}

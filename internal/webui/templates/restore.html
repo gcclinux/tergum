@@ -1,0 +1,17 @@
+{{template "header" .}}
+<h1 class="text-lg font-bold p-4">Restore File Browser</h1>
+<div class="bg-white rounded shadow p-4 m-4" x-data="{ query: '' }">
+    <h2 class="font-bold">Search Files</h2>
+    <input type="text" x-model="query" placeholder="Search by filename or path..."
+           class="p-4 rounded" style="border: 1px solid #ccc; width: 100%;">
+    <div hx-get="/api/restore/search" hx-trigger="keyup changed delay:300ms from:previous input"
+         hx-include="previous input" hx-swap="innerHTML">
+    </div>
+</div>
+<div class="bg-white rounded shadow p-4 m-4">
+    <h2 class="font-bold">Browse by Backup</h2>
+    <div hx-get="/api/restore/backups" hx-trigger="load" hx-swap="innerHTML">
+        Loading...
+    </div>
+</div>
+{{template "footer" .}}

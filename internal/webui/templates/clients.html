@@ -1,0 +1,31 @@
+{{template "header" .}}
+<h1 class="text-lg font-bold p-4">Connected Clients</h1>
+<div class="bg-white rounded shadow p-4 m-4">
+    <table>
+        <thead>
+            <tr>
+                <th class="p-4">Client ID</th>
+                <th class="p-4">Last Seen</th>
+                <th class="p-4">Last Backup</th>
+                <th class="p-4">Status</th>
+                <th class="p-4">Files</th>
+                <th class="p-4">Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {{range .Clients}}
+            <tr>
+                <td class="p-4">{{.ClientID}}</td>
+                <td class="p-4">{{.LastSeen}}</td>
+                <td class="p-4">{{.LastBackup}}</td>
+                <td class="p-4">{{.Status}}</td>
+                <td class="p-4">{{.FileCount}}</td>
+                <td class="p-4">
+                    <button hx-post="/api/backups/trigger">Trigger Backup</button>
+                </td>
+            </tr>
+            {{end}}
+        </tbody>
+    </table>
+</div>
+{{template "footer" .}}

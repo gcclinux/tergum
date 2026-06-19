@@ -1,0 +1,19 @@
+{{template "header" .}}
+<h1 class="text-lg font-bold p-4">Activity Log</h1>
+<div class="bg-white rounded shadow p-4 m-4" x-data="{ connected: false }">
+    <h2 class="font-bold">Real-time Events (SSE)</h2>
+    <div id="activity-log"
+         hx-ext="sse"
+         sse-connect="/api/activity/stream"
+         sse-swap="message"
+         hx-swap="afterbegin">
+        <p>Connecting to event stream...</p>
+    </div>
+</div>
+<div class="bg-white rounded shadow p-4 m-4">
+    <h2 class="font-bold">Recent Activity</h2>
+    <div hx-get="/api/activity/recent" hx-trigger="load" hx-swap="innerHTML">
+        Loading...
+    </div>
+</div>
+{{template "footer" .}}

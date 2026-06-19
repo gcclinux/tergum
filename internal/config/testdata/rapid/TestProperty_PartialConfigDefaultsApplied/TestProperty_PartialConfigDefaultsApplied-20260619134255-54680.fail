@@ -1,0 +1,41 @@
+# 2026/06/19 13:42:55.126612 [TestProperty_PartialConfigDefaultsApplied] [rapid] draw includeNode: false
+# 2026/06/19 13:42:55.126612 [TestProperty_PartialConfigDefaultsApplied] [rapid] draw includeServer: false
+# 2026/06/19 13:42:55.126612 [TestProperty_PartialConfigDefaultsApplied] [rapid] draw includeClient: false
+# 2026/06/19 13:42:55.126612 [TestProperty_PartialConfigDefaultsApplied] [rapid] draw includeBackup: false
+# 2026/06/19 13:42:55.126612 [TestProperty_PartialConfigDefaultsApplied] [rapid] draw includeWatcher: false
+# 2026/06/19 13:42:55.126612 [TestProperty_PartialConfigDefaultsApplied] [rapid] draw includeWebUI: false
+# 2026/06/19 13:42:55.126612 [TestProperty_PartialConfigDefaultsApplied] [rapid] draw includeMetrics: false
+# 2026/06/19 13:42:55.126612 [TestProperty_PartialConfigDefaultsApplied] [rapid] draw includeLogging: false
+# 2026/06/19 13:42:55.126612 [TestProperty_PartialConfigDefaultsApplied] [rapid] draw includeDatabase: false
+# 2026/06/19 13:42:55.126612 [TestProperty_PartialConfigDefaultsApplied] [rapid] draw cmdPort: 1024
+# 2026/06/19 13:42:55.126612 [TestProperty_PartialConfigDefaultsApplied] [rapid] draw dataPort: 1024
+# 2026/06/19 13:42:55.126612 [TestProperty_PartialConfigDefaultsApplied] [rapid] draw serverAddr: "10.0.0.1"
+# 2026/06/19 13:42:55.127667 [TestProperty_PartialConfigDefaultsApplied] Load failed for valid partial config: config error: cannot parse config file: toml: line 4: Key 'server' has already been defined.
+# Content:
+# [server]
+# address = "192.168.1.100"
+# 
+# [server]
+# address = "10.0.0.1"
+# command_port = 1024
+# data_port = 1024
+# 
+# 
+v0.4.8#7651336849613072770
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0

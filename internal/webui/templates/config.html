@@ -1,0 +1,252 @@
+{{template "header" .}}
+<h1 class="text-lg font-bold p-4">Configuration</h1>
+
+<!-- Include Paths Section -->
+<div class="bg-white rounded shadow p-4 m-4" x-data="pathsManager()">
+    <h2 class="font-bold text-lg mb-2">Include Paths</h2>
+    <p class="text-sm text-gray-600 mb-4">Directories to back up and watch for changes.</p>
+
+    <!-- Scan button -->
+    <div class="flex items-center gap-2 mb-4">
+        <input type="text" x-model="scanDir" placeholder="Directory to scan (blank = home folder)"
+               class="border rounded px-3 py-2 flex-1 text-sm">
+        <label class="text-sm flex items-center gap-1">
+            <input type="checkbox" x-model="scanHidden"> Hidden
+        </label>
+        <button @click="scanDirectory()" :disabled="scanning"
+                class="bg-blue-600 text-white px-4 py-2 rounded text-sm hover:bg-blue-700 disabled:opacity-50">
+            <span x-show="!scanning">Scan</span>
+            <span x-show="scanning">Scanning...</span>
+        </button>
+    </div>
+
+    <!-- Add path manually -->
+    <div class="flex items-center gap-2 mb-4">
+        <input type="text" x-model="newInclude" placeholder="Add path (e.g. C:\Users\me\Documents)"
+               class="border rounded px-3 py-2 flex-1 text-sm"
+               @keydown.enter="addInclude()">
+        <button @click="addInclude()" class="bg-green-600 text-white px-4 py-2 rounded text-sm hover:bg-green-700">
+            Add
+        </button>
+    </div>
+
+    <!-- Include paths list -->
+    <div class="border rounded divide-y" x-show="includes.length > 0">
+        <template x-for="(path, index) in includes" :key="path">
+            <div class="flex items-center justify-between px-3 py-2 hover:bg-gray-50">
+                <span class="text-sm font-mono" x-text="path"></span>
+                <button @click="removeInclude(path)"
+                        class="text-red-600 hover:text-red-800 text-sm px-2 py-1 rounded hover:bg-red-50">
+                    Remove
+                </button>
+            </div>
+        </template>
+    </div>
+    <p x-show="includes.length === 0" class="text-gray-500 text-sm italic">No include paths configured.</p>
+
+    <!-- Exclude Patterns Section -->
+    <h2 class="font-bold text-lg mt-8 mb-2">Exclude Patterns</h2>
+    <p class="text-sm text-gray-600 mb-4">Glob patterns for files and directories to skip during backup.</p>
+
+    <!-- Add exclude pattern -->
+    <div class="flex items-center gap-2 mb-4">
+        <input type="text" x-model="newExclude" placeholder="Add pattern (e.g. *.tmp, node_modules/, .git/)"
+               class="border rounded px-3 py-2 flex-1 text-sm"
+               @keydown.enter="addExclude()">
+        <button @click="addExclude()" class="bg-green-600 text-white px-4 py-2 rounded text-sm hover:bg-green-700">
+            Add
+        </button>
+    </div>
+
+    <!-- Exclude patterns list -->
+    <div class="border rounded divide-y" x-show="excludes.length > 0">
+        <template x-for="(pattern, index) in excludes" :key="pattern">
+            <div class="flex items-center justify-between px-3 py-2 hover:bg-gray-50">
+                <span class="text-sm font-mono" x-text="pattern"></span>
+                <button @click="removeExclude(pattern)"
+                        class="text-red-600 hover:text-red-800 text-sm px-2 py-1 rounded hover:bg-red-50">
+                    Remove
+                </button>
+            </div>
+        </template>
+    </div>
+    <p x-show="excludes.length === 0" class="text-gray-500 text-sm italic">No exclude patterns configured.</p>
+
+    <!-- Status message -->
+    <div x-show="message" x-transition
+         class="mt-4 p-3 rounded text-sm"
+         :class="messageType === 'error' ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'"
+         x-text="message">
+    </div>
+</div>
+
+<!-- General Config Section -->
+<div class="bg-white rounded shadow p-4 m-4">
+    <h2 class="font-bold text-lg mb-4">General Settings</h2>
+    <form hx-post="/api/config" hx-swap="outerHTML">
+        <h3 class="font-bold mb-2">Node</h3>
+        <label class="block mb-2 text-sm">Role:
+            <select name="node.role" class="border rounded px-2 py-1 ml-2">
+                <option value="client">Client</option>
+                <option value="server">Server</option>
+                <option value="both">Both</option>
+            </select>
+        </label>
+
+        <h3 class="font-bold mt-4 mb-2">Server</h3>
+        <label class="block mb-2 text-sm">Address:
+            <input type="text" name="server.address" class="border rounded px-2 py-1 ml-2">
+        </label>
+        <label class="block mb-2 text-sm">Command Port:
+            <input type="number" name="server.command_port" class="border rounded px-2 py-1 ml-2 w-24">
+        </label>
+        <label class="block mb-2 text-sm">Data Port:
+            <input type="number" name="server.data_port" class="border rounded px-2 py-1 ml-2 w-24">
+        </label>
+
+        <h3 class="font-bold mt-4 mb-2">Backup</h3>
+        <label class="block mb-2 text-sm">Chunk Size:
+            <input type="number" name="backup.chunk_size" class="border rounded px-2 py-1 ml-2 w-24">
+        </label>
+
+        <div class="mt-4">
+            <button type="submit" class="bg-gray-600 text-white px-4 py-2 rounded text-sm hover:bg-gray-700">
+                Save Configuration
+            </button>
+        </div>
+    </form>
+</div>
+
+<script>
+function pathsManager() {
+    return {
+        includes: [],
+        excludes: [],
+        newInclude: '',
+        newExclude: '',
+        scanDir: '',
+        scanHidden: false,
+        scanning: false,
+        message: '',
+        messageType: 'success',
+
+        init() {
+            this.loadIncludes();
+            this.loadExcludes();
+        },
+
+        showMessage(msg, type) {
+            this.message = msg;
+            this.messageType = type || 'success';
+            setTimeout(() => { this.message = ''; }, 4000);
+        },
+
+        async loadIncludes() {
+            try {
+                const res = await fetch('/api/paths/includes');
+                const data = await res.json();
+                this.includes = data.paths || [];
+            } catch (e) {
+                this.showMessage('Failed to load include paths', 'error');
+            }
+        },
+
+        async loadExcludes() {
+            try {
+                const res = await fetch('/api/paths/excludes');
+                const data = await res.json();
+                this.excludes = data.patterns || [];
+            } catch (e) {
+                this.showMessage('Failed to load exclude patterns', 'error');
+            }
+        },
+
+        async addInclude() {
+            if (!this.newInclude.trim()) return;
+            try {
+                const res = await fetch('/api/paths/includes/add', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({path: this.newInclude.trim()})
+                });
+                if (!res.ok) throw new Error(await res.text());
+                this.newInclude = '';
+                await this.loadIncludes();
+                this.showMessage('Path added');
+            } catch (e) {
+                this.showMessage('Failed to add path: ' + e.message, 'error');
+            }
+        },
+
+        async removeInclude(path) {
+            try {
+                const res = await fetch('/api/paths/includes/remove', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({path: path})
+                });
+                if (!res.ok) throw new Error(await res.text());
+                await this.loadIncludes();
+                this.showMessage('Path removed');
+            } catch (e) {
+                this.showMessage('Failed to remove path: ' + e.message, 'error');
+            }
+        },
+
+        async addExclude() {
+            if (!this.newExclude.trim()) return;
+            try {
+                const res = await fetch('/api/paths/excludes/add', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({pattern: this.newExclude.trim()})
+                });
+                if (!res.ok) throw new Error(await res.text());
+                this.newExclude = '';
+                await this.loadExcludes();
+                this.showMessage('Pattern added');
+            } catch (e) {
+                this.showMessage('Failed to add pattern: ' + e.message, 'error');
+            }
+        },
+
+        async removeExclude(pattern) {
+            try {
+                const res = await fetch('/api/paths/excludes/remove', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({pattern: pattern})
+                });
+                if (!res.ok) throw new Error(await res.text());
+                await this.loadExcludes();
+                this.showMessage('Pattern removed');
+            } catch (e) {
+                this.showMessage('Failed to remove pattern: ' + e.message, 'error');
+            }
+        },
+
+        async scanDirectory() {
+            this.scanning = true;
+            try {
+                const res = await fetch('/api/paths/scan', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        directory: this.scanDir.trim(),
+                        include_hidden: this.scanHidden
+                    })
+                });
+                if (!res.ok) throw new Error(await res.text());
+                const data = await res.json();
+                await this.loadIncludes();
+                this.showMessage('Scanned ' + data.scanned + ': added ' + data.count + ' directories');
+            } catch (e) {
+                this.showMessage('Scan failed: ' + e.message, 'error');
+            } finally {
+                this.scanning = false;
+            }
+        }
+    };
+}
+</script>
+{{template "footer" .}}

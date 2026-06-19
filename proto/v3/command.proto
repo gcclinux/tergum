@@ -1,0 +1,122 @@
+syntax = "proto3";
+
+package tergum.v3;
+
+option go_package = "github.com/ricardopadilha/tergum/internal/grpc/proto";
+
+// CommandService handles control-plane operations on port 7400.
+service CommandService {
+  rpc TriggerBackup(BackupRequest) returns (BackupResponse);
+  rpc StopBackup(StopRequest) returns (StopResponse);
+  rpc GetStatus(StatusRequest) returns (StatusResponse);
+  rpc Ping(PingRequest) returns (PingResponse);
+  rpc ListBackups(ListBackupsRequest) returns (ListBackupsResponse);
+  rpc DeleteFromBackup(DeleteRequest) returns (DeleteResponse);
+  rpc GetRetention(RetentionRequest) returns (RetentionResponse);
+}
+
+enum BackupLevel {
+  AUTO = 0;
+  FULL = 1;
+  ONGOING = 2;
+}
+
+message BackupRequest {
+  BackupLevel level = 1;
+  string client_id = 2;
+  string initiated_by = 3;
+}
+
+message BackupResponse {
+  string backup_id = 1;
+  string status = 2;
+  string message = 3;
+}
+
+message StopRequest {
+  string backup_id = 1;
+  string client_id = 2;
+}
+
+message StopResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+message StatusRequest {
+  string client_id = 1;
+}
+
+message StatusResponse {
+  string status = 1;
+  string backup_id = 2;
+  int64 files_processed = 3;
+  int64 bytes_transferred = 4;
+  string started_at = 5;
+  string message = 6;
+}
+
+message PingRequest {}
+
+message PingResponse {
+  string version = 1;
+  string uptime = 2;
+}
+
+message ListBackupsRequest {
+  string client_id = 1;
+  int32 limit = 2;
+  int32 offset = 3;
+}
+
+message BackupJobInfo {
+  string backup_id = 1;
+  string level = 2;
+  string client_id = 3;
+  string initiated_by = 4;
+  string started_at = 5;
+  string finished_at = 6;
+  string status = 7;
+  int64 file_count = 8;
+  int64 bytes_total = 9;
+  int64 bytes_new = 10;
+  int64 files_deduped = 11;
+  string error_message = 12;
+}
+
+message ListBackupsResponse {
+  repeated BackupJobInfo backups = 1;
+  int32 total = 2;
+}
+
+message DeleteRequest {
+  string backup_id = 1;
+  string file_path = 2;
+  string folder_path = 3;
+  bool all_backups = 4;
+  bool dry_run = 5;
+}
+
+message DeleteResponse {
+  bool success = 1;
+  int64 entries_deleted = 2;
+  int64 bytes_freed = 3;
+  string message = 4;
+}
+
+message RetentionRequest {
+  string client_id = 1;
+}
+
+message RetentionPolicy {
+  string name = 1;
+  int32 keep_days = 2;
+  int32 keep_versions = 3;
+  string pattern = 4;
+  int32 priority = 5;
+  bool enabled = 6;
+}
+
+message RetentionResponse {
+  repeated RetentionPolicy policies = 1;
+}

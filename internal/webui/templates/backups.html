@@ -1,0 +1,40 @@
+{{template "header" .}}
+<h1 class="text-lg font-bold p-4">Backup Management</h1>
+<div class="bg-white rounded shadow p-4 m-4">
+    <h2 class="font-bold">Active Jobs</h2>
+    <div hx-get="/api/backups/active" hx-trigger="every 5s" hx-swap="innerHTML">
+        Loading...
+    </div>
+</div>
+<div class="bg-white rounded shadow p-4 m-4">
+    <h2 class="font-bold">Backup History</h2>
+    <table>
+        <thead>
+            <tr>
+                <th class="p-4">Backup ID</th>
+                <th class="p-4">Client</th>
+                <th class="p-4">Level</th>
+                <th class="p-4">Status</th>
+                <th class="p-4">Files</th>
+                <th class="p-4">Started</th>
+                <th class="p-4">Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {{range .Jobs}}
+            <tr>
+                <td class="p-4">{{.BackupID}}</td>
+                <td class="p-4">{{.ClientID}}</td>
+                <td class="p-4">{{.Level}}</td>
+                <td class="p-4">{{.Status}}</td>
+                <td class="p-4">{{.FileCount}}</td>
+                <td class="p-4">{{.StartedAt}}</td>
+                <td class="p-4">
+                    <button hx-delete="/api/backups/{{.BackupID}}" hx-confirm="Delete this backup?">Delete</button>
+                </td>
+            </tr>
+            {{end}}
+        </tbody>
+    </table>
+</div>
+{{template "footer" .}}

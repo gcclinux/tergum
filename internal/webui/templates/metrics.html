@@ -1,0 +1,28 @@
+{{template "header" .}}
+<h1 class="text-lg font-bold p-4">Metrics Visualization</h1>
+<div class="flex">
+    <div class="bg-white rounded shadow p-4 m-4">
+        <h2 class="font-bold">Backup Statistics</h2>
+        <div hx-get="/api/metrics/backup" hx-trigger="every 30s" hx-swap="innerHTML">
+            <p>Files Backed Up: {{.Metrics.FilesBackedUp}}</p>
+            <p>Bytes Transferred: {{.Metrics.BytesTransferred}}</p>
+            <p>Dedup Ratio: {{.Metrics.DedupRatio}}</p>
+        </div>
+    </div>
+    <div class="bg-white rounded shadow p-4 m-4">
+        <h2 class="font-bold">Storage Usage</h2>
+        <div hx-get="/api/metrics/storage" hx-trigger="every 30s" hx-swap="innerHTML">
+            <p>Total Storage: {{.Metrics.StorageUsed}}</p>
+            <p>Unique Files: {{.Metrics.UniqueFiles}}</p>
+        </div>
+    </div>
+</div>
+<div class="bg-white rounded shadow p-4 m-4">
+    <h2 class="font-bold">gRPC Performance</h2>
+    <div hx-get="/api/metrics/grpc" hx-trigger="every 30s" hx-swap="innerHTML">
+        <p>Total Requests: {{.Metrics.GRPCRequests}}</p>
+        <p>Errors: {{.Metrics.GRPCErrors}}</p>
+        <p>Connected Clients: {{.Metrics.ConnectedClients}}</p>
+    </div>
+</div>
+{{template "footer" .}}

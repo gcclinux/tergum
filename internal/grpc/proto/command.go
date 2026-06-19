@@ -1,0 +1,131 @@
+// Package proto contains the gRPC service definitions and message types
+// for Tergum v3 CommandService and DataService protocols.
+//
+// These types mirror what protoc-gen-go would generate from the .proto files
+// in proto/v3/. They use the google.golang.org/grpc interfaces directly.
+package proto
+
+// BackupLevel represents the type of backup operation.
+type BackupLevel int32
+
+const (
+	BackupLevel_AUTO    BackupLevel = 0
+	BackupLevel_FULL    BackupLevel = 1
+	BackupLevel_ONGOING BackupLevel = 2
+)
+
+// BackupRequest is sent to trigger a backup operation.
+type BackupRequest struct {
+	Level       BackupLevel `json:"level"`
+	ClientId    string      `json:"client_id"`
+	InitiatedBy string      `json:"initiated_by"`
+}
+
+// BackupResponse is returned after a backup is triggered.
+type BackupResponse struct {
+	BackupId string `json:"backup_id"`
+	Status   string `json:"status"`
+	Message  string `json:"message"`
+}
+
+// StopRequest is sent to stop an in-progress backup.
+type StopRequest struct {
+	BackupId string `json:"backup_id"`
+	ClientId string `json:"client_id"`
+}
+
+// StopResponse is returned after a stop attempt.
+type StopResponse struct {
+	Success bool   `json:"success"`
+	Message string `json:"message"`
+}
+
+// StatusRequest queries the status of current operations.
+type StatusRequest struct {
+	ClientId string `json:"client_id"`
+}
+
+// StatusResponse contains the current operation status.
+type StatusResponse struct {
+	Status           string `json:"status"`
+	BackupId         string `json:"backup_id"`
+	FilesProcessed   int64  `json:"files_processed"`
+	BytesTransferred int64  `json:"bytes_transferred"`
+	StartedAt        string `json:"started_at"`
+	Message          string `json:"message"`
+}
+
+// PingRequest is an empty health check request.
+type PingRequest struct{}
+
+// PingResponse contains server health information.
+type PingResponse struct {
+	Version string `json:"version"`
+	Uptime  string `json:"uptime"`
+}
+
+// ListBackupsRequest queries backup history.
+type ListBackupsRequest struct {
+	ClientId string `json:"client_id"`
+	Limit    int32  `json:"limit"`
+	Offset   int32  `json:"offset"`
+}
+
+// BackupJobInfo contains information about a single backup job.
+type BackupJobInfo struct {
+	BackupId     string `json:"backup_id"`
+	Level        string `json:"level"`
+	ClientId     string `json:"client_id"`
+	InitiatedBy  string `json:"initiated_by"`
+	StartedAt    string `json:"started_at"`
+	FinishedAt   string `json:"finished_at"`
+	Status       string `json:"status"`
+	FileCount    int64  `json:"file_count"`
+	BytesTotal   int64  `json:"bytes_total"`
+	BytesNew     int64  `json:"bytes_new"`
+	FilesDeduped int64  `json:"files_deduped"`
+	ErrorMessage string `json:"error_message"`
+}
+
+// ListBackupsResponse contains a list of backup jobs.
+type ListBackupsResponse struct {
+	Backups []*BackupJobInfo `json:"backups"`
+	Total   int32            `json:"total"`
+}
+
+// DeleteRequest is sent to delete backup entries.
+type DeleteRequest struct {
+	BackupId   string `json:"backup_id"`
+	FilePath   string `json:"file_path"`
+	FolderPath string `json:"folder_path"`
+	AllBackups bool   `json:"all_backups"`
+	DryRun     bool   `json:"dry_run"`
+}
+
+// DeleteResponse is returned after a delete operation.
+type DeleteResponse struct {
+	Success        bool   `json:"success"`
+	EntriesDeleted int64  `json:"entries_deleted"`
+	BytesFreed     int64  `json:"bytes_freed"`
+	Message        string `json:"message"`
+}
+
+// RetentionRequest queries retention policies.
+type RetentionRequest struct {
+	ClientId string `json:"client_id"`
+}
+
+// RetentionPolicyProto represents a retention policy in the protocol.
+type RetentionPolicyProto struct {
+	Name         string `json:"name"`
+	KeepDays     int32  `json:"keep_days"`
+	KeepVersions int32  `json:"keep_versions"`
+	Pattern      string `json:"pattern"`
+	Priority     int32  `json:"priority"`
+	Enabled      bool   `json:"enabled"`
+}
+
+// RetentionResponse contains a list of retention policies.
+type RetentionResponse struct {
+	Policies []*RetentionPolicyProto `json:"policies"`
+}

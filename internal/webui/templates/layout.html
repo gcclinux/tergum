@@ -1,0 +1,33 @@
+{{define "header"}}<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tergum - {{.Title}}</title>
+    <link rel="stylesheet" href="/assets/tailwind.min.css">
+    <script src="/assets/htmx.min.js" defer></script>
+    <script src="/assets/alpine.min.js" defer></script>
+</head>
+<body class="bg-gray-100">
+    <nav class="bg-white shadow p-4 flex items-center justify-between">
+        <div class="text-lg font-bold">Tergum</div>
+        <div class="flex items-center">
+            <a href="/" class="p-4">Dashboard</a>
+            <a href="/backups" class="p-4">Backups</a>
+            <a href="/restore" class="p-4">Restore</a>
+            <a href="/config" class="p-4">Config</a>
+            <a href="/retention" class="p-4">Retention</a>
+            <a href="/watchers" class="p-4">Watchers</a>
+            <a href="/activity" class="p-4">Activity</a>
+            <a href="/clients" class="p-4">Clients</a>
+            <a href="/metrics" class="p-4">Metrics</a>
+        </div>
+    </nav>
+    <main class="container p-4">
+{{end}}
+
+{{define "footer"}}
+    </main>
+</body>
+</html>
+{{end}}
