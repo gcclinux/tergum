@@ -5,12 +5,14 @@ package server
 import (
 	"context"
 	"crypto/tls"
+	"encoding/hex"
 	"fmt"
 	"log/slog"
 	"net"
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -20,6 +22,7 @@ import (
 
 	"github.com/ricardopadilha/tergum/internal/backup"
 	"github.com/ricardopadilha/tergum/internal/config"
+	"github.com/ricardopadilha/tergum/internal/crypto"
 	"github.com/ricardopadilha/tergum/internal/db"
 	grpcpkg "github.com/ricardopadilha/tergum/internal/grpc"
 	"github.com/ricardopadilha/tergum/internal/grpc/proto"
@@ -96,7 +99,7 @@ func (s *Server) Start(ctx context.Context) error {
 	s.repo = repo
 
 	// Initialize CAS store.
-	storageDir := storagePathFromDB(s.cfg.Database.Path)
+	storageDir := s.cfg.StorageDir()
 	cas := storage.NewCAS(storageDir, repo)
 	s.store = cas
 
@@ -189,6 +192,34 @@ func (s *Server) Start(ctx context.Context) error {
 		var webuiOpts []webui.ServerOption
 		webuiOpts = append(webuiOpts, webui.WithLogger(observe.Logger("webui")))
 		webuiOpts = append(webuiOpts, webui.WithRepository(s.repo))
+		webuiOpts = append(webuiOpts, webui.WithConfigPath(config.DefaultConfigPath()))
+		webuiOpts = append(webuiOpts, webui.WithFullConfig(s.cfg))
+
+		// Enable web-triggered backups if TERGUM_PASSPHRASE is set.
+		if passphrase := os.Getenv("TERGUM_PASSPHRASE"); passphrase != "" {
+			masterKey, err := loadMasterKeyFromEnv(s.cfg)
+			if err == nil {
+				trigger := webui.NewLocalBackupTrigger(s.repo, s.cfg.StorageDir(), masterKey, s.cfg.Encryption.Enabled)
+				webuiOpts = append(webuiOpts, webui.WithBackupTrigger(trigger))
+				s.logger.Info("web backup trigger enabled (TERGUM_PASSPHRASE set)")
+
+				// Also enable watcher controller.
+				excludes, _ := s.repo.ListExcludePatterns(context.Background())
+				wc := webui.NewLocalWatcherController(webui.LocalWatcherConfig{
+					Repo:            s.repo,
+					StorageDir:      s.cfg.StorageDir(),
+					MasterKey:       masterKey,
+					EncEnabled:      s.cfg.Encryption.Enabled,
+					DebounceMs:      s.cfg.Watcher.DebounceMs,
+					StabilitySec:    s.cfg.Watcher.StabilitySeconds,
+					BatchMinutes:    s.cfg.Watcher.BatchIntervalMinutes,
+					ExcludePatterns: excludes,
+				})
+				webuiOpts = append(webuiOpts, webui.WithWatcherController(wc))
+			} else {
+				s.logger.Warn("web backup trigger disabled: cannot derive key", "error", err)
+			}
+		}
 		// Note: The gRPC mTLS certificates use Ed25519 which browsers don't support.
 		// The web UI runs on plain HTTP. For production, put it behind a reverse proxy
 		// with a browser-compatible certificate (ECDSA/RSA).
@@ -388,4 +419,28 @@ func (t *localBackupTrigger) TriggerBackup(ctx context.Context, level model.Back
 func LoadTLSConfig(cfg *config.Config) (*tls.Config, error) {
 	tlsMgr := tlspkg.NewManager()
 	return tlsMgr.LoadServerTLS(cfg.TLS.CACert, cfg.TLS.Cert, cfg.TLS.Key)
+}
+
+// loadMasterKeyFromEnv derives the master key from the TERGUM_PASSPHRASE env var and stored salt.
+func loadMasterKeyFromEnv(cfg *config.Config) ([]byte, error) {
+	passphrase := os.Getenv("TERGUM_PASSPHRASE")
+	if passphrase == "" {
+		return nil, fmt.Errorf("TERGUM_PASSPHRASE not set")
+	}
+
+	configDir := filepath.Dir(cfg.Database.Path)
+	saltPath := filepath.Join(configDir, "salt")
+
+	saltHex, err := os.ReadFile(saltPath)
+	if err != nil {
+		return nil, fmt.Errorf("cannot read salt file: %w", err)
+	}
+
+	salt, err := hex.DecodeString(strings.TrimSpace(string(saltHex)))
+	if err != nil {
+		return nil, fmt.Errorf("invalid salt: %w", err)
+	}
+
+	enc := crypto.NewEncryptor()
+	return enc.DeriveKey(passphrase, salt)
 }

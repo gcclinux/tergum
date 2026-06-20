@@ -44,6 +44,7 @@ func init() {
 
 	rootCmd.AddCommand(newSetupCmd())
 	rootCmd.AddCommand(newServerCmd())
+	rootCmd.AddCommand(newAdminCmd())
 	rootCmd.AddCommand(newBackupCmd())
 	rootCmd.AddCommand(newRestoreCmd())
 	rootCmd.AddCommand(newDeleteCmd())

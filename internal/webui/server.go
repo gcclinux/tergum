@@ -23,14 +23,31 @@ var templatesFS embed.FS
 
 // Server is the embedded HTTPS web management UI server.
 type Server struct {
-	httpServer *http.Server
-	templates  map[string]*template.Template
-	auth       *AuthMiddleware
-	sessions   *SessionStore
-	broker     *SSEBroker
-	logger     *slog.Logger
-	cfg        config.WebUIConfig
-	repo       db.Repository
+	httpServer        *http.Server
+	templates         map[string]*template.Template
+	auth              *AuthMiddleware
+	sessions          *SessionStore
+	broker            *SSEBroker
+	logger            *slog.Logger
+	cfg               config.WebUIConfig
+	fullCfg           *config.Config
+	repo              db.Repository
+	configPath        string // path to tergum.toml for syncing paths back
+	backupTrigger     BackupTrigger
+	watcherController WatcherController
+}
+
+// BackupTrigger is an interface for triggering backups from the Web UI.
+type BackupTrigger interface {
+	TriggerBackup(level string) error
+	IsAvailable() bool
+}
+
+// WatcherController is an interface for starting/stopping the file watcher from the Web UI.
+type WatcherController interface {
+	StartWatcher() error
+	StopWatcher() error
+	IsRunning() bool
 }
 
 // ServerOption is a functional option for configuring the web UI server.
@@ -54,6 +71,34 @@ func WithLogger(logger *slog.Logger) ServerOption {
 func WithRepository(repo db.Repository) ServerOption {
 	return func(s *Server) {
 		s.repo = repo
+	}
+}
+
+// WithConfigPath sets the path to the TOML config file so the web UI can sync paths back.
+func WithConfigPath(path string) ServerOption {
+	return func(s *Server) {
+		s.configPath = path
+	}
+}
+
+// WithBackupTrigger sets a backup trigger for web-initiated backups.
+func WithBackupTrigger(bt BackupTrigger) ServerOption {
+	return func(s *Server) {
+		s.backupTrigger = bt
+	}
+}
+
+// WithFullConfig sets the full application config for status display.
+func WithFullConfig(cfg *config.Config) ServerOption {
+	return func(s *Server) {
+		s.fullCfg = cfg
+	}
+}
+
+// WithWatcherController sets a watcher controller for start/stop from the Web UI.
+func WithWatcherController(wc WatcherController) ServerOption {
+	return func(s *Server) {
+		s.watcherController = wc
 	}
 }
 
@@ -145,6 +190,43 @@ func (s *Server) routes() http.Handler {
 	authed.HandleFunc("/api/paths/excludes/remove", s.handlePathsExcludeRemove)
 	authed.HandleFunc("/api/paths/scan", s.handlePathsScan)
 
+	// Watcher API endpoints.
+	authed.HandleFunc("/api/watchers", func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			s.handleWatchersAPI(w, r)
+		case http.MethodPost:
+			s.handleWatchersAdd(w, r)
+		case http.MethodDelete:
+			s.handleWatchersDelete(w, r)
+		default:
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		}
+	})
+
+	// Backup API endpoints.
+	authed.HandleFunc("/api/backups/trigger", s.handleAPIBackupTrigger)
+	authed.HandleFunc("/api/backups/active", s.handleAPIBackupsActive)
+	authed.HandleFunc("/api/backups/", s.handleAPIBackupDelete)
+
+	// Retention API endpoints.
+	authed.HandleFunc("/api/retention/", s.handleAPIRetention)
+	authed.HandleFunc("/api/retention", s.handleAPIRetention)
+
+	// Restore API endpoints.
+	authed.HandleFunc("/api/restore/search", s.handleAPIRestoreSearch)
+	authed.HandleFunc("/api/restore/backups", s.handleAPIRestoreBackups)
+
+	// Dashboard API.
+	authed.HandleFunc("/api/dashboard", s.handleAPIDashboard)
+
+	// Activity API.
+	authed.HandleFunc("/api/activity/recent", s.handleAPIActivityRecent)
+
+	// Watcher control API.
+	authed.HandleFunc("/api/watcher/start", s.handleAPIWatcherControl)
+	authed.HandleFunc("/api/watcher/stop", s.handleAPIWatcherControl)
+
 	mux.Handle("/", s.auth.Wrap(authed))
 
 	return mux
@@ -233,6 +315,10 @@ type dashboardData struct {
 	TotalFiles    int64
 	TotalSize     string
 	ActiveClients int
+	CPUUsage      string
+	MemUsed       string
+	MemTotal      string
+	MemPercent    string
 }
 
 type backupsData struct {
@@ -273,8 +359,13 @@ type retentionPolicyView struct {
 }
 
 type watchersData struct {
-	Title      string
-	WatchPaths []watchPathView
+	Title          string
+	WatchPaths     []watchPathView
+	WatcherEnabled bool
+	WatcherRunning bool
+	DebounceMs     int
+	StabilitySec   int
+	BatchMinutes   int
 }
 
 type watchPathView struct {
@@ -326,14 +417,36 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
+
 	data := dashboardData{
 		Title:         "Dashboard",
-		Uptime:        "0h 0m",
+		Uptime:        "N/A",
 		Version:       "3.0.0",
 		TotalFiles:    0,
 		TotalSize:     "0 B",
 		ActiveClients: 0,
 	}
+
+	if s.repo != nil {
+		jobs, err := s.repo.ListJobs(r.Context(), db.JobFilter{})
+		if err == nil {
+			var totalFiles, totalBytes int64
+			for _, j := range jobs {
+				totalFiles += j.FileCount
+				totalBytes += j.BytesNew
+			}
+			data.TotalFiles = totalFiles
+			data.TotalSize = formatSize(totalBytes)
+		}
+	}
+
+	// System stats.
+	cpu, memUsed, memTotal, memPct := getSystemStats()
+	data.CPUUsage = cpu
+	data.MemUsed = memUsed
+	data.MemTotal = memTotal
+	data.MemPercent = memPct
+
 	s.renderTemplate(w, "dashboard.html", data)
 }
 
@@ -342,6 +455,27 @@ func (s *Server) handleBackups(w http.ResponseWriter, r *http.Request) {
 		Title: "Backups",
 		Jobs:  []backupJobView{},
 	}
+
+	if s.repo != nil {
+		jobs, err := s.repo.ListJobs(r.Context(), db.JobFilter{Limit: 100})
+		if err != nil {
+			s.logger.Error("list jobs failed", "error", err)
+		} else {
+			for _, j := range jobs {
+				started := j.StartedAt.Format("2006-01-02 15:04:05")
+				view := backupJobView{
+					BackupID:  j.BackupID,
+					ClientID:  j.ClientID,
+					Level:     j.Level,
+					Status:    string(j.Status),
+					FileCount: j.FileCount,
+					StartedAt: started,
+				}
+				data.Jobs = append(data.Jobs, view)
+			}
+		}
+	}
+
 	s.renderTemplate(w, "backups.html", data)
 }
 
@@ -360,6 +494,24 @@ func (s *Server) handleRetention(w http.ResponseWriter, r *http.Request) {
 		Title:    "Retention Policies",
 		Policies: []retentionPolicyView{},
 	}
+
+	if s.repo != nil {
+		policies, err := s.repo.ListRetentionPolicies(r.Context())
+		if err == nil {
+			for _, p := range policies {
+				view := retentionPolicyView{
+					Name:         p.Name,
+					KeepDays:     p.KeepDays,
+					KeepVersions: p.KeepVersions,
+					Pattern:      p.Pattern,
+					Priority:     p.Priority,
+					Enabled:      p.Enabled,
+				}
+				data.Policies = append(data.Policies, view)
+			}
+		}
+	}
+
 	s.renderTemplate(w, "retention.html", data)
 }
 
@@ -368,6 +520,28 @@ func (s *Server) handleWatchers(w http.ResponseWriter, r *http.Request) {
 		Title:      "Watchers",
 		WatchPaths: []watchPathView{},
 	}
+
+	// Fill watcher config status.
+	if s.fullCfg != nil {
+		data.WatcherEnabled = s.fullCfg.Watcher.Enabled
+		data.DebounceMs = s.fullCfg.Watcher.DebounceMs
+		data.StabilitySec = s.fullCfg.Watcher.StabilitySeconds
+		data.BatchMinutes = s.fullCfg.Watcher.BatchIntervalMinutes
+	} else if s.configPath != "" {
+		cfg, err := config.Load(s.configPath)
+		if err == nil {
+			data.WatcherEnabled = cfg.Watcher.Enabled
+			data.DebounceMs = cfg.Watcher.DebounceMs
+			data.StabilitySec = cfg.Watcher.StabilitySeconds
+			data.BatchMinutes = cfg.Watcher.BatchIntervalMinutes
+		}
+	}
+
+	// Check if watcher is actually running via the controller.
+	if s.watcherController != nil {
+		data.WatcherRunning = s.watcherController.IsRunning()
+	}
+
 	s.renderTemplate(w, "watchers.html", data)
 }
 

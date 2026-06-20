@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bufio"
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
@@ -13,6 +14,7 @@ import (
 	"github.com/BurntSushi/toml"
 	"github.com/ricardopadilha/tergum/internal/config"
 	"github.com/ricardopadilha/tergum/internal/crypto"
+	"github.com/ricardopadilha/tergum/internal/db"
 	"github.com/ricardopadilha/tergum/internal/tls"
 	"github.com/spf13/cobra"
 )
@@ -221,25 +223,171 @@ func runInteractiveSetup(wiz *setupWizard) error {
 		return fmt.Errorf("cannot write verification file: %w", err)
 	}
 
-	// 6. Write TOML configuration file
+	// 6. Backup paths — what to back up
+	fmt.Fprintln(wiz.writer)
+	fmt.Fprintln(wiz.writer, "--- Backup Paths ---")
+	fmt.Fprintln(wiz.writer, "Which directories should be backed up?")
+	fmt.Fprintln(wiz.writer, "Enter full paths, one per line. Leave empty when done.")
+
+	var includePaths []string
+	for {
+		p := wiz.prompt("Include path (empty to finish)", "")
+		if p == "" {
+			break
+		}
+		abs, err := filepath.Abs(p)
+		if err != nil {
+			fmt.Fprintf(wiz.writer, "  Invalid path: %v\n", err)
+			continue
+		}
+		// Verify directory exists
+		info, err := os.Stat(abs)
+		if err != nil {
+			fmt.Fprintf(wiz.writer, "  Warning: path does not exist: %s (adding anyway)\n", abs)
+		} else if !info.IsDir() {
+			fmt.Fprintf(wiz.writer, "  Warning: %s is a file, not a directory (adding anyway)\n", abs)
+		}
+		includePaths = append(includePaths, abs)
+		fmt.Fprintf(wiz.writer, "  Added: %s\n", abs)
+	}
+
+	if len(includePaths) == 0 {
+		// Offer to scan home directory
+		if wiz.promptYesNo("No paths added. Scan home directory for top-level folders?", true) {
+			home, err := os.UserHomeDir()
+			if err == nil {
+				entries, err := os.ReadDir(home)
+				if err == nil {
+					for _, entry := range entries {
+						if entry.IsDir() && !strings.HasPrefix(entry.Name(), ".") {
+							includePaths = append(includePaths, filepath.Join(home, entry.Name()))
+						}
+					}
+					fmt.Fprintf(wiz.writer, "  Found %d directories in %s\n", len(includePaths), home)
+					for _, p := range includePaths {
+						fmt.Fprintf(wiz.writer, "    + %s\n", p)
+					}
+				}
+			}
+		}
+	}
+
+	// 7. Exclude patterns
+	fmt.Fprintln(wiz.writer)
+	fmt.Fprintln(wiz.writer, "--- Exclude Patterns ---")
+	fmt.Fprintln(wiz.writer, "Glob patterns for files/directories to skip.")
+	fmt.Fprintln(wiz.writer, "Common: *.tmp, node_modules/, .git/, __pycache__/, *.log")
+
+	useDefaults := wiz.promptYesNo("Use default exclude patterns? (build artifacts, caches, VCS, logs)", true)
+	var excludePatterns []string
+	if useDefaults {
+		excludePatterns = []string{
+			"*.tmp",
+			"*.log",
+			"*.o",
+			"*.class",
+			".git/",
+			".cache/",
+			".nuget/",
+			".npm/",
+			".gradle/",
+			"node_modules/",
+			"__pycache__/",
+			"bin/Debug/",
+			"bin/Release/",
+			"obj/",
+			"target/",
+			"dist/",
+		}
+		fmt.Fprintln(wiz.writer, "  Default patterns added.")
+	}
+
+	fmt.Fprintln(wiz.writer, "Add additional exclude patterns (empty to finish):")
+	for {
+		p := wiz.prompt("Exclude pattern (empty to finish)", "")
+		if p == "" {
+			break
+		}
+		excludePatterns = append(excludePatterns, p)
+		fmt.Fprintf(wiz.writer, "  Added: %s\n", p)
+	}
+
+	// 8. Watcher configuration
+	fmt.Fprintln(wiz.writer)
+	fmt.Fprintln(wiz.writer, "--- File Watcher ---")
+	watcherEnabled := wiz.promptYesNo("Enable file watcher for ongoing backups?", true)
+
+	// 9. Scheduler
+	fmt.Fprintln(wiz.writer)
+	fmt.Fprintln(wiz.writer, "--- Backup Schedule ---")
+	fmt.Fprintln(wiz.writer, "You can configure scheduled backups using cron expressions.")
+	fmt.Fprintln(wiz.writer, "Examples: '0 2 * * *' (daily at 2 AM), '0 */6 * * *' (every 6 hours)")
+	fullBackupCron := wiz.prompt("Full backup cron schedule (empty for manual only)", "")
+	autoBackupCron := wiz.prompt("Auto/incremental backup cron (empty for none)", "")
+
+	// 10. Write TOML configuration file
 	cfg := buildConfig(role, serverAddress, storagePath, certsDir, configDir, generateCerts)
+	cfg.Watcher.Enabled = watcherEnabled
+	cfg.Scheduler.FullBackupCron = fullBackupCron
+	cfg.Scheduler.AutoBackupCron = autoBackupCron
+	cfg.Client.IncludePaths = includePaths
+	cfg.Client.ExcludePatterns = excludePatterns
+
 	configPath := config.DefaultConfigPath()
 
 	if err := writeConfigTOML(configPath, cfg); err != nil {
 		return fmt.Errorf("cannot write configuration file: %w", err)
 	}
 
+	// 11. Save include paths and exclude patterns to the database
+	dbPath := cfg.Database.Path
+	if err := os.MkdirAll(filepath.Dir(dbPath), 0700); err != nil {
+		return fmt.Errorf("cannot create database directory: %w", err)
+	}
+
+	repo, err := db.NewRepository(dbPath, true)
+	if err != nil {
+		fmt.Fprintf(wiz.writer, "Warning: could not open database to save paths: %v\n", err)
+	} else {
+		defer repo.Close()
+		ctx := context.Background()
+
+		// Clear existing paths so setup is authoritative.
+		existingIncludes, _ := repo.ListIncludePaths(ctx)
+		for _, p := range existingIncludes {
+			_ = repo.RemoveIncludePath(ctx, p)
+		}
+		existingExcludes, _ := repo.ListExcludePatterns(ctx)
+		for _, p := range existingExcludes {
+			_ = repo.RemoveExcludePattern(ctx, p)
+		}
+
+		for _, p := range includePaths {
+			_ = repo.AddIncludePath(ctx, p)
+		}
+		for _, p := range excludePatterns {
+			_ = repo.AddExcludePattern(ctx, p)
+		}
+	}
+
 	fmt.Fprintln(wiz.writer)
 	fmt.Fprintf(wiz.writer, "Configuration written to %s\n", configPath)
-	fmt.Fprintln(wiz.writer, "Setup complete! You can now run 'tergum server' or 'tergum backup'.")
+	fmt.Fprintln(wiz.writer)
+	fmt.Fprintln(wiz.writer, "Setup complete! Next steps:")
+	fmt.Fprintln(wiz.writer, "  tergum server    — start the server (required for backups)")
+	fmt.Fprintln(wiz.writer, "  tergum backup    — run a manual backup")
+	fmt.Fprintln(wiz.writer, "  tergum paths list — view configured paths")
 
 	printOutput(
 		map[string]interface{}{
-			"status":      "success",
-			"config_path": configPath,
-			"role":        role,
-			"storage":     storagePath,
-			"certs":       generateCerts,
+			"status":           "success",
+			"config_path":      configPath,
+			"role":             role,
+			"storage":          storagePath,
+			"certs":            generateCerts,
+			"include_paths":    includePaths,
+			"exclude_patterns": excludePatterns,
+			"watcher_enabled":  watcherEnabled,
 		},
 		"",
 	)
@@ -303,6 +451,7 @@ func buildConfig(role, serverAddress, storagePath, certsDir, configDir string, h
 	cfg.Database.WALMode = true
 
 	// Backup
+	cfg.Backup.StoragePath = storagePath
 	cfg.Backup.ChunkSize = 65536
 	cfg.Backup.MaxConcurrentUploads = 4
 	cfg.Backup.MaxConcurrentDownloads = 8

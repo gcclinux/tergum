@@ -1,19 +1,48 @@
 {{template "header" .}}
 <h1 class="text-lg font-bold p-4">Activity Log</h1>
-<div class="bg-white rounded shadow p-4 m-4" x-data="{ connected: false }">
-    <h2 class="font-bold">Real-time Events (SSE)</h2>
-    <div id="activity-log"
-         hx-ext="sse"
-         sse-connect="/api/activity/stream"
-         sse-swap="message"
-         hx-swap="afterbegin">
-        <p>Connecting to event stream...</p>
+<div class="bg-white rounded shadow p-4 m-4">
+    <h2 class="font-bold mb-2">Real-time Events</h2>
+    <div id="live-events" class="max-h-64 overflow-y-auto border rounded p-3 bg-gray-50 text-sm font-mono">
+        <p class="text-gray-500 italic" id="sse-status">Connecting...</p>
     </div>
 </div>
 <div class="bg-white rounded shadow p-4 m-4">
-    <h2 class="font-bold">Recent Activity</h2>
-    <div hx-get="/api/activity/recent" hx-trigger="load" hx-swap="innerHTML">
-        Loading...
+    <h2 class="font-bold mb-2">Recent Activity</h2>
+    <div hx-get="/api/activity/recent" hx-trigger="load, every 30s" hx-swap="innerHTML">
+        <p class="text-gray-500 italic text-sm">Loading...</p>
     </div>
 </div>
+
+<script>
+(function() {
+    var log = document.getElementById('live-events');
+    var status = document.getElementById('sse-status');
+    var es = new EventSource('/api/activity/stream');
+
+    es.onopen = function() {
+        status.textContent = 'Connected — waiting for events...';
+    };
+
+    es.onmessage = function(event) {
+        var line = document.createElement('div');
+        line.className = 'py-1 border-b border-gray-200';
+        var now = new Date().toLocaleTimeString();
+        line.textContent = '[' + now + '] ' + event.data;
+        log.insertBefore(line, log.firstChild);
+        // Remove status placeholder.
+        if (status) { status.remove(); status = null; }
+        // Keep max 100 entries.
+        while (log.children.length > 100) {
+            log.removeChild(log.lastChild);
+        }
+    };
+
+    es.onerror = function() {
+        if (status) {
+            status.textContent = 'Disconnected. Reconnecting...';
+            status.className = 'text-red-500 italic';
+        }
+    };
+})();
+</script>
 {{template "footer" .}}

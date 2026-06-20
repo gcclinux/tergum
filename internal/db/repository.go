@@ -96,6 +96,7 @@ type Repository interface {
 	// Watcher operations
 	SaveWatchPath(ctx context.Context, wp WatchPath) error
 	LoadWatchPaths(ctx context.Context) ([]WatchPath, error)
+	DeleteWatchPath(ctx context.Context, path string) error
 
 	// Include/exclude path operations
 	AddIncludePath(ctx context.Context, path string) error
@@ -392,12 +393,16 @@ func (r *SQLiteRepository) DeleteEntries(ctx context.Context, filter DeleteFilte
 		args = append(args, filter.FilePath)
 	}
 
-	if len(conditions) == 0 {
+	// AllBackups with no other filter means delete everything.
+	if len(conditions) == 0 && !filter.AllBackups {
 		return 0, nil
 	}
 
-	where := strings.Join(conditions, " AND ")
-	query := "DELETE FROM backups WHERE " + where
+	query := "DELETE FROM backups"
+	if len(conditions) > 0 {
+		where := strings.Join(conditions, " AND ")
+		query += " WHERE " + where
+	}
 
 	result, err := r.db.ExecContext(ctx, query, args...)
 	if err != nil {
@@ -655,6 +660,13 @@ func (r *SQLiteRepository) LoadWatchPaths(ctx context.Context) ([]WatchPath, err
 		paths = append(paths, wp)
 	}
 	return paths, rows.Err()
+}
+
+// DeleteWatchPath removes a watched path by its path string.
+func (r *SQLiteRepository) DeleteWatchPath(ctx context.Context, path string) error {
+	_, err := r.db.ExecContext(ctx,
+		`DELETE FROM watched_paths WHERE path = ?`, path)
+	return err
 }
 
 // AddIncludePath adds a path to the include_paths table.

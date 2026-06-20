@@ -350,6 +350,37 @@ data_port = 7401          # gRPC data streaming port
 include_paths = ["~/Documents", "~/Projects"]
 exclude_patterns = ["*.tmp", "*.log", "node_modules/", ".git/"]
 max_file_size = "10GB"    # skip files larger than this
+```
+
+### Default Exclude Patterns
+
+When running `tergum setup`, the wizard offers a default set of exclude patterns that skip build artifacts, caches, and version control directories:
+
+| Pattern | What it skips |
+|---------|---------------|
+| `*.tmp` | Temporary files |
+| `*.log` | Log files |
+| `*.o` | C/C++ object files |
+| `*.class` | Java compiled classes |
+| `.git/` | Git repositories |
+| `.cache/` | General caches |
+| `.nuget/` | .NET package cache |
+| `.npm/` | NPM cache |
+| `.gradle/` | Gradle cache |
+| `node_modules/` | Node.js dependencies |
+| `__pycache__/` | Python bytecode cache |
+| `bin/Debug/` | .NET debug builds |
+| `bin/Release/` | .NET release builds |
+| `obj/` | .NET intermediate output |
+| `target/` | Rust/Java/Maven build output |
+| `dist/` | Build distribution folders |
+
+You can add or remove patterns at any time with:
+
+```bash
+tergum paths exclude "*.bak" "vendor/"
+tergum paths unexclude "dist/"
+```
 
 [tls]
 ca_cert = "~/.config/tergum/certs/ca.crt"

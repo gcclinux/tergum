@@ -1,40 +1,66 @@
 {{template "header" .}}
 <h1 class="text-lg font-bold p-4">Backup Management</h1>
 <div class="bg-white rounded shadow p-4 m-4">
-    <h2 class="font-bold">Active Jobs</h2>
-    <div hx-get="/api/backups/active" hx-trigger="every 5s" hx-swap="innerHTML">
-        Loading...
+    <h2 class="font-bold mb-2">Active Jobs</h2>
+    <div hx-get="/api/backups/active" hx-trigger="load, every 5s" hx-swap="innerHTML">
+        <p class="text-gray-500 italic text-sm">Loading...</p>
     </div>
 </div>
 <div class="bg-white rounded shadow p-4 m-4">
-    <h2 class="font-bold">Backup History</h2>
-    <table>
+    <h2 class="font-bold mb-2">Trigger Backup</h2>
+    <div class="flex gap-3 items-center">
+        <form hx-post="/api/backups/trigger" hx-target="#trigger-result" hx-swap="innerHTML">
+            <input type="hidden" name="level" value="full">
+            <button type="submit" class="bg-blue-600 text-white px-4 py-2 rounded text-sm hover:bg-blue-700">
+                Full Backup
+            </button>
+        </form>
+        <form hx-post="/api/backups/trigger" hx-target="#trigger-result" hx-swap="innerHTML">
+            <input type="hidden" name="level" value="auto">
+            <button type="submit" class="bg-green-600 text-white px-4 py-2 rounded text-sm hover:bg-green-700">
+                Auto Backup
+            </button>
+        </form>
+        <span class="text-sm text-gray-500">Auto = only new/modified files since last backup</span>
+    </div>
+    <div id="trigger-result" class="mt-3"></div>
+    <p class="text-xs text-gray-400 mt-2">Note: The watcher automatically triggers backups when files change (if enabled and server started with TERGUM_PASSPHRASE).</p>
+</div>
+<div class="bg-white rounded shadow p-4 m-4">
+    <h2 class="font-bold mb-4">Backup History</h2>
+    {{if .Jobs}}
+    <table class="w-full text-sm">
         <thead>
-            <tr>
-                <th class="p-4">Backup ID</th>
-                <th class="p-4">Client</th>
-                <th class="p-4">Level</th>
-                <th class="p-4">Status</th>
-                <th class="p-4">Files</th>
-                <th class="p-4">Started</th>
-                <th class="p-4">Actions</th>
+            <tr class="border-b">
+                <th class="p-3 text-left">Backup ID</th>
+                <th class="p-3 text-left">Client</th>
+                <th class="p-3 text-left">Level</th>
+                <th class="p-3 text-left">Status</th>
+                <th class="p-3 text-left">Files</th>
+                <th class="p-3 text-left">Started</th>
+                <th class="p-3 text-left">Actions</th>
             </tr>
         </thead>
         <tbody>
             {{range .Jobs}}
-            <tr>
-                <td class="p-4">{{.BackupID}}</td>
-                <td class="p-4">{{.ClientID}}</td>
-                <td class="p-4">{{.Level}}</td>
-                <td class="p-4">{{.Status}}</td>
-                <td class="p-4">{{.FileCount}}</td>
-                <td class="p-4">{{.StartedAt}}</td>
-                <td class="p-4">
-                    <button hx-delete="/api/backups/{{.BackupID}}" hx-confirm="Delete this backup?">Delete</button>
+            <tr class="border-b hover:bg-gray-50">
+                <td class="p-3 font-mono text-xs">{{.BackupID}}</td>
+                <td class="p-3">{{.ClientID}}</td>
+                <td class="p-3">{{.Level}}</td>
+                <td class="p-3">{{.Status}}</td>
+                <td class="p-3">{{.FileCount}}</td>
+                <td class="p-3">{{.StartedAt}}</td>
+                <td class="p-3">
+                    <button hx-delete="/api/backups/{{.BackupID}}" hx-target="closest tr" hx-swap="outerHTML"
+                            hx-confirm="Delete backup {{.BackupID}}?"
+                            class="text-red-600 hover:text-red-800 text-sm">Delete</button>
                 </td>
             </tr>
             {{end}}
         </tbody>
     </table>
+    {{else}}
+    <p class="text-gray-500 italic">No backup jobs found. Run a backup to see history here.</p>
+    {{end}}
 </div>
 {{template "footer" .}}

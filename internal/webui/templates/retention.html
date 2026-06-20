@@ -1,47 +1,66 @@
 {{template "header" .}}
 <h1 class="text-lg font-bold p-4">Retention Policies</h1>
 <div class="bg-white rounded shadow p-4 m-4">
-    <h2 class="font-bold">Active Policies</h2>
-    <table>
+    <h2 class="font-bold mb-2">Active Policies</h2>
+    <p class="text-sm text-gray-600 mb-4">Files not matching any policy are kept <strong>forever</strong>. The latest version of any file is always protected.</p>
+    {{if .Policies}}
+    <table class="w-full text-sm">
         <thead>
-            <tr>
-                <th class="p-4">Name</th>
-                <th class="p-4">Keep Days</th>
-                <th class="p-4">Keep Versions</th>
-                <th class="p-4">Pattern</th>
-                <th class="p-4">Priority</th>
-                <th class="p-4">Enabled</th>
-                <th class="p-4">Actions</th>
+            <tr class="border-b">
+                <th class="p-3 text-left">Name</th>
+                <th class="p-3 text-left">Pattern</th>
+                <th class="p-3 text-left">Keep Days</th>
+                <th class="p-3 text-left">Keep Versions</th>
+                <th class="p-3 text-left">Priority</th>
+                <th class="p-3 text-left">Enabled</th>
+                <th class="p-3 text-left">Actions</th>
             </tr>
         </thead>
         <tbody>
             {{range .Policies}}
-            <tr>
-                <td class="p-4">{{.Name}}</td>
-                <td class="p-4">{{if .KeepDays}}{{.KeepDays}}{{else}}Forever{{end}}</td>
-                <td class="p-4">{{.KeepVersions}}</td>
-                <td class="p-4">{{.Pattern}}</td>
-                <td class="p-4">{{.Priority}}</td>
-                <td class="p-4">{{if .Enabled}}Yes{{else}}No{{end}}</td>
-                <td class="p-4">
-                    <button hx-delete="/api/retention/{{.Name}}" hx-confirm="Remove policy?">Remove</button>
+            <tr class="border-b hover:bg-gray-50">
+                <td class="p-3 font-bold">{{.Name}}</td>
+                <td class="p-3 font-mono text-xs">{{.Pattern}}</td>
+                <td class="p-3">{{if .KeepDays}}{{.KeepDays}}{{else}}Forever{{end}}</td>
+                <td class="p-3">{{.KeepVersions}}</td>
+                <td class="p-3">{{.Priority}}</td>
+                <td class="p-3">{{if .Enabled}}Yes{{else}}No{{end}}</td>
+                <td class="p-3">
+                    <button hx-delete="/api/retention/{{.Name}}" hx-target="closest tr" hx-swap="outerHTML"
+                            hx-confirm="Remove policy '{{.Name}}'?"
+                            class="text-red-600 hover:text-red-800 text-sm">Remove</button>
                 </td>
             </tr>
             {{end}}
         </tbody>
     </table>
+    {{else}}
+    <p class="text-gray-500 italic">No retention policies configured. All backups are kept forever.</p>
+    {{end}}
 </div>
 <div class="bg-white rounded shadow p-4 m-4">
-    <h2 class="font-bold">Add Policy</h2>
+    <h2 class="font-bold mb-4">Add Policy</h2>
     <form hx-post="/api/retention" hx-swap="outerHTML">
-        <label class="p-4">Name: <input type="text" name="name" required></label>
-        <label class="p-4">Keep Days: <input type="number" name="keep_days"></label>
-        <label class="p-4">Keep Versions: <input type="number" name="keep_versions" value="1" min="1"></label>
-        <label class="p-4">Pattern: <input type="text" name="pattern" placeholder="*.log"></label>
-        <label class="p-4">Priority: <input type="number" name="priority" value="0"></label>
-        <div class="p-4">
-            <button type="submit" class="bg-gray-100 rounded p-4">Add Policy</button>
+        <div class="grid grid-cols-2 gap-4 mb-4">
+            <label class="block text-sm">Name:
+                <input type="text" name="name" required class="border rounded px-3 py-2 w-full mt-1">
+            </label>
+            <label class="block text-sm">Pattern (glob):
+                <input type="text" name="pattern" placeholder="*.log" class="border rounded px-3 py-2 w-full mt-1">
+            </label>
+            <label class="block text-sm">Keep Days (0 = forever):
+                <input type="number" name="keep_days" min="0" class="border rounded px-3 py-2 w-full mt-1">
+            </label>
+            <label class="block text-sm">Keep Versions (min):
+                <input type="number" name="keep_versions" value="1" min="1" class="border rounded px-3 py-2 w-full mt-1">
+            </label>
+            <label class="block text-sm">Priority (higher = first):
+                <input type="number" name="priority" value="0" class="border rounded px-3 py-2 w-full mt-1">
+            </label>
         </div>
+        <button type="submit" class="bg-green-600 text-white px-4 py-2 rounded text-sm hover:bg-green-700">
+            Add Policy
+        </button>
     </form>
 </div>
 {{template "footer" .}}

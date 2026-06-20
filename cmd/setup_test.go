@@ -10,27 +10,20 @@ import (
 )
 
 func TestSetupGenerateCertsFlag(t *testing.T) {
-	// Use a temp directory for certs output
-	tmpDir := t.TempDir()
-	certsDir := filepath.Join(tmpDir, "certs")
+	// Save existing certs if present so we don't destroy user data.
+	defaultCertsDir := filepath.Join(defaultConfigDirForTest(), "certs")
+	hadCerts := false
+	if _, err := os.Stat(defaultCertsDir); err == nil {
+		hadCerts = true
+	}
 
-	// Override the default config dir for this test by setting APPDATA/HOME
-	// Instead, we test runGenerateCertsOnly indirectly via the command flag.
-	// We'll call the tls.Manager directly to verify the cert generation works,
-	// then test that the flag is accepted by the command.
-
-	// Test that --generate-certs flag is accepted and the command runs
 	rootCmd.SetArgs([]string{"setup", "--generate-certs"})
-
-	// The command will use the platform default config dir.
-	// In CI or test environments this is fine since it creates in user space.
 	err := rootCmd.Execute()
 	if err != nil {
 		t.Fatalf("setup --generate-certs returned error: %v", err)
 	}
 
-	// Verify files were generated in the default location
-	defaultCertsDir := filepath.Join(defaultConfigDirForTest(), "certs")
+	// Verify files were generated in the default location.
 	expectedFiles := []string{"ca.crt", "ca.key", "server.crt", "server.key", "client.crt", "client.key"}
 	for _, fname := range expectedFiles {
 		path := filepath.Join(defaultCertsDir, fname)
@@ -39,22 +32,30 @@ func TestSetupGenerateCertsFlag(t *testing.T) {
 		}
 	}
 
-	// Cleanup generated certs
-	os.RemoveAll(defaultCertsDir)
-	_ = certsDir // suppress unused
+	// Only clean up if certs didn't exist before the test.
+	if !hadCerts {
+		os.RemoveAll(defaultCertsDir)
+	}
 }
 
 func TestSetupGenerateCertsJSON(t *testing.T) {
-	rootCmd.SetArgs([]string{"setup", "--generate-certs", "--json"})
+	// Save existing certs state.
+	defaultCertsDir := filepath.Join(defaultConfigDirForTest(), "certs")
+	hadCerts := false
+	if _, err := os.Stat(defaultCertsDir); err == nil {
+		hadCerts = true
+	}
 
+	rootCmd.SetArgs([]string{"setup", "--generate-certs", "--json"})
 	err := rootCmd.Execute()
 	if err != nil {
 		t.Fatalf("setup --generate-certs --json returned error: %v", err)
 	}
 
-	// Cleanup
-	defaultCertsDir := filepath.Join(defaultConfigDirForTest(), "certs")
-	os.RemoveAll(defaultCertsDir)
+	// Only clean up if certs didn't exist before the test.
+	if !hadCerts {
+		os.RemoveAll(defaultCertsDir)
+	}
 }
 
 func TestSetupWizardPrompt(t *testing.T) {
@@ -261,14 +262,23 @@ func TestInteractiveSetupShortPassphrase(t *testing.T) {
 func TestInteractiveSetupFullFlow(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	// We need to temporarily override the config dir.
-	// Since DefaultConfigDir uses environment variables, we can set APPDATA on Windows
-	// or XDG on Linux. Instead, we'll test the full flow more directly.
+	// Save and restore the real config file since runInteractiveSetup writes to it.
+	realCfgPath := filepath.Join(defaultConfigDirForTest(), "tergum.toml")
+	origData, origErr := os.ReadFile(realCfgPath)
+	defer func() {
+		if origErr == nil {
+			os.WriteFile(realCfgPath, origData, 0600)
+		}
+	}()
 
 	// Provide all required inputs:
 	// role=client, server_address=localhost, storage_path=<tmpdir>/storage, generate_certs=n, passphrase=mysecretpass123
+	// include paths: (empty = scan home), scan home=y
+	// exclude patterns: use defaults=y, additional=(empty)
+	// watcher: n
+	// schedule: (empty), (empty)
 	storagePath := filepath.Join(tmpDir, "storage")
-	inputs := fmt.Sprintf("client\nlocalhost\n%s\nn\nmysecretpass123\n", storagePath)
+	inputs := fmt.Sprintf("client\nlocalhost\n%s\nn\nmysecretpass123\n\ny\ny\n\nn\n\n\n", storagePath)
 	input := strings.NewReader(inputs)
 	var output bytes.Buffer
 

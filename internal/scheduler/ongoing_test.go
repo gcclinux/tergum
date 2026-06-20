@@ -159,6 +159,13 @@ func (m *mockRepository) SaveWatchPath(ctx context.Context, wp db.WatchPath) err
 func (m *mockRepository) LoadWatchPaths(ctx context.Context) ([]db.WatchPath, error) {
 	return nil, nil
 }
+func (m *mockRepository) DeleteWatchPath(ctx context.Context, path string) error          { return nil }
+func (m *mockRepository) AddIncludePath(ctx context.Context, path string) error           { return nil }
+func (m *mockRepository) RemoveIncludePath(ctx context.Context, path string) error        { return nil }
+func (m *mockRepository) ListIncludePaths(ctx context.Context) ([]string, error)          { return nil, nil }
+func (m *mockRepository) AddExcludePattern(ctx context.Context, pattern string) error     { return nil }
+func (m *mockRepository) RemoveExcludePattern(ctx context.Context, pattern string) error  { return nil }
+func (m *mockRepository) ListExcludePatterns(ctx context.Context) ([]string, error)       { return nil, nil }
 func (m *mockRepository) Close() error { return nil }
 
 func TestNewOngoingBackup_DefaultBatchInterval(t *testing.T) {

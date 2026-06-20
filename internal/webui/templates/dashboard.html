@@ -1,25 +1,32 @@
 {{template "header" .}}
 <h1 class="text-lg font-bold p-4">Dashboard</h1>
-<div class="flex">
-    <div class="bg-white rounded shadow p-4 m-4">
-        <h2 class="font-bold">Server Status</h2>
-        <p>Uptime: {{.Uptime}}</p>
-        <p>Version: {{.Version}}</p>
+<div class="grid grid-cols-2 md:grid-cols-5 gap-4 m-4">
+    <div class="bg-white rounded shadow p-4">
+        <h2 class="text-xs text-gray-500 uppercase">CPU Load</h2>
+        <p class="text-2xl font-bold mt-1">{{.CPUUsage}}</p>
     </div>
-    <div class="bg-white rounded shadow p-4 m-4">
-        <h2 class="font-bold">Storage</h2>
-        <p>Total Files: {{.TotalFiles}}</p>
-        <p>Total Size: {{.TotalSize}}</p>
+    <div class="bg-white rounded shadow p-4">
+        <h2 class="text-xs text-gray-500 uppercase">Memory</h2>
+        <p class="text-2xl font-bold mt-1">{{.MemPercent}}</p>
+        <p class="text-xs text-gray-400">{{.MemUsed}} / {{.MemTotal}}</p>
     </div>
-    <div class="bg-white rounded shadow p-4 m-4">
-        <h2 class="font-bold">Connected Clients</h2>
-        <p>Active: {{.ActiveClients}}</p>
+    <div class="bg-white rounded shadow p-4">
+        <h2 class="text-xs text-gray-500 uppercase">Backed Up Files</h2>
+        <p class="text-2xl font-bold mt-1">{{.TotalFiles}}</p>
+    </div>
+    <div class="bg-white rounded shadow p-4">
+        <h2 class="text-xs text-gray-500 uppercase">Storage Used</h2>
+        <p class="text-2xl font-bold mt-1">{{.TotalSize}}</p>
+    </div>
+    <div class="bg-white rounded shadow p-4">
+        <h2 class="text-xs text-gray-500 uppercase">Version</h2>
+        <p class="text-2xl font-bold mt-1">{{.Version}}</p>
     </div>
 </div>
 <div class="bg-white rounded shadow p-4 m-4">
-    <h2 class="font-bold">Recent Activity</h2>
-    <div hx-get="/api/activity/recent" hx-trigger="load" hx-swap="innerHTML">
-        Loading...
+    <h2 class="font-bold mb-2">Recent Activity</h2>
+    <div hx-get="/api/activity/recent" hx-trigger="load, every 30s" hx-swap="innerHTML">
+        <p class="text-gray-500 italic text-sm">Loading...</p>
     </div>
 </div>
 {{template "footer" .}}

@@ -1,43 +1,76 @@
 {{template "header" .}}
 <h1 class="text-lg font-bold p-4">Watcher Status</h1>
+
+<!-- Status Banner -->
 <div class="bg-white rounded shadow p-4 m-4">
-    <h2 class="font-bold">Watched Paths</h2>
-    <div hx-get="/api/watchers" hx-trigger="every 10s" hx-swap="innerHTML">
-        <table>
-            <thead>
-                <tr>
-                    <th class="p-4">Path</th>
-                    <th class="p-4">Recursive</th>
-                    <th class="p-4">Enabled</th>
-                    <th class="p-4">Last Event</th>
-                    <th class="p-4">Event Count</th>
-                    <th class="p-4">Actions</th>
-                </tr>
-            </thead>
-            <tbody>
-                {{range .WatchPaths}}
-                <tr>
-                    <td class="p-4">{{.Path}}</td>
-                    <td class="p-4">{{if .Recursive}}Yes{{else}}No{{end}}</td>
-                    <td class="p-4">{{if .Enabled}}Yes{{else}}No{{end}}</td>
-                    <td class="p-4">{{.LastEvent}}</td>
-                    <td class="p-4">{{.EventCount}}</td>
-                    <td class="p-4">
-                        <button hx-delete="/api/watchers" hx-confirm="Remove watcher?">Remove</button>
-                    </td>
-                </tr>
-                {{end}}
-            </tbody>
-        </table>
+    <h2 class="font-bold mb-3">File Watcher</h2>
+    <div class="flex items-center gap-4 mb-4">
+        {{if .WatcherRunning}}
+        <div class="flex items-center gap-2">
+            <span class="inline-block w-3 h-3 rounded-full bg-green-500 animate-pulse"></span>
+            <span class="text-green-700 font-medium">Active — watching for changes</span>
+        </div>
+        <button hx-post="/api/watcher/stop" hx-target="#watcher-control-result" hx-swap="innerHTML"
+                hx-confirm="Stop the file watcher?"
+                class="bg-red-600 text-white px-3 py-1 rounded text-sm hover:bg-red-700">
+            Stop Watcher
+        </button>
+        {{else if .WatcherEnabled}}
+        <div class="flex items-center gap-2">
+            <span class="inline-block w-3 h-3 rounded-full bg-yellow-500"></span>
+            <span class="text-yellow-700 font-medium">Enabled but not running</span>
+        </div>
+        <button hx-post="/api/watcher/start" hx-target="#watcher-control-result" hx-swap="innerHTML"
+                class="bg-green-600 text-white px-3 py-1 rounded text-sm hover:bg-green-700">
+            Start Watcher
+        </button>
+        {{else}}
+        <div class="flex items-center gap-2">
+            <span class="inline-block w-3 h-3 rounded-full bg-gray-400"></span>
+            <span class="text-gray-600 font-medium">Disabled</span>
+        </div>
+        <p class="text-sm text-gray-500">Enable in config: <code class="bg-gray-100 px-2 py-1 rounded">[watcher] enabled = true</code></p>
+        {{end}}
+    </div>
+    <div id="watcher-control-result" class="mb-3"></div>
+    {{if .WatcherEnabled}}
+    <div class="grid grid-cols-3 gap-4 text-sm text-gray-600">
+        <div class="bg-gray-50 rounded p-3">
+            <span class="block text-xs text-gray-400">Debounce</span>
+            <span class="font-medium">{{.DebounceMs}}ms</span>
+        </div>
+        <div class="bg-gray-50 rounded p-3">
+            <span class="block text-xs text-gray-400">Stability Gate</span>
+            <span class="font-medium">{{.StabilitySec}}s</span>
+        </div>
+        <div class="bg-gray-50 rounded p-3">
+            <span class="block text-xs text-gray-400">Batch Interval</span>
+            <span class="font-medium">{{.BatchMinutes}} min</span>
+        </div>
+    </div>
+    {{end}}
+</div>
+
+<!-- Watched Paths List -->
+<div class="bg-white rounded shadow p-4 m-4">
+    <h2 class="font-bold mb-2">Watched Paths</h2>
+    <p class="text-sm text-gray-600 mb-4">Directories monitored for file changes. Changed files are automatically backed up after passing the stability gate.</p>
+    <div hx-get="/api/watchers" hx-trigger="load, every 10s" hx-swap="innerHTML">
+        <p class="text-gray-500 text-sm italic p-4">Loading...</p>
     </div>
 </div>
+
+<!-- Add Watch Path -->
 <div class="bg-white rounded shadow p-4 m-4">
-    <h2 class="font-bold">Add Watch Path</h2>
+    <h2 class="font-bold mb-2">Add Watch Path</h2>
     <form hx-post="/api/watchers" hx-swap="outerHTML">
-        <label class="p-4">Path: <input type="text" name="path" required></label>
-        <label class="p-4"><input type="checkbox" name="recursive" checked> Recursive</label>
-        <div class="p-4">
-            <button type="submit" class="bg-gray-100 rounded p-4">Add Path</button>
+        <div class="flex items-center gap-3">
+            <input type="text" name="path" required placeholder="/home/user/Documents"
+                   class="border rounded px-3 py-2 flex-1 text-sm">
+            <label class="text-sm flex items-center gap-1">
+                <input type="checkbox" name="recursive" checked> Recursive
+            </label>
+            <button type="submit" class="bg-green-600 text-white px-4 py-2 rounded text-sm hover:bg-green-700">Add Path</button>
         </div>
     </form>
 </div>

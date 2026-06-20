@@ -194,6 +194,11 @@ func (e *BackupEngine) RunBackup(ctx context.Context, req BackupRequest) (*Backu
 
 	// 6. Upload needed files (one upload per unique hash).
 	uploadedHashes := make(map[string]bool, len(diff.NeededHashes))
+	type encMeta struct {
+		wrappedDEK []byte
+		nonce      []byte
+	}
+	hashEncryption := make(map[string]encMeta, len(diff.NeededHashes))
 	for _, hash := range diff.NeededHashes {
 		if e.stopped.Load() {
 			return finishJob(model.JobStopped, result, "stopped during upload")
@@ -234,6 +239,9 @@ func (e *BackupEngine) RunBackup(ctx context.Context, req BackupRequest) (*Backu
 			nonce = n
 		}
 
+		// Store encryption metadata for use in step 7.
+		hashEncryption[hash] = encMeta{wrappedDEK: wrappedDEK, nonce: nonce}
+
 		// Build backup entry for this file.
 		entry := buildBackupEntry(backupID, hash, sf, wrappedDEK, nonce)
 
@@ -262,10 +270,12 @@ func (e *BackupEngine) RunBackup(ctx context.Context, req BackupRequest) (*Backu
 			continue
 		}
 
-		// Determine encryption metadata: only for files we just uploaded with encryption.
+		// Look up encryption metadata from the upload step.
 		var wrappedDEK, nonce []byte
-		// Note: for simplicity, we don't store per-file DEK for dedup entries.
-		// The encrypted blob in CAS is accessible via the hash.
+		if em, ok := hashEncryption[mEntry.Blake3Hash]; ok {
+			wrappedDEK = em.wrappedDEK
+			nonce = em.nonce
+		}
 
 		backupEntry := buildBackupEntry(backupID, mEntry.Blake3Hash, sf, wrappedDEK, nonce)
 		if err := e.repo.InsertBackupEntry(ctx, backupEntry); err != nil {

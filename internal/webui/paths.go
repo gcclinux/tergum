@@ -1,12 +1,16 @@
 package webui
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/BurntSushi/toml"
+	"github.com/ricardopadilha/tergum/internal/config"
 )
 
 // handlePathsIncludes returns the current list of include paths as JSON.
@@ -67,6 +71,8 @@ func (s *Server) handlePathsIncludeAdd(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	go s.syncPathsToConfig(r.Context())
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{"added": absPath})
 }
@@ -101,6 +107,8 @@ func (s *Server) handlePathsIncludeRemove(w http.ResponseWriter, r *http.Request
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
+
+	go s.syncPathsToConfig(r.Context())
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{"removed": path})
@@ -158,6 +166,8 @@ func (s *Server) handlePathsExcludeAdd(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	go s.syncPathsToConfig(r.Context())
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{"added": pattern})
 }
@@ -192,6 +202,8 @@ func (s *Server) handlePathsExcludeRemove(w http.ResponseWriter, r *http.Request
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
+
+	go s.syncPathsToConfig(r.Context())
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{"removed": pattern})
@@ -256,10 +268,62 @@ func (s *Server) handlePathsScan(w http.ResponseWriter, r *http.Request) {
 		added = append(added, fullPath)
 	}
 
+	if len(added) > 0 {
+		go s.syncPathsToConfig(r.Context())
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"scanned":     absDir,
 		"paths_added": added,
 		"count":       len(added),
 	})
+}
+
+// syncPathsToConfig writes the current DB include paths and exclude patterns
+// back to the TOML config file so it stays in sync with the Web UI.
+func (s *Server) syncPathsToConfig(ctx context.Context) {
+	if s.configPath == "" {
+		return
+	}
+
+	// Use a fresh context since this runs async after request completion.
+	bgCtx := context.Background()
+	_ = ctx // original context only for caller reference
+
+	// Load current config.
+	cfg, err := config.Load(s.configPath)
+	if err != nil {
+		s.logger.Error("sync paths: cannot load config", "error", err)
+		return
+	}
+
+	// Read current paths from DB.
+	includes, err := s.repo.ListIncludePaths(bgCtx)
+	if err != nil {
+		s.logger.Error("sync paths: cannot list include paths", "error", err)
+		return
+	}
+	excludes, err := s.repo.ListExcludePatterns(bgCtx)
+	if err != nil {
+		s.logger.Error("sync paths: cannot list exclude patterns", "error", err)
+		return
+	}
+
+	// Update config.
+	cfg.Client.IncludePaths = includes
+	cfg.Client.ExcludePatterns = excludes
+
+	// Write back to file.
+	f, err := os.OpenFile(s.configPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
+	if err != nil {
+		s.logger.Error("sync paths: cannot open config file", "error", err)
+		return
+	}
+	defer f.Close()
+
+	encoder := toml.NewEncoder(f)
+	if err := encoder.Encode(cfg); err != nil {
+		s.logger.Error("sync paths: cannot write config file", "error", err)
+	}
 }

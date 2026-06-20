@@ -69,9 +69,10 @@ type DatabaseConfig struct {
 
 // BackupConfig defines chunking and concurrency parameters.
 type BackupConfig struct {
-	ChunkSize              int `toml:"chunk_size"`
-	MaxConcurrentUploads   int `toml:"max_concurrent_uploads"`
-	MaxConcurrentDownloads int `toml:"max_concurrent_downloads"`
+	ChunkSize              int    `toml:"chunk_size"`
+	StoragePath            string `toml:"storage_path"`
+	MaxConcurrentUploads   int    `toml:"max_concurrent_uploads"`
+	MaxConcurrentDownloads int    `toml:"max_concurrent_downloads"`
 }
 
 // WatcherConfig defines file watching behavior.
@@ -185,6 +186,16 @@ func applyDefaults(cfg *Config) {
 
 	cfg.Logging.Level = "info"
 	cfg.Logging.Format = "text"
+}
+
+// StorageDir returns the CAS storage directory path.
+// If backup.storage_path is set in config, that is used.
+// Otherwise falls back to a "storage" directory sibling to the database file.
+func (c *Config) StorageDir() string {
+	if c.Backup.StoragePath != "" {
+		return c.Backup.StoragePath
+	}
+	return filepath.Join(filepath.Dir(c.Database.Path), "storage")
 }
 
 // Validate checks the configuration for logical errors and returns a ConfigError
