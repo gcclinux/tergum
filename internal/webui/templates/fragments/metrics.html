@@ -1,0 +1,120 @@
+{{define "content"}}
+<div class="space-y-6">
+    <h1 class="text-2xl font-bold text-gray-900 dark:text-gray-100">Metrics</h1>
+
+    <!-- Metrics Data Cards Grid -->
+    <div id="metrics-cards" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4"
+         hx-get="/api/metrics/cards"
+         hx-trigger="load, every 10s"
+         hx-swap="innerHTML"
+         hx-on::response-error="if(window.Alpine && Alpine.store('app')) { Alpine.store('app').addToast('error', 'Metrics refresh failed'); }">
+        <!-- Skeleton cards shown before first load -->
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-4 border border-gray-200 dark:border-gray-700">
+            <div class="animate-pulse">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 bg-gray-200 dark:bg-gray-700 rounded-lg"></div>
+                    <div class="flex-1">
+                        <div class="h-3 w-20 bg-gray-200 dark:bg-gray-700 rounded mb-2"></div>
+                        <div class="h-7 w-16 bg-gray-200 dark:bg-gray-700 rounded"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-4 border border-gray-200 dark:border-gray-700">
+            <div class="animate-pulse">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 bg-gray-200 dark:bg-gray-700 rounded-lg"></div>
+                    <div class="flex-1">
+                        <div class="h-3 w-28 bg-gray-200 dark:bg-gray-700 rounded mb-2"></div>
+                        <div class="h-7 w-20 bg-gray-200 dark:bg-gray-700 rounded"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-4 border border-gray-200 dark:border-gray-700">
+            <div class="animate-pulse">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 bg-gray-200 dark:bg-gray-700 rounded-lg"></div>
+                    <div class="flex-1">
+                        <div class="h-3 w-24 bg-gray-200 dark:bg-gray-700 rounded mb-2"></div>
+                        <div class="h-7 w-16 bg-gray-200 dark:bg-gray-700 rounded"></div>
+                    </div>
+                </div>
+                <div class="mt-3 h-2 w-full bg-gray-200 dark:bg-gray-700 rounded-full"></div>
+            </div>
+        </div>
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-4 border border-gray-200 dark:border-gray-700">
+            <div class="animate-pulse">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 bg-gray-200 dark:bg-gray-700 rounded-lg"></div>
+                    <div class="flex-1">
+                        <div class="h-3 w-24 bg-gray-200 dark:bg-gray-700 rounded mb-2"></div>
+                        <div class="h-7 w-20 bg-gray-200 dark:bg-gray-700 rounded"></div>
+                    </div>
+                </div>
+                <div class="mt-3 h-2 w-full bg-gray-200 dark:bg-gray-700 rounded-full"></div>
+            </div>
+        </div>
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-4 border border-gray-200 dark:border-gray-700">
+            <div class="animate-pulse">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 bg-gray-200 dark:bg-gray-700 rounded-lg"></div>
+                    <div class="flex-1">
+                        <div class="h-3 w-20 bg-gray-200 dark:bg-gray-700 rounded mb-2"></div>
+                        <div class="h-7 w-14 bg-gray-200 dark:bg-gray-700 rounded"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-4 border border-gray-200 dark:border-gray-700">
+            <div class="animate-pulse">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 bg-gray-200 dark:bg-gray-700 rounded-lg"></div>
+                    <div class="flex-1">
+                        <div class="h-3 w-24 bg-gray-200 dark:bg-gray-700 rounded mb-2"></div>
+                        <div class="h-7 w-14 bg-gray-200 dark:bg-gray-700 rounded"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-4 border border-gray-200 dark:border-gray-700">
+            <div class="animate-pulse">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 bg-gray-200 dark:bg-gray-700 rounded-lg"></div>
+                    <div class="flex-1">
+                        <div class="h-3 w-20 bg-gray-200 dark:bg-gray-700 rounded mb-2"></div>
+                        <div class="h-7 w-10 bg-gray-200 dark:bg-gray-700 rounded"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-4 border border-gray-200 dark:border-gray-700">
+            <div class="animate-pulse">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 bg-gray-200 dark:bg-gray-700 rounded-lg"></div>
+                    <div class="flex-1">
+                        <div class="h-3 w-28 bg-gray-200 dark:bg-gray-700 rounded mb-2"></div>
+                        <div class="h-7 w-10 bg-gray-200 dark:bg-gray-700 rounded"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Retain last successful values on refresh failure by preventing innerHTML swap on error.
+// The hx-on::response-error handler above shows the toast; htmx will NOT swap content
+// on error responses (4xx/5xx), so the last rendered values are naturally retained.
+document.addEventListener('htmx:beforeSwap', function(evt) {
+    if (evt.detail.target && evt.detail.target.id === 'metrics-cards') {
+        if (!evt.detail.isError && evt.detail.xhr.status === 200) {
+            // Success — allow swap (default behavior).
+            return;
+        }
+        // Error — prevent swap to retain last values.
+        evt.detail.shouldSwap = false;
+    }
+});
+</script>
+{{end}}

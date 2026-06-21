@@ -1,0 +1,208 @@
+{{define "content"}}
+<div class="space-y-6" x-data="activityPage()" x-init="init()">
+    <!-- Activity Stream -->
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6">
+        <div class="flex items-center justify-between mb-4">
+            <h2 class="text-base font-semibold text-gray-800 dark:text-gray-100">Live Activity</h2>
+            <div class="flex items-center gap-2">
+                <span class="relative flex h-3 w-3" x-show="connected">
+                    <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                    <span class="relative inline-flex rounded-full h-3 w-3 bg-green-500"></span>
+                </span>
+                <span class="relative flex h-3 w-3" x-show="!connected">
+                    <span class="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span>
+                </span>
+                <span class="text-xs text-gray-500 dark:text-gray-400" x-text="connected ? 'Connected' : 'Disconnected'"></span>
+            </div>
+        </div>
+
+        <!-- Event list -->
+        <div id="activity-events" class="space-y-2 max-h-[600px] overflow-y-auto">
+            <!-- Loading skeleton (shown while fetching initial data) -->
+            <template x-if="loading">
+                <div class="animate-pulse space-y-3">
+                    <template x-for="i in 5" :key="i">
+                        <div class="flex items-center gap-3">
+                            <div class="h-8 w-8 bg-gray-200 dark:bg-gray-700 rounded-full"></div>
+                            <div class="flex-1 space-y-1">
+                                <div class="h-4 w-3/4 bg-gray-200 dark:bg-gray-700 rounded"></div>
+                                <div class="h-3 w-24 bg-gray-200 dark:bg-gray-700 rounded"></div>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+            </template>
+
+            <!-- Empty state -->
+            <template x-if="!loading && events.length === 0">
+                <p class="text-gray-400 dark:text-gray-500 italic text-sm">No recent activity.</p>
+            </template>
+
+            <!-- Event entries -->
+            <template x-for="event in events" :key="event.id">
+                <div class="flex items-start gap-3 p-3 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors duration-150">
+                    <!-- Event type icon -->
+                    <div class="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center"
+                         :class="{
+                             'bg-green-100 dark:bg-green-900/30': event.type.includes('completed'),
+                             'bg-red-100 dark:bg-red-900/30': event.type.includes('failed'),
+                             'bg-blue-100 dark:bg-blue-900/30': event.type.includes('started') || event.type.includes('connected'),
+                             'bg-amber-100 dark:bg-amber-900/30': event.type.includes('warning') || event.type.includes('retention'),
+                             'bg-gray-100 dark:bg-gray-700': !event.type.includes('completed') && !event.type.includes('failed') && !event.type.includes('started') && !event.type.includes('connected') && !event.type.includes('warning') && !event.type.includes('retention')
+                         }">
+                        <svg x-show="event.type.includes('completed')" class="w-4 h-4 text-green-600 dark:text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+                        <svg x-show="event.type.includes('failed')" class="w-4 h-4 text-red-600 dark:text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                        <svg x-show="event.type.includes('started') || event.type.includes('connected')" class="w-4 h-4 text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+                        <svg x-show="event.type.includes('warning') || event.type.includes('retention')" class="w-4 h-4 text-amber-600 dark:text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+                        <svg x-show="!event.type.includes('completed') && !event.type.includes('failed') && !event.type.includes('started') && !event.type.includes('connected') && !event.type.includes('warning') && !event.type.includes('retention')" class="w-4 h-4 text-gray-600 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                    </div>
+                    <!-- Event content -->
+                    <div class="flex-1 min-w-0">
+                        <p class="text-sm text-gray-800 dark:text-gray-200 break-words" x-text="event.message"></p>
+                        <div class="flex items-center gap-2 mt-1">
+                            <span class="text-xs text-gray-500 dark:text-gray-400" x-text="formatTime(event.timestamp)"></span>
+                            <span x-show="event.resource" class="text-xs text-gray-400 dark:text-gray-500 font-mono truncate" x-text="event.resource"></span>
+                        </div>
+                    </div>
+                    <!-- Event type badge -->
+                    <span class="flex-shrink-0 text-xs px-2 py-0.5 rounded-full font-medium"
+                          :class="{
+                              'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300': event.type.includes('completed'),
+                              'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300': event.type.includes('failed'),
+                              'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300': event.type.includes('started') || event.type.includes('connected'),
+                              'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300': event.type.includes('warning') || event.type.includes('retention'),
+                              'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300': !event.type.includes('completed') && !event.type.includes('failed') && !event.type.includes('started') && !event.type.includes('connected') && !event.type.includes('warning') && !event.type.includes('retention')
+                          }"
+                          x-text="event.type.replace(/_/g, ' ')"></span>
+                </div>
+            </template>
+        </div>
+    </div>
+</div>
+
+<script>
+function activityPage() {
+    return {
+        events: [],
+        loading: true,
+        connected: true,
+        maxEvents: 200,
+        _eventCounter: 0,
+
+        init() {
+            // Fetch initial events from the server
+            this.fetchHistory();
+
+            // Listen for SSE events dispatched by the shell's EventSource handler
+            this._sseHandler = (e) => this.handleSSEEvent(e.detail);
+            document.body.addEventListener('sse:activity', this._sseHandler);
+
+            // Listen for all SSE custom events (they're dispatched as sse:<type>)
+            this._genericSSEHandler = (e) => {
+                if (e.type.startsWith('sse:') && e.detail) {
+                    this.handleSSEEvent(e.detail);
+                }
+            };
+            // Use a MutationObserver-free approach: listen on specific known events
+            const eventTypes = [
+                'backup_started', 'backup_completed', 'backup_failed', 'backup_progress',
+                'retention_run', 'client_connected', 'client_disconnected',
+                'watcher_started', 'watcher_stopped', 'restore_started', 'restore_completed'
+            ];
+            this._sseHandlers = {};
+            eventTypes.forEach(type => {
+                const handler = (e) => this.handleSSEEvent(e.detail);
+                this._sseHandlers[type] = handler;
+                document.body.addEventListener('sse:' + type, handler);
+            });
+
+            // Listen for connection state changes
+            this._connectHandler = () => { this.connected = true; };
+            this._disconnectHandler = () => { this.connected = false; };
+            document.body.addEventListener('sse:connected', this._connectHandler);
+            document.body.addEventListener('sse:disconnected', this._disconnectHandler);
+
+            // Listen for reconnection to re-fetch missed events
+            this._reconnectHandler = () => {
+                this.connected = true;
+                this.fetchHistory();
+            };
+            document.body.addEventListener('sse:reconnected', this._reconnectHandler);
+        },
+
+        destroy() {
+            document.body.removeEventListener('sse:activity', this._sseHandler);
+            document.body.removeEventListener('sse:connected', this._connectHandler);
+            document.body.removeEventListener('sse:disconnected', this._disconnectHandler);
+            document.body.removeEventListener('sse:reconnected', this._reconnectHandler);
+            if (this._sseHandlers) {
+                Object.keys(this._sseHandlers).forEach(type => {
+                    document.body.removeEventListener('sse:' + type, this._sseHandlers[type]);
+                });
+            }
+        },
+
+        async fetchHistory() {
+            try {
+                const resp = await fetch('/api/activity/recent?format=json');
+                if (resp.ok) {
+                    const contentType = resp.headers.get('content-type') || '';
+                    if (contentType.includes('application/json')) {
+                        const data = await resp.json();
+                        if (Array.isArray(data)) {
+                            // Merge with existing events, avoiding duplicates
+                            const existingIds = new Set(this.events.map(e => e.id));
+                            const newEvents = data
+                                .filter(e => !existingIds.has(e.id))
+                                .map(e => ({ ...e, id: e.id || this.generateId() }));
+                            this.events = [...newEvents, ...this.events].slice(0, this.maxEvents);
+                        }
+                    }
+                }
+            } catch (e) {
+                // Silently fail — SSE will provide real-time updates
+            }
+            this.loading = false;
+        },
+
+        handleSSEEvent(data) {
+            if (!data || !data.type || !data.message) return;
+
+            const event = {
+                id: this.generateId(),
+                type: data.type,
+                message: data.message,
+                timestamp: data.timestamp || new Date().toISOString(),
+                resource: data.resource || ''
+            };
+
+            // Prepend new event to top
+            this.events.unshift(event);
+
+            // Cap at maxEvents
+            if (this.events.length > this.maxEvents) {
+                this.events = this.events.slice(0, this.maxEvents);
+            }
+        },
+
+        generateId() {
+            this._eventCounter++;
+            return 'evt-' + Date.now() + '-' + this._eventCounter;
+        },
+
+        formatTime(timestamp) {
+            if (!timestamp) return '';
+            const date = new Date(timestamp);
+            const now = new Date();
+            const diffMs = now - date;
+            const diffSec = Math.floor(diffMs / 1000);
+
+            if (diffSec < 60) return 'just now';
+            if (diffSec < 3600) return Math.floor(diffSec / 60) + 'm ago';
+            if (diffSec < 86400) return Math.floor(diffSec / 3600) + 'h ago';
+            return date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        }
+    };
+}
+</script>
+{{end}}

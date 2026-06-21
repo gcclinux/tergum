@@ -1,6 +1,7 @@
 package webui
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"sync"
@@ -13,6 +14,15 @@ type ActivityEvent struct {
 	Type      string // e.g. "backup_started", "backup_completed", "retention_run", "client_connected"
 	Message   string
 	Timestamp time.Time
+	Resource  string // Affected resource ID (backup_id, client_id, etc.)
+}
+
+// ssePayload is the JSON structure sent to SSE clients.
+type ssePayload struct {
+	Type      string `json:"type"`
+	Message   string `json:"message"`
+	Timestamp string `json:"timestamp"`
+	Resource  string `json:"resource,omitempty"`
 }
 
 // SSEBroker manages Server-Sent Events connections and broadcasts events
@@ -133,14 +143,14 @@ func (b *SSEBroker) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			if event.ID != "" {
 				fmt.Fprintf(w, "id: %s\n", event.ID)
 			}
-			if event.Type != "" {
-				fmt.Fprintf(w, "event: %s\n", event.Type)
+			payload := ssePayload{
+				Type:      event.Type,
+				Message:   event.Message,
+				Timestamp: event.Timestamp.Format(time.RFC3339),
+				Resource:  event.Resource,
 			}
-			fmt.Fprintf(w, "data: [%s] %s: %s\n\n",
-				event.Timestamp.Format(time.RFC3339),
-				event.Type,
-				event.Message,
-			)
+			jsonData, _ := json.Marshal(payload)
+			fmt.Fprintf(w, "data: %s\n\n", jsonData)
 			flusher.Flush()
 		}
 	}

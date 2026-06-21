@@ -173,6 +173,8 @@ func NewAuthMiddleware(username string, hashedPwd *HashedPassword, sessions *Ses
 
 // Wrap returns an HTTP handler that enforces authentication before calling the next handler.
 // Authentication is checked via session cookie first, then HTTP Basic Auth as fallback.
+// For htmx AJAX requests (HX-Request: true header), 401 responses include an HX-Trigger
+// header with a showToast event so the client can display a session-expired notification.
 func (a *AuthMiddleware) Wrap(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Check session cookie first.
@@ -186,20 +188,17 @@ func (a *AuthMiddleware) Wrap(next http.Handler) http.Handler {
 		// Fall back to HTTP Basic Auth.
 		user, pass, ok := r.BasicAuth()
 		if !ok {
-			w.Header().Set("WWW-Authenticate", `Basic realm="Tergum"`)
-			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			a.unauthorized(w, r)
 			return
 		}
 
 		if subtle.ConstantTimeCompare([]byte(user), []byte(a.Username)) != 1 {
-			w.Header().Set("WWW-Authenticate", `Basic realm="Tergum"`)
-			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			a.unauthorized(w, r)
 			return
 		}
 
 		if !VerifyPassword(pass, a.HashedPassword) {
-			w.Header().Set("WWW-Authenticate", `Basic realm="Tergum"`)
-			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			a.unauthorized(w, r)
 			return
 		}
 
@@ -222,4 +221,19 @@ func (a *AuthMiddleware) Wrap(next http.Handler) http.Handler {
 
 		next.ServeHTTP(w, r)
 	})
+}
+
+// unauthorized sends an HTTP 401 response. For htmx AJAX requests (detected via
+// the HX-Request header), it sets an HX-Trigger header with a showToast event
+// containing a session-expired message. This allows the client-side handler to
+// display a toast and redirect to the login page. For non-htmx requests, it
+// returns a standard WWW-Authenticate challenge.
+func (a *AuthMiddleware) unauthorized(w http.ResponseWriter, r *http.Request) {
+	if r.Header.Get("HX-Request") == "true" {
+		w.Header().Set("HX-Trigger", `{"showToast":{"type":"error","message":"Session expired"}}`)
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+	w.Header().Set("WWW-Authenticate", `Basic realm="Tergum"`)
+	http.Error(w, "Unauthorized", http.StatusUnauthorized)
 }

@@ -1,0 +1,550 @@
+{{define "shell"}}<!DOCTYPE html>
+<html lang="en" x-data :class="$store.app.darkMode ? 'dark' : ''">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tergum - {{.Title}}</title>
+    <link rel="stylesheet" href="/assets/tailwind.min.css">
+    <script src="/assets/alpine.min.js" defer></script>
+    <script src="/assets/htmx.min.js" defer></script>
+    <script>
+    document.addEventListener('alpine:init', () => {
+        Alpine.store('app', {
+            // Sidebar state
+            sidebarCollapsed: localStorage.getItem('sidebar_collapsed') === 'true',
+            sidebarMobileOpen: false,
+            _sidebarUserToggled: false,
+            toggleSidebar() {
+                this._sidebarUserToggled = true;
+                this.sidebarCollapsed = !this.sidebarCollapsed;
+                localStorage.setItem('sidebar_collapsed', this.sidebarCollapsed);
+            },
+            toggleMobileSidebar() {
+                this.sidebarMobileOpen = !this.sidebarMobileOpen;
+            },
+            closeMobileSidebar() {
+                this.sidebarMobileOpen = false;
+            },
+            handleResize() {
+                const width = window.innerWidth;
+                if (width >= 768 && width < 1024) {
+                    // Between md and lg: force icon-only collapsed mode
+                    this.sidebarCollapsed = true;
+                    this._sidebarUserToggled = false;
+                } else if (width >= 1024) {
+                    // At or above lg: restore user preference
+                    if (!this._sidebarUserToggled) {
+                        const stored = localStorage.getItem('sidebar_collapsed');
+                        this.sidebarCollapsed = stored === 'true';
+                    }
+                }
+                // Close mobile sidebar when resizing above mobile breakpoint
+                if (width >= 768 && this.sidebarMobileOpen) {
+                    this.sidebarMobileOpen = false;
+                }
+            },
+
+            // Theme state
+            darkMode: localStorage.getItem('theme') === 'dark',
+            toggleTheme() {
+                this.darkMode = !this.darkMode;
+                localStorage.setItem('theme', this.darkMode ? 'dark' : 'light');
+            },
+
+            // Toast notifications
+            toasts: [],
+            toastQueue: [],
+            maxVisible: 5,
+            addToast(type, message) {
+                if (message && message.length > 200) {
+                    message = message.substring(0, 200);
+                }
+                const id = crypto.randomUUID();
+                const toast = { id, type, message, timestamp: Date.now(), paused: false, timeoutId: null };
+                if (this.toasts.length >= this.maxVisible) {
+                    this.toastQueue.push(toast);
+                } else {
+                    toast.timeoutId = setTimeout(() => this.removeToast(id), 5000);
+                    this.toasts.unshift(toast);
+                }
+            },
+            removeToast(id) {
+                const idx = this.toasts.findIndex(t => t.id === id);
+                if (idx > -1) {
+                    if (this.toasts[idx].timeoutId) clearTimeout(this.toasts[idx].timeoutId);
+                    this.toasts.splice(idx, 1);
+                }
+                // Promote a queued toast if there's room
+                if (this.toastQueue.length > 0 && this.toasts.length < this.maxVisible) {
+                    const next = this.toastQueue.shift();
+                    next.timeoutId = setTimeout(() => this.removeToast(next.id), 5000);
+                    this.toasts.unshift(next);
+                }
+            },
+            pauseToast(id) {
+                const toast = this.toasts.find(t => t.id === id);
+                if (toast && toast.timeoutId) {
+                    clearTimeout(toast.timeoutId);
+                    toast.timeoutId = null;
+                    toast.paused = true;
+                }
+            },
+            resumeToast(id) {
+                const toast = this.toasts.find(t => t.id === id);
+                if (toast) {
+                    toast.paused = false;
+                    toast.timeoutId = setTimeout(() => this.removeToast(id), 5000);
+                }
+            },
+
+            // Polling failure tracking
+            pollFailures: {},
+            recordPollFailure(sectionId) {
+                if (!sectionId) return;
+                if (!this.pollFailures[sectionId]) {
+                    this.pollFailures[sectionId] = 0;
+                }
+                this.pollFailures[sectionId]++;
+                if (this.pollFailures[sectionId] === 3) {
+                    this.addToast('warning', 'Data may be stale for section: ' + sectionId);
+                    this._showStaleness(sectionId);
+                }
+            },
+            recordPollSuccess(sectionId) {
+                if (!sectionId) return;
+                if (this.pollFailures[sectionId] && this.pollFailures[sectionId] >= 3) {
+                    this._hideStaleness(sectionId);
+                }
+                this.pollFailures[sectionId] = 0;
+            },
+            isSectionStale(sectionId) {
+                return (this.pollFailures[sectionId] || 0) >= 3;
+            },
+            _showStaleness(sectionId) {
+                const el = document.getElementById(sectionId);
+                if (!el) return;
+                el.classList.add('border-l-4', 'border-amber-500');
+                // Add staleness label if not already present
+                if (!el.querySelector('[data-staleness-label]')) {
+                    const label = document.createElement('div');
+                    label.setAttribute('data-staleness-label', '');
+                    label.className = 'text-xs text-amber-600 dark:text-amber-400 font-medium mt-1 mb-1';
+                    label.textContent = 'Data may be stale';
+                    el.prepend(label);
+                }
+            },
+            _hideStaleness(sectionId) {
+                const el = document.getElementById(sectionId);
+                if (!el) return;
+                el.classList.remove('border-l-4', 'border-amber-500');
+                const label = el.querySelector('[data-staleness-label]');
+                if (label) label.remove();
+            },
+
+            // Modal state
+            modal: { open: false, title: '', item: '', action: '', method: 'DELETE' },
+            _modalTriggerEl: null,
+            openModal(title, item, action, method) {
+                this._modalTriggerEl = document.activeElement;
+                this.modal = { open: true, title, item, action, method: method || 'DELETE' };
+            },
+            closeModal() {
+                this.modal = { open: false, title: '', item: '', action: '', method: 'DELETE' };
+                // Return focus to the element that opened the modal
+                if (this._modalTriggerEl && this._modalTriggerEl.focus) {
+                    this._modalTriggerEl.focus();
+                    this._modalTriggerEl = null;
+                }
+            },
+            confirmModal() {
+                const action = this.modal.action;
+                const method = this.modal.method;
+                this.closeModal();
+                if (action) {
+                    htmx.ajax(method, action, { target: '#content-area', swap: 'innerHTML' });
+                }
+            }
+        });
+    });
+
+    // Responsive sidebar: auto-collapse below 1024px
+    document.addEventListener('alpine:initialized', () => {
+        const store = Alpine.store('app');
+        store.handleResize();
+        window.addEventListener('resize', () => store.handleResize());
+    });
+    </script>
+</head>
+<body class="bg-gray-50 dark:bg-gray-900 min-h-screen flex"
+      hx-boost="true"
+      hx-target="#content-area"
+      hx-swap="innerHTML transition:true"
+      hx-push-url="true"
+      hx-indicator="#page-loader">
+
+    <!-- Mobile sidebar backdrop -->
+    <div x-show="$store.app.sidebarMobileOpen"
+         x-transition:enter="transition-opacity ease-linear duration-300"
+         x-transition:enter-start="opacity-0"
+         x-transition:enter-end="opacity-100"
+         x-transition:leave="transition-opacity ease-linear duration-300"
+         x-transition:leave-start="opacity-100"
+         x-transition:leave-end="opacity-0"
+         @click="$store.app.closeMobileSidebar()"
+         class="fixed inset-0 z-30 bg-black/50 md:hidden"
+         style="display: none;"></div>
+
+    <!-- Sidebar -->
+    <aside :class="[
+               $store.app.sidebarCollapsed ? 'w-16' : 'w-64',
+               $store.app.sidebarMobileOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'
+           ]"
+           class="fixed inset-y-0 left-0 z-40 flex flex-col bg-slate-800 dark:bg-slate-900 text-white transition-all duration-300 ease-in-out">
+
+        <!-- Sidebar header -->
+        <div class="flex items-center justify-between h-16 px-4 border-b border-slate-700">
+            <div class="flex items-center gap-2 overflow-hidden">
+                <svg class="w-8 h-8 flex-shrink-0 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4"/>
+                </svg>
+                <span x-show="!$store.app.sidebarCollapsed" x-transition class="text-lg font-bold whitespace-nowrap">Tergum</span>
+            </div>
+            <!-- Mobile close button -->
+            <button @click="$store.app.closeMobileSidebar()" class="md:hidden p-1 rounded hover:bg-slate-700">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                </svg>
+            </button>
+        </div>
+
+        <!-- Role badge and version -->
+        <div x-show="!$store.app.sidebarCollapsed" class="px-4 py-2 border-b border-slate-700">
+            <div class="flex items-center gap-2">
+                {{if eq .NodeRole "server"}}<span class="inline-block px-2 py-0.5 text-xs font-semibold rounded-full bg-green-100 dark:bg-green-900/40 text-green-800 dark:text-green-300">server</span>{{end}}
+                {{if eq .NodeRole "client"}}<span class="inline-block px-2 py-0.5 text-xs font-semibold rounded-full bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-300">client</span>{{end}}
+                {{if eq .NodeRole "both"}}<span class="inline-block px-2 py-0.5 text-xs font-semibold rounded-full bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-200">both</span>{{end}}
+                <span class="text-xs text-slate-400">v3.0</span>
+            </div>
+        </div>
+
+        <!-- Navigation links -->
+        <nav class="flex-1 overflow-y-auto py-4">
+            <ul class="space-y-1 px-2">
+                {{range .NavItems}}
+                <li>
+                    <a href="{{.Path}}" @click="$store.app.closeMobileSidebar()" class="flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-slate-300 hover:bg-slate-700 hover:text-white transition-colors duration-150">
+                        <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="{{.Icon}}"/></svg>
+                        <span x-show="!$store.app.sidebarCollapsed" x-transition class="whitespace-nowrap">{{.Label}}</span>
+                    </a>
+                </li>
+                {{end}}
+            </ul>
+        </nav>
+
+        <!-- Sidebar collapse toggle -->
+        <div class="hidden md:flex items-center justify-center border-t border-slate-700 p-3">
+            <button @click="$store.app.toggleSidebar()" class="p-2 rounded-lg hover:bg-slate-700 transition-colors duration-150" title="Toggle sidebar">
+                <svg x-show="!$store.app.sidebarCollapsed" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 19l-7-7 7-7m8 14l-7-7 7-7"/></svg>
+                <svg x-show="$store.app.sidebarCollapsed" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 5l7 7-7 7M5 5l7 7-7 7"/></svg>
+            </button>
+        </div>
+    </aside>
+
+    <!-- Main content wrapper -->
+    <div :class="$store.app.sidebarCollapsed ? 'md:ml-16' : 'md:ml-64'" class="flex-1 flex flex-col min-h-screen transition-all duration-300">
+
+        <!-- Top header bar -->
+        <header class="sticky top-0 z-20 h-16 flex items-center justify-between px-4 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 shadow-sm">
+            <!-- Left: hamburger (mobile) + page title -->
+            <div class="flex items-center gap-3">
+                <button @click="$store.app.toggleMobileSidebar()" class="md:hidden p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700">
+                    <svg class="w-6 h-6 text-gray-600 dark:text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
+                </button>
+                <h1 class="text-lg font-semibold text-gray-800 dark:text-gray-100">{{.Title}}</h1>
+            </div>
+
+            <!-- Right: theme toggle -->
+            <div class="flex items-center gap-2">
+                <button @click="$store.app.toggleTheme()" class="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors duration-150" title="Toggle theme">
+                    <!-- Sun icon (shown in dark mode) -->
+                    <svg x-show="$store.app.darkMode" class="w-5 h-5 text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"/></svg>
+                    <!-- Moon icon (shown in light mode) -->
+                    <svg x-show="!$store.app.darkMode" class="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"/></svg>
+                </button>
+            </div>
+        </header>
+
+        <!-- Page loading indicator -->
+        <div id="page-loader" class="htmx-indicator h-0.5 bg-blue-500 fixed top-16 left-0 right-0 z-50"></div>
+
+        <!-- Main content area -->
+        <main id="content-area" class="flex-1 p-4 md:p-6 bg-gray-50 dark:bg-gray-900">
+            {{block "content" .}}{{end}}
+        </main>
+    </div>
+
+    <!-- Toast notification container -->
+    <div class="fixed top-4 right-4 z-50 flex flex-col gap-2 pointer-events-none"
+         x-data>
+        <template x-for="toast in $store.app.toasts" :key="toast.id">
+            <div class="pointer-events-auto flex items-start gap-3 p-4 rounded-lg shadow-md bg-white dark:bg-gray-800 border-l-4 max-w-sm transition-all duration-300"
+                 :class="{
+                     'border-green-500': toast.type === 'success',
+                     'border-red-500': toast.type === 'error',
+                     'border-amber-500': toast.type === 'warning',
+                     'border-blue-500': toast.type === 'info'
+                 }"
+                 @mouseenter="$store.app.pauseToast(toast.id)"
+                 @mouseleave="$store.app.resumeToast(toast.id)"
+                 x-transition:enter="transform transition ease-out duration-300"
+                 x-transition:enter-start="translate-x-full opacity-0"
+                 x-transition:enter-end="translate-x-0 opacity-100"
+                 x-transition:leave="transform transition ease-in duration-300"
+                 x-transition:leave-start="translate-x-0 opacity-100"
+                 x-transition:leave-end="translate-x-full opacity-0">
+                <!-- Type icon -->
+                <svg x-show="toast.type === 'success'" class="w-5 h-5 text-green-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+                <svg x-show="toast.type === 'error'" class="w-5 h-5 text-red-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                <svg x-show="toast.type === 'warning'" class="w-5 h-5 text-amber-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+                <svg x-show="toast.type === 'info'" class="w-5 h-5 text-blue-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                <!-- Message -->
+                <p class="text-sm text-gray-700 dark:text-gray-200 flex-1" x-text="toast.message"></p>
+                <!-- Close button -->
+                <button @click="$store.app.removeToast(toast.id)" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 flex-shrink-0">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                </button>
+            </div>
+        </template>
+    </div>
+
+    <!-- SSE EventSource setup -->
+    <script>
+    (function() {
+        let evtSource = null;
+        let reconnectAttempts = 0;
+        let wasConnected = false;
+
+        function connectSSE() {
+            evtSource = new EventSource('/api/activity/stream');
+
+            evtSource.onopen = function() {
+                const wasReconnect = wasConnected && reconnectAttempts > 0;
+                reconnectAttempts = 0;
+                wasConnected = true;
+
+                if (wasReconnect) {
+                    // Reconnection after loss — notify activity page to re-fetch missed events
+                    if (window.Alpine && Alpine.store('app')) {
+                        Alpine.store('app').addToast('info', 'Live connection restored');
+                    }
+                    document.body.dispatchEvent(new CustomEvent('sse:reconnected'));
+                } else {
+                    if (window.Alpine && Alpine.store('app')) {
+                        Alpine.store('app').addToast('info', 'Live connection established');
+                    }
+                }
+                document.body.dispatchEvent(new CustomEvent('sse:connected'));
+            };
+
+            evtSource.onmessage = function(event) {
+                if (!window.Alpine || !Alpine.store('app')) return;
+                try {
+                    const data = JSON.parse(event.data);
+                    if (data.type && data.message) {
+                        const toastType = data.type.includes('failed') ? 'error' :
+                                          data.type.includes('warning') ? 'warning' : 'info';
+                        Alpine.store('app').addToast(toastType, data.message);
+                    }
+                    // Trigger htmx refresh for relevant sections
+                    document.body.dispatchEvent(new CustomEvent('sse:' + data.type, { detail: data }));
+                } catch (e) {
+                    // Legacy plain-text format fallback
+                }
+            };
+
+            evtSource.onerror = function() {
+                reconnectAttempts++;
+                if (reconnectAttempts === 1 && window.Alpine && Alpine.store('app')) {
+                    Alpine.store('app').addToast('warning', 'Live connection lost, reconnecting...');
+                }
+                document.body.dispatchEvent(new CustomEvent('sse:disconnected'));
+                // EventSource will auto-reconnect with browser built-in backoff
+            };
+        }
+
+        // Initialize SSE when DOM is ready
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', connectSSE);
+        } else {
+            connectSSE();
+        }
+    })();
+    </script>
+
+    <!-- htmx timeout configuration and skeleton lifecycle handlers -->
+    <script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Configure htmx timeout to 10 seconds
+        htmx.config.timeout = 10000;
+
+        // Helper: build a retry button that re-issues the original request
+        function buildRetryHTML(url, targetId, icon, message) {
+            var iconSvg = '';
+            if (icon === 'timeout') {
+                // Amber clock icon
+                iconSvg = '<svg class="w-10 h-10 text-amber-500 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>';
+            } else {
+                // Red X icon
+                iconSvg = '<svg class="w-10 h-10 text-red-500 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>';
+            }
+            return '<div class="flex flex-col items-center justify-center py-8 px-4 text-center">' +
+                iconSvg +
+                '<p class="mt-3 text-sm text-gray-600 dark:text-gray-400">' + message + '</p>' +
+                '<button hx-get="' + url + '" hx-target="' + (targetId ? '#' + targetId : 'this') + '" hx-swap="innerHTML" hx-trigger="click" class="mt-4 inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors duration-150">Retry</button>' +
+                '</div>';
+        }
+
+        // Helper: determine if an element is a polling element (not an initial load)
+        function isPollingElement(elt) {
+            if (!elt) return false;
+            var trigger = elt.getAttribute('hx-trigger') || elt.getAttribute('data-hx-trigger') || '';
+            return trigger.indexOf('every') !== -1;
+        }
+
+        // Handle htmx timeout: replace target content with timeout message + Retry
+        document.body.addEventListener('htmx:timeout', function(event) {
+            var elt = event.detail.elt;
+            if (!elt) return;
+            // Skip polling elements — they'll retry on next interval
+            if (isPollingElement(elt)) return;
+
+            var url = elt.getAttribute('hx-get') || elt.getAttribute('data-hx-get') || '';
+            var target = event.detail.target || elt;
+            var targetId = target.id || '';
+
+            if (url && target) {
+                target.innerHTML = buildRetryHTML(url, targetId, 'timeout', 'Request timed out. Please try again.');
+                htmx.process(target);
+            }
+        });
+
+        // Handle htmx errors on initial loads (non-polling): replace with error + Retry
+        document.body.addEventListener('htmx:responseError', function(event) {
+            var elt = event.detail.elt;
+            if (!elt) return;
+            // Skip polling elements — they use failure counters/staleness indicators
+            if (isPollingElement(elt)) return;
+
+            var status = event.detail.xhr ? event.detail.xhr.status : 0;
+            // Skip 401 — handled by the auth handler below
+            if (status === 401) return;
+
+            var url = elt.getAttribute('hx-get') || elt.getAttribute('data-hx-get') || '';
+            var target = event.detail.target || elt;
+            var targetId = target.id || '';
+
+            // Only replace content if it looks like it still has a skeleton or is empty
+            // (i.e., initial load failure, not a mutation or navigation)
+            if (url && target) {
+                var hasSkeletonOrEmpty = target.querySelector('[class*="animate-pulse"]') ||
+                                         target.innerHTML.trim() === '' ||
+                                         target.querySelector('[data-skeleton]');
+                if (hasSkeletonOrEmpty) {
+                    target.innerHTML = buildRetryHTML(url, targetId, 'error', 'Failed to load. Please try again.');
+                    htmx.process(target);
+                }
+            }
+        });
+
+        // Handle htmx send error (network failure before response) for non-polling
+        document.body.addEventListener('htmx:sendError', function(event) {
+            var elt = event.detail.elt;
+            if (!elt) return;
+            if (isPollingElement(elt)) return;
+
+            var url = elt.getAttribute('hx-get') || elt.getAttribute('data-hx-get') || '';
+            var target = event.detail.target || elt;
+            var targetId = target.id || '';
+
+            if (url && target) {
+                var hasSkeletonOrEmpty = target.querySelector('[class*="animate-pulse"]') ||
+                                         target.innerHTML.trim() === '' ||
+                                         target.querySelector('[data-skeleton]');
+                if (hasSkeletonOrEmpty) {
+                    target.innerHTML = buildRetryHTML(url, targetId, 'error', 'Failed to load. Please try again.');
+                    htmx.process(target);
+                }
+            }
+        });
+    });
+    </script>
+
+    <!-- htmx event handlers for toast integration -->
+    <script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Listen for HX-Trigger toast events from server responses
+        document.body.addEventListener('showToast', function(event) {
+            if (window.Alpine && Alpine.store('app') && event.detail) {
+                Alpine.store('app').addToast(event.detail.type || 'info', event.detail.message || '');
+            }
+        });
+
+        // Helper: get the polling section ID from an htmx event target
+        function getPollingSectionId(event) {
+            var target = event.detail.target || (event.detail.elt && event.detail.elt.closest('[id]'));
+            if (target && target.id) return target.id;
+            // Fall back to the triggering element's closest ID
+            if (event.detail.elt && event.detail.elt.id) return event.detail.elt.id;
+            return null;
+        }
+
+        // Track polling successes — reset failure counter on successful response
+        document.body.addEventListener('htmx:afterRequest', function(event) {
+            if (!window.Alpine || !Alpine.store('app')) return;
+            // Only track polling requests (those with hx-trigger containing "every")
+            var elt = event.detail.elt;
+            if (!elt) return;
+            var trigger = elt.getAttribute('hx-trigger') || elt.getAttribute('data-hx-trigger') || '';
+            if (trigger.indexOf('every') === -1) return;
+            // Only handle successful responses
+            if (event.detail.successful) {
+                var sectionId = getPollingSectionId(event);
+                if (sectionId) {
+                    Alpine.store('app').recordPollSuccess(sectionId);
+                }
+            }
+        });
+
+        // Handle htmx response errors
+        document.body.addEventListener('htmx:responseError', function(event) {
+            if (!window.Alpine || !Alpine.store('app')) return;
+
+            // Track polling failures for sections with periodic polling
+            var elt = event.detail.elt;
+            if (elt) {
+                var trigger = elt.getAttribute('hx-trigger') || elt.getAttribute('data-hx-trigger') || '';
+                if (trigger.indexOf('every') !== -1) {
+                    var sectionId = getPollingSectionId(event);
+                    if (sectionId) {
+                        Alpine.store('app').recordPollFailure(sectionId);
+                    }
+                }
+            }
+
+            var status = event.detail.xhr ? event.detail.xhr.status : 0;
+            if (status === 401) {
+                Alpine.store('app').addToast('error', 'Session expired. Redirecting to login...');
+                setTimeout(function() { window.location.href = '/login?expired=1'; }, 2000);
+            } else {
+                // Skip generic error toast if server already sent a toast via HX-Trigger
+                var hxTrigger = event.detail.xhr ? event.detail.xhr.getResponseHeader('HX-Trigger') : null;
+                if (!hxTrigger || hxTrigger.indexOf('showToast') === -1) {
+                    Alpine.store('app').addToast('error', 'Request failed: ' + (event.detail.error || 'Network error'));
+                }
+            }
+        });
+    });
+    </script>
+</body>
+</html>
+{{end}}

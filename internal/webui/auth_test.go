@@ -1,6 +1,8 @@
 package webui
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 )
@@ -138,5 +140,167 @@ func TestSessionStore_Cleanup(t *testing.T) {
 
 	if count != 0 {
 		t.Errorf("expected 0 sessions after cleanup, got %d", count)
+	}
+}
+
+func TestAuthMiddleware_HtmxRequest_Returns401WithHXTrigger(t *testing.T) {
+	params := DefaultArgon2idParams()
+	hashed, _ := HashPassword("password", params)
+	sessions := NewSessionStore(1 * time.Hour)
+	mw := NewAuthMiddleware("admin", hashed, sessions)
+
+	handler := mw.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	// Request with HX-Request header but no auth credentials.
+	req := httptest.NewRequest("GET", "/dashboard", nil)
+	req.Header.Set("HX-Request", "true")
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Errorf("status = %d, want %d", rec.Code, http.StatusUnauthorized)
+	}
+
+	hxTrigger := rec.Header().Get("HX-Trigger")
+	if hxTrigger == "" {
+		t.Fatal("expected HX-Trigger header to be set for htmx 401 response")
+	}
+
+	expected := `{"showToast":{"type":"error","message":"Session expired"}}`
+	if hxTrigger != expected {
+		t.Errorf("HX-Trigger = %q, want %q", hxTrigger, expected)
+	}
+
+	// Should NOT have WWW-Authenticate header for htmx requests.
+	if wwwAuth := rec.Header().Get("WWW-Authenticate"); wwwAuth != "" {
+		t.Errorf("expected no WWW-Authenticate header for htmx request, got %q", wwwAuth)
+	}
+}
+
+func TestAuthMiddleware_NonHtmxRequest_Returns401WithWWWAuthenticate(t *testing.T) {
+	params := DefaultArgon2idParams()
+	hashed, _ := HashPassword("password", params)
+	sessions := NewSessionStore(1 * time.Hour)
+	mw := NewAuthMiddleware("admin", hashed, sessions)
+
+	handler := mw.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	// Request without HX-Request header and no auth credentials.
+	req := httptest.NewRequest("GET", "/dashboard", nil)
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Errorf("status = %d, want %d", rec.Code, http.StatusUnauthorized)
+	}
+
+	wwwAuth := rec.Header().Get("WWW-Authenticate")
+	if wwwAuth == "" {
+		t.Fatal("expected WWW-Authenticate header for non-htmx 401 response")
+	}
+	if wwwAuth != `Basic realm="Tergum"` {
+		t.Errorf("WWW-Authenticate = %q, want %q", wwwAuth, `Basic realm="Tergum"`)
+	}
+
+	// Should NOT have HX-Trigger header for non-htmx requests.
+	if hxTrigger := rec.Header().Get("HX-Trigger"); hxTrigger != "" {
+		t.Errorf("expected no HX-Trigger header for non-htmx request, got %q", hxTrigger)
+	}
+}
+
+func TestAuthMiddleware_HtmxRequest_WrongCredentials_Returns401WithHXTrigger(t *testing.T) {
+	params := DefaultArgon2idParams()
+	hashed, _ := HashPassword("password", params)
+	sessions := NewSessionStore(1 * time.Hour)
+	mw := NewAuthMiddleware("admin", hashed, sessions)
+
+	handler := mw.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	// Request with HX-Request header and wrong credentials.
+	req := httptest.NewRequest("GET", "/dashboard", nil)
+	req.Header.Set("HX-Request", "true")
+	req.SetBasicAuth("admin", "wrongpassword")
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Errorf("status = %d, want %d", rec.Code, http.StatusUnauthorized)
+	}
+
+	hxTrigger := rec.Header().Get("HX-Trigger")
+	expected := `{"showToast":{"type":"error","message":"Session expired"}}`
+	if hxTrigger != expected {
+		t.Errorf("HX-Trigger = %q, want %q", hxTrigger, expected)
+	}
+}
+
+func TestAuthMiddleware_HtmxRequest_ExpiredSession_Returns401WithHXTrigger(t *testing.T) {
+	params := DefaultArgon2idParams()
+	hashed, _ := HashPassword("password", params)
+	sessions := NewSessionStore(1 * time.Millisecond)
+	mw := NewAuthMiddleware("admin", hashed, sessions)
+
+	handler := mw.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	// Create a session and let it expire.
+	session, _ := sessions.Create("admin")
+	time.Sleep(5 * time.Millisecond)
+
+	// Request with expired session cookie and HX-Request header.
+	req := httptest.NewRequest("GET", "/dashboard", nil)
+	req.Header.Set("HX-Request", "true")
+	req.AddCookie(&http.Cookie{Name: "tergum_session", Value: session.ID})
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Errorf("status = %d, want %d", rec.Code, http.StatusUnauthorized)
+	}
+
+	hxTrigger := rec.Header().Get("HX-Trigger")
+	expected := `{"showToast":{"type":"error","message":"Session expired"}}`
+	if hxTrigger != expected {
+		t.Errorf("HX-Trigger = %q, want %q", hxTrigger, expected)
+	}
+}
+
+func TestAuthMiddleware_ValidSession_AllowsAccess(t *testing.T) {
+	params := DefaultArgon2idParams()
+	hashed, _ := HashPassword("password", params)
+	sessions := NewSessionStore(1 * time.Hour)
+	mw := NewAuthMiddleware("admin", hashed, sessions)
+
+	called := false
+	handler := mw.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		called = true
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	// Create a valid session.
+	session, _ := sessions.Create("admin")
+
+	req := httptest.NewRequest("GET", "/dashboard", nil)
+	req.AddCookie(&http.Cookie{Name: "tergum_session", Value: session.ID})
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("status = %d, want %d", rec.Code, http.StatusOK)
+	}
+	if !called {
+		t.Error("expected next handler to be called with valid session")
 	}
 }

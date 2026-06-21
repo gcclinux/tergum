@@ -67,12 +67,14 @@ func (s *Server) handlePathsIncludeAdd(w http.ResponseWriter, r *http.Request) {
 
 	if err := s.repo.AddIncludePath(r.Context(), absPath); err != nil {
 		s.logger.Error("add include path failed", "path", absPath, "error", err)
+		setErrorToast(w, "Failed to add path: "+err.Error())
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
 
 	go s.syncPathsToConfig(r.Context())
 
+	setSuccessToast(w, "Include path added")
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{"added": absPath})
 }
@@ -104,12 +106,14 @@ func (s *Server) handlePathsIncludeRemove(w http.ResponseWriter, r *http.Request
 
 	if err := s.repo.RemoveIncludePath(r.Context(), path); err != nil {
 		s.logger.Error("remove include path failed", "path", path, "error", err)
+		setErrorToast(w, "Failed to remove path: "+err.Error())
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
 
 	go s.syncPathsToConfig(r.Context())
 
+	setSuccessToast(w, "Include path removed")
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{"removed": path})
 }
@@ -162,12 +166,14 @@ func (s *Server) handlePathsExcludeAdd(w http.ResponseWriter, r *http.Request) {
 
 	if err := s.repo.AddExcludePattern(r.Context(), pattern); err != nil {
 		s.logger.Error("add exclude pattern failed", "pattern", pattern, "error", err)
+		setErrorToast(w, "Failed to add path: "+err.Error())
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
 
 	go s.syncPathsToConfig(r.Context())
 
+	setSuccessToast(w, "Exclude path added")
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{"added": pattern})
 }
@@ -199,12 +205,14 @@ func (s *Server) handlePathsExcludeRemove(w http.ResponseWriter, r *http.Request
 
 	if err := s.repo.RemoveExcludePattern(r.Context(), pattern); err != nil {
 		s.logger.Error("remove exclude pattern failed", "pattern", pattern, "error", err)
+		setErrorToast(w, "Failed to remove path: "+err.Error())
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
 
 	go s.syncPathsToConfig(r.Context())
 
+	setSuccessToast(w, "Exclude path removed")
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{"removed": pattern})
 }

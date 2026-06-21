@@ -14,6 +14,7 @@ import (
 
 	"github.com/ricardopadilha/tergum/internal/config"
 	"github.com/ricardopadilha/tergum/internal/db"
+	"github.com/ricardopadilha/tergum/internal/model"
 	registryPkg "github.com/ricardopadilha/tergum/internal/registry"
 )
 
@@ -27,6 +28,7 @@ var templatesFS embed.FS
 type Server struct {
 	httpServer        *http.Server
 	templates         map[string]*template.Template
+	fragmentTmpl      fragmentTemplates // shell+fragment template sets
 	auth              *AuthMiddleware
 	sessions          *SessionStore
 	broker            *SSEBroker
@@ -169,6 +171,12 @@ func NewServer(cfg config.WebUIConfig, username, password string, opts ...Server
 		return nil, fmt.Errorf("parsing templates: %w", err)
 	}
 
+	// Parse shell+fragment template sets for the new architecture.
+	fragTmpl, err := parseFragmentTemplates()
+	if err != nil {
+		return nil, fmt.Errorf("parsing fragment templates: %w", err)
+	}
+
 	// Create SSE broker.
 	broker := NewSSEBroker(100)
 
@@ -182,12 +190,13 @@ func NewServer(cfg config.WebUIConfig, username, password string, opts ...Server
 			WriteTimeout: 0, // SSE requires no write timeout
 			IdleTimeout:  60 * time.Second,
 		},
-		templates: tmpl,
-		auth:      auth,
-		sessions:  sessions,
-		broker:    broker,
-		logger:    slog.Default().With(slog.String("component", "webui")),
-		cfg:       cfg,
+		templates:    tmpl,
+		fragmentTmpl: fragTmpl,
+		auth:         auth,
+		sessions:     sessions,
+		broker:       broker,
+		logger:       slog.Default().With(slog.String("component", "webui")),
+		cfg:          cfg,
 	}
 
 	// Apply options.
@@ -219,7 +228,7 @@ func (s *Server) routes() http.Handler {
 
 	// Static assets (no auth required).
 	assetsSubFS, _ := fs.Sub(assetsFS, "assets")
-	mux.Handle("/assets/", http.StripPrefix("/assets/", http.FileServer(http.FS(assetsSubFS))))
+	mux.Handle("/assets/", http.StripPrefix("/assets/", NewAssetHandler(assetsSubFS)))
 
 	// Authenticated routes.
 	authed := http.NewServeMux()
@@ -258,10 +267,25 @@ func (s *Server) routes() http.Handler {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		}
 	})
+	authed.HandleFunc("/api/watchers/status", s.handleWatchersStatus)
+	authed.HandleFunc("/api/watchers/settings", s.handleWatchersSettings)
+	authed.HandleFunc("/api/watchers/paths", func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			s.handleWatchersPaths(w, r)
+		case http.MethodPost:
+			s.handleWatchersPathsAdd(w, r)
+		default:
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		}
+	})
 
 	// Backup API endpoints.
 	authed.HandleFunc("/api/backups/trigger", s.handleAPIBackupTrigger)
 	authed.HandleFunc("/api/backups/active", s.handleAPIBackupsActive)
+	authed.HandleFunc("/api/backups/status", s.handleAPIBackupsStatus)
+	authed.HandleFunc("/api/backups/progress", s.handleAPIBackupsProgress)
+	authed.HandleFunc("/api/backups/history", s.handleAPIBackupsHistory)
 	authed.HandleFunc("/api/backups/", s.handleAPIBackupDelete)
 
 	// Retention API endpoints.
@@ -276,6 +300,10 @@ func (s *Server) routes() http.Handler {
 
 	// Dashboard API.
 	authed.HandleFunc("/api/dashboard", s.handleAPIDashboard)
+	authed.HandleFunc("/api/dashboard/files", s.handleAPIDashboardFiles)
+	authed.HandleFunc("/api/dashboard/storage", s.handleAPIDashboardStorage)
+	authed.HandleFunc("/api/dashboard/clients", s.handleAPIDashboardClients)
+	authed.HandleFunc("/api/dashboard/activity", s.handleAPIDashboardActivity)
 
 	// Activity API.
 	authed.HandleFunc("/api/activity/recent", s.handleAPIActivityRecent)
@@ -288,8 +316,12 @@ func (s *Server) routes() http.Handler {
 	authed.HandleFunc("/api/system/cpu", s.handleAPISystemCPU)
 	authed.HandleFunc("/api/system/memory", s.handleAPISystemMemory)
 
+	// Metrics API.
+	authed.HandleFunc("/api/metrics/cards", s.handleAPIMetricsCards)
+
 	// Client management API.
 	authed.HandleFunc("/api/clients", s.handleAPIClients)
+	authed.HandleFunc("/api/clients/list", s.handleAPIClientsList)
 	authed.HandleFunc("/api/clients/", s.handleAPIClientAction)
 
 	mux.Handle("/", s.auth.Wrap(authed))
@@ -397,7 +429,7 @@ func (s *Server) watchJobActivity() {
 	}
 }
 
-// parseTemplates parses each page template together with the shared layout.
+// parseTemplates parses each page template together with the shared layout and partials.
 func parseTemplates() (map[string]*template.Template, error) {
 	pages := []string{
 		"dashboard.html",
@@ -413,7 +445,11 @@ func parseTemplates() (map[string]*template.Template, error) {
 
 	templates := make(map[string]*template.Template, len(pages))
 	for _, page := range pages {
-		t, err := template.ParseFS(templatesFS, "templates/layout.html", "templates/"+page)
+		t, err := template.ParseFS(templatesFS,
+			"templates/layout.html",
+			"templates/partials/*.html",
+			"templates/"+page,
+		)
 		if err != nil {
 			return nil, fmt.Errorf("parsing template %s: %w", page, err)
 		}
@@ -451,6 +487,7 @@ func (s *Server) nodeRole() string {
 type dashboardData struct {
 	Title         string
 	NodeRole      string
+	NavItems      []NavItem
 	Uptime        string
 	Version       string
 	TotalFiles    int64
@@ -465,6 +502,7 @@ type dashboardData struct {
 type backupsData struct {
 	Title    string
 	NodeRole string
+	NavItems []NavItem
 	Jobs     []backupJobView
 }
 
@@ -474,24 +512,30 @@ type backupJobView struct {
 	Level     string
 	Status    string
 	FileCount int64
+	BytesNew  int64
+	Size      string
 	StartedAt string
+	Duration  string
 }
 
 type restoreData struct {
 	Title    string
 	NodeRole string
+	NavItems []NavItem
 	Jobs     []backupJobView
 }
 
 type configData struct {
 	Title    string
 	NodeRole string
+	NavItems []NavItem
 	Config   config.Config
 }
 
 type retentionData struct {
 	Title    string
 	NodeRole string
+	NavItems []NavItem
 	Policies []retentionPolicyView
 }
 
@@ -507,6 +551,7 @@ type retentionPolicyView struct {
 type watchersData struct {
 	Title          string
 	NodeRole       string
+	NavItems       []NavItem
 	WatchPaths     []watchPathView
 	WatcherEnabled bool
 	WatcherRunning bool
@@ -526,11 +571,13 @@ type watchPathView struct {
 type activityData struct {
 	Title    string
 	NodeRole string
+	NavItems []NavItem
 }
 
 type clientsData struct {
 	Title    string
 	NodeRole string
+	NavItems []NavItem
 	Clients  []clientView
 }
 
@@ -547,6 +594,7 @@ type clientView struct {
 type metricsData struct {
 	Title    string
 	NodeRole string
+	NavItems []NavItem
 	Metrics  metricsView
 }
 
@@ -554,7 +602,10 @@ type metricsView struct {
 	FilesBackedUp    int64
 	BytesTransferred string
 	DedupRatio       string
+	DedupRatioPercent float64
 	StorageUsed      string
+	StoragePercent   float64
+	StorageColor     string
 	UniqueFiles      int64
 	GRPCRequests     int64
 	GRPCErrors       int64
@@ -573,6 +624,7 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 	data := dashboardData{
 		Title:         "Dashboard",
 		NodeRole:      s.nodeRole(),
+		NavItems:      FilterNavItems(s.nodeRole()),
 		Uptime:        "N/A",
 		Version:       "3.0.0",
 		TotalFiles:    0,
@@ -600,13 +652,14 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 	data.MemTotal = memTotal
 	data.MemPercent = memPct
 
-	s.renderTemplate(w, "dashboard.html", data)
+	s.renderFragment(w, r, "dashboard", data)
 }
 
 func (s *Server) handleBackups(w http.ResponseWriter, r *http.Request) {
 	data := backupsData{
 		Title:    "Backups",
 		NodeRole: s.nodeRole(),
+		NavItems: FilterNavItems(s.nodeRole()),
 		Jobs:     []backupJobView{},
 	}
 
@@ -617,26 +670,36 @@ func (s *Server) handleBackups(w http.ResponseWriter, r *http.Request) {
 		} else {
 			for _, j := range jobs {
 				started := j.StartedAt.Format("2006-01-02 15:04:05")
+				duration := "-"
+				if j.FinishedAt != nil {
+					duration = j.FinishedAt.Sub(j.StartedAt).Round(time.Second).String()
+				} else if j.Status == model.JobRunning {
+					duration = time.Since(j.StartedAt).Round(time.Second).String()
+				}
 				view := backupJobView{
 					BackupID:  j.BackupID,
 					ClientID:  j.ClientID,
 					Level:     j.Level,
 					Status:    string(j.Status),
 					FileCount: j.FileCount,
+					BytesNew:  j.BytesNew,
+					Size:      formatSize(j.BytesNew),
 					StartedAt: started,
+					Duration:  duration,
 				}
 				data.Jobs = append(data.Jobs, view)
 			}
 		}
 	}
 
-	s.renderTemplate(w, "backups.html", data)
+	s.renderFragment(w, r, "backups", data)
 }
 
 func (s *Server) handleRestore(w http.ResponseWriter, r *http.Request) {
 	data := restoreData{
 		Title:    "Restore",
 		NodeRole: s.nodeRole(),
+		NavItems: FilterNavItems(s.nodeRole()),
 		Jobs:     []backupJobView{},
 	}
 
@@ -656,18 +719,27 @@ func (s *Server) handleRestore(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	s.renderTemplate(w, "restore.html", data)
+	s.renderFragment(w, r, "restore", data)
 }
 
 func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
-	data := configData{Title: "Configuration", NodeRole: s.nodeRole()}
-	s.renderTemplate(w, "config.html", data)
+	data := configData{Title: "Configuration", NodeRole: s.nodeRole(), NavItems: FilterNavItems(s.nodeRole())}
+	if s.fullCfg != nil {
+		data.Config = *s.fullCfg
+	} else if s.configPath != "" {
+		cfg, err := config.Load(s.configPath)
+		if err == nil {
+			data.Config = *cfg
+		}
+	}
+	s.renderFragment(w, r, "config", data)
 }
 
 func (s *Server) handleRetention(w http.ResponseWriter, r *http.Request) {
 	data := retentionData{
 		Title:    "Retention Policies",
 		NodeRole: s.nodeRole(),
+		NavItems: FilterNavItems(s.nodeRole()),
 		Policies: []retentionPolicyView{},
 	}
 
@@ -688,13 +760,14 @@ func (s *Server) handleRetention(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	s.renderTemplate(w, "retention.html", data)
+	s.renderFragment(w, r, "retention", data)
 }
 
 func (s *Server) handleWatchers(w http.ResponseWriter, r *http.Request) {
 	data := watchersData{
 		Title:      "Watchers",
 		NodeRole:   s.nodeRole(),
+		NavItems:   FilterNavItems(s.nodeRole()),
 		WatchPaths: []watchPathView{},
 	}
 
@@ -719,18 +792,19 @@ func (s *Server) handleWatchers(w http.ResponseWriter, r *http.Request) {
 		data.WatcherRunning = s.watcherController.IsRunning()
 	}
 
-	s.renderTemplate(w, "watchers.html", data)
+	s.renderFragment(w, r, "watchers", data)
 }
 
 func (s *Server) handleActivity(w http.ResponseWriter, r *http.Request) {
-	data := activityData{Title: "Activity Log", NodeRole: s.nodeRole()}
-	s.renderTemplate(w, "activity.html", data)
+	data := activityData{Title: "Activity Log", NodeRole: s.nodeRole(), NavItems: FilterNavItems(s.nodeRole())}
+	s.renderFragment(w, r, "activity", data)
 }
 
 func (s *Server) handleClients(w http.ResponseWriter, r *http.Request) {
 	data := clientsData{
 		Title:    "Clients",
 		NodeRole: s.nodeRole(),
+		NavItems: FilterNavItems(s.nodeRole()),
 		Clients:  []clientView{},
 	}
 
@@ -760,18 +834,22 @@ func (s *Server) handleClients(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	s.renderTemplate(w, "clients.html", data)
+	s.renderFragment(w, r, "clients", data)
 }
 
 func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 	data := metricsData{
 		Title:    "Metrics",
 		NodeRole: s.nodeRole(),
+		NavItems: FilterNavItems(s.nodeRole()),
 		Metrics: metricsView{
 			FilesBackedUp:    0,
 			BytesTransferred: "0 B",
-			DedupRatio:       "0.0",
+			DedupRatio:       "0%",
+			DedupRatioPercent: 0,
 			StorageUsed:      "0 B",
+			StoragePercent:   0,
+			StorageColor:     "blue",
 			UniqueFiles:      0,
 			GRPCRequests:     0,
 			GRPCErrors:       0,
@@ -794,6 +872,7 @@ func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 			if totalFiles > 0 {
 				ratio := float64(totalDeduped) / float64(totalFiles) * 100
 				data.Metrics.DedupRatio = fmt.Sprintf("%.1f%%", ratio)
+				data.Metrics.DedupRatioPercent = ratio
 			}
 		}
 
@@ -804,18 +883,23 @@ func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Get storage size.
+	// Get storage size and disk usage percent.
+	var storageDir string
 	if s.fullCfg != nil {
-		storageDir := s.fullCfg.StorageDir()
-		data.Metrics.StorageUsed = formatSize(dirSizeQuick(storageDir))
+		storageDir = s.fullCfg.StorageDir()
 	} else if s.configPath != "" {
 		cfg, err := config.Load(s.configPath)
 		if err == nil {
-			data.Metrics.StorageUsed = formatSize(dirSizeQuick(cfg.StorageDir()))
+			storageDir = cfg.StorageDir()
 		}
 	}
+	if storageDir != "" {
+		data.Metrics.StorageUsed = formatSize(dirSizeQuick(storageDir))
+		data.Metrics.StoragePercent = diskUsagePercent(storageDir)
+		data.Metrics.StorageColor = StorageColorScheme(data.Metrics.StoragePercent)
+	}
 
-	s.renderTemplate(w, "metrics.html", data)
+	s.renderFragment(w, r, "metrics", data)
 }
 
 // dirSizeQuick estimates directory size by listing top-level prefix dirs.

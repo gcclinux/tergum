@@ -1,0 +1,95 @@
+{{define "content"}}
+<div class="space-y-6">
+    <!-- Search Files Across Backups -->
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6">
+        <h2 class="text-base font-semibold text-gray-800 dark:text-gray-100 mb-4">Search Files</h2>
+        <div class="flex items-center gap-3 mb-4">
+            <input type="text"
+                   name="query"
+                   placeholder="Search by file path..."
+                   class="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm transition-colors duration-150"
+                   hx-get="/api/restore/search"
+                   hx-trigger="keyup changed delay:300ms"
+                   hx-target="#search-results"
+                   hx-swap="innerHTML"
+                   hx-indicator="#search-spinner" />
+            <div id="search-spinner" class="htmx-indicator">
+                <svg class="animate-spin h-5 w-5 text-blue-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                </svg>
+            </div>
+        </div>
+        <div id="search-results" class="overflow-x-auto">
+            <p class="text-gray-500 dark:text-gray-400 italic text-sm">Type to search for files across all backups...</p>
+        </div>
+    </div>
+
+    <!-- Available Backups for Browsing (auto-refresh every 30s) -->
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6">
+        <div class="flex items-center justify-between mb-4">
+            <h2 class="text-base font-semibold text-gray-800 dark:text-gray-100">Available Backups</h2>
+            <span class="text-xs text-gray-400 dark:text-gray-500">Auto-refreshes every 30s</span>
+        </div>
+        <div id="restore-backups" class="overflow-x-auto"
+             hx-get="/api/restore/backups"
+             hx-trigger="load, every 30s"
+             hx-swap="innerHTML">
+            <!-- Skeleton loader shown during initial load -->
+            <div class="animate-pulse space-y-3">
+                <div class="h-8 w-full bg-gray-200 dark:bg-gray-700 rounded"></div>
+                <div class="h-8 w-full bg-gray-200 dark:bg-gray-700 rounded"></div>
+                <div class="h-8 w-full bg-gray-200 dark:bg-gray-700 rounded"></div>
+                <div class="h-8 w-full bg-gray-200 dark:bg-gray-700 rounded"></div>
+                <div class="h-8 w-full bg-gray-200 dark:bg-gray-700 rounded"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Browse Backup Files -->
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6">
+        <h2 class="text-base font-semibold text-gray-800 dark:text-gray-100 mb-4">Browse Backup Files</h2>
+        <div class="flex items-center gap-3 mb-4">
+            <label class="text-sm text-gray-600 dark:text-gray-400 whitespace-nowrap">Backup ID:</label>
+            <input type="text"
+                   name="backup_id"
+                   placeholder="Enter or select a backup ID..."
+                   class="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm font-mono transition-colors duration-150" />
+            <button class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors duration-150"
+                    hx-get="/api/restore/files"
+                    hx-include="[name='backup_id']"
+                    hx-target="#backup-files"
+                    hx-swap="innerHTML"
+                    hx-indicator="#files-spinner">
+                Browse
+            </button>
+            <div id="files-spinner" class="htmx-indicator">
+                <svg class="animate-spin h-5 w-5 text-blue-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                </svg>
+            </div>
+        </div>
+        <div id="backup-files" class="overflow-x-auto">
+            <!-- Skeleton loader shown as placeholder -->
+            <div class="animate-pulse space-y-3">
+                <div class="h-6 w-3/4 bg-gray-200 dark:bg-gray-700 rounded"></div>
+                <div class="h-6 w-1/2 bg-gray-200 dark:bg-gray-700 rounded"></div>
+                <div class="h-6 w-2/3 bg-gray-200 dark:bg-gray-700 rounded"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Restore Jobs -->
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6">
+        <h2 class="text-base font-semibold text-gray-800 dark:text-gray-100 mb-4">Recent Restore Jobs</h2>
+        <div id="restore-jobs" hx-get="/api/restore/jobs" hx-trigger="load, every 10s" hx-swap="innerHTML">
+            <!-- Skeleton loader for restore jobs -->
+            <div class="animate-pulse space-y-3">
+                <div class="h-10 w-full bg-gray-200 dark:bg-gray-700 rounded"></div>
+                <div class="h-10 w-full bg-gray-200 dark:bg-gray-700 rounded"></div>
+            </div>
+        </div>
+    </div>
+</div>
+{{end}}

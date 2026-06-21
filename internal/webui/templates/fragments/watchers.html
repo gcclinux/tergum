@@ -1,0 +1,218 @@
+{{define "content"}}
+<div class="space-y-6" x-data="watcherPage()">
+    <!-- Watcher Status & Controls -->
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6">
+        <div class="flex items-center justify-between mb-4">
+            <h2 class="text-base font-semibold text-gray-800 dark:text-gray-100">File Watcher</h2>
+            <div class="flex items-center gap-3">
+                <!-- Optimistic status indicator -->
+                <span x-show="running"
+                      class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300">
+                    <span class="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>Running
+                </span>
+                <span x-show="!running"
+                      class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400">
+                    <span class="w-2 h-2 rounded-full bg-gray-400"></span>Stopped
+                </span>
+                <!-- Control buttons with optimistic update -->
+                <button x-show="!running" @click="startWatcher()" :disabled="pending"
+                        class="px-3 py-1.5 text-xs font-medium rounded-lg border border-green-300 dark:border-green-600 text-green-600 dark:text-green-400 hover:bg-green-50 dark:hover:bg-green-900/20 transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed">
+                    Start
+                </button>
+                <button x-show="running" @click="stopWatcher()" :disabled="pending"
+                        class="px-3 py-1.5 text-xs font-medium rounded-lg border border-red-300 dark:border-red-600 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed">
+                    Stop
+                </button>
+            </div>
+        </div>
+        <!-- Watcher Settings -->
+        <div id="watcher-settings" hx-get="/api/watchers/settings" hx-trigger="load" hx-swap="innerHTML">
+            <div class="animate-pulse grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div class="space-y-2">
+                    <div class="h-4 w-24 bg-gray-200 dark:bg-gray-700 rounded"></div>
+                    <div class="h-8 w-full bg-gray-200 dark:bg-gray-700 rounded"></div>
+                </div>
+                <div class="space-y-2">
+                    <div class="h-4 w-28 bg-gray-200 dark:bg-gray-700 rounded"></div>
+                    <div class="h-8 w-full bg-gray-200 dark:bg-gray-700 rounded"></div>
+                </div>
+                <div class="space-y-2">
+                    <div class="h-4 w-28 bg-gray-200 dark:bg-gray-700 rounded"></div>
+                    <div class="h-8 w-full bg-gray-200 dark:bg-gray-700 rounded"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add Watch Path -->
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6">
+        <h2 class="text-base font-semibold text-gray-800 dark:text-gray-100 mb-4">Add Watch Path</h2>
+        <form @submit.prevent="addPath()" class="flex items-end gap-4">
+            <div class="flex-1">
+                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Path</label>
+                <input type="text" x-model="newPath" @input="pathError = ''" placeholder="/path/to/watch"
+                       :class="pathError ? 'border-red-500 focus:ring-red-500' : 'border-gray-300 dark:border-gray-600 focus:ring-blue-500'"
+                       class="w-full px-3 py-2 rounded-lg border bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:border-transparent text-sm">
+                <p x-show="pathError" x-text="pathError" class="mt-1 text-xs text-red-500"></p>
+            </div>
+            <div class="flex items-center gap-2">
+                <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+                    <input type="checkbox" x-model="newRecursive" class="rounded border-gray-300 dark:border-gray-600 text-blue-600 focus:ring-blue-500">
+                    Recursive
+                </label>
+            </div>
+            <button type="submit" :disabled="addingPath"
+                    class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed">
+                Add Path
+            </button>
+        </form>
+    </div>
+
+    <!-- Watched Paths List -->
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6">
+        <h2 class="text-base font-semibold text-gray-800 dark:text-gray-100 mb-4">Watched Paths</h2>
+        <div id="watch-paths" class="overflow-x-auto" hx-get="/api/watchers/paths" hx-trigger="load, every 10s, refreshPaths" hx-swap="innerHTML">
+            {{if .WatchPaths}}
+            <table class="w-full text-sm">
+                <thead>
+                    <tr class="border-b border-gray-200 dark:border-gray-700 text-xs uppercase text-gray-500 dark:text-gray-400">
+                        <th class="px-4 py-3 text-left">Path</th>
+                        <th class="px-4 py-3 text-center">Recursive</th>
+                        <th class="px-4 py-3 text-center">Enabled</th>
+                        <th class="px-4 py-3 text-left">Last Event</th>
+                        <th class="px-4 py-3 text-right">Event Count</th>
+                        <th class="px-4 py-3 text-center">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {{range .WatchPaths}}
+                    <tr class="border-b border-gray-100 dark:border-gray-700/50">
+                        <td class="px-4 py-3 font-mono text-gray-900 dark:text-gray-100 break-all">{{.Path}}</td>
+                        <td class="px-4 py-3 text-center text-gray-600 dark:text-gray-300">{{if .Recursive}}Yes{{else}}No{{end}}</td>
+                        <td class="px-4 py-3 text-center">{{if .Enabled}}<span class="text-green-600 dark:text-green-400">Yes</span>{{else}}<span class="text-gray-400">No</span>{{end}}</td>
+                        <td class="px-4 py-3 text-gray-600 dark:text-gray-300 whitespace-nowrap">{{if .LastEvent}}{{.LastEvent}}{{else}}-{{end}}</td>
+                        <td class="px-4 py-3 text-right text-gray-600 dark:text-gray-300">{{.EventCount}}</td>
+                        <td class="px-4 py-3 text-center">
+                            <button @click="$store.app.openModal('Remove Watch Path', '{{.Path}}', '/api/watchers?path={{.Path}}', 'DELETE')"
+                                    class="text-red-600 dark:text-red-400 border border-red-300 dark:border-red-600 rounded px-2 py-0.5 text-xs hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors duration-150">
+                                Remove
+                            </button>
+                        </td>
+                    </tr>
+                    {{end}}
+                </tbody>
+            </table>
+            {{else}}
+            <p class="text-gray-500 dark:text-gray-400 italic">No watch paths configured. Add a path above to start monitoring for changes.</p>
+            {{end}}
+        </div>
+    </div>
+</div>
+
+<script>
+function watcherPage() {
+    return {
+        running: {{.WatcherRunning}},
+        pending: false,
+        newPath: '',
+        newRecursive: true,
+        pathError: '',
+        addingPath: false,
+
+        startWatcher() {
+            if (this.pending) return;
+            this.pending = true;
+            // Optimistic update: immediately show as running
+            this.running = true;
+
+            fetch('/api/watcher/start', { method: 'POST', headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+                .then(response => {
+                    if (!response.ok) {
+                        // Revert on failure
+                        this.running = false;
+                        return response.text().then(text => {
+                            Alpine.store('app').addToast('error', 'Failed to start watcher: ' + (text || 'Server error'));
+                        });
+                    }
+                    Alpine.store('app').addToast('success', 'Watcher started');
+                })
+                .catch(() => {
+                    // Revert on network error
+                    this.running = false;
+                    Alpine.store('app').addToast('error', 'Failed to start watcher: Network error');
+                })
+                .finally(() => {
+                    this.pending = false;
+                });
+        },
+
+        stopWatcher() {
+            if (this.pending) return;
+            this.pending = true;
+            // Optimistic update: immediately show as stopped
+            this.running = false;
+
+            fetch('/api/watcher/stop', { method: 'POST', headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+                .then(response => {
+                    if (!response.ok) {
+                        // Revert on failure
+                        this.running = true;
+                        return response.text().then(text => {
+                            Alpine.store('app').addToast('error', 'Failed to stop watcher: ' + (text || 'Server error'));
+                        });
+                    }
+                    Alpine.store('app').addToast('success', 'Watcher stopped');
+                })
+                .catch(() => {
+                    // Revert on network error
+                    this.running = true;
+                    Alpine.store('app').addToast('error', 'Failed to stop watcher: Network error');
+                })
+                .finally(() => {
+                    this.pending = false;
+                });
+        },
+
+        addPath() {
+            this.pathError = '';
+            if (!this.newPath || !this.newPath.trim()) {
+                this.pathError = 'Path must not be blank';
+                return;
+            }
+            this.addingPath = true;
+
+            var formData = new FormData();
+            formData.append('path', this.newPath.trim());
+            if (this.newRecursive) {
+                formData.append('recursive', 'true');
+            }
+
+            fetch('/api/watchers/paths', { method: 'POST', body: formData, headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+                .then(response => {
+                    // Parse HX-Trigger for toast
+                    var trigger = response.headers.get('HX-Trigger');
+                    if (trigger) {
+                        try {
+                            var data = JSON.parse(trigger);
+                            if (data.showToast) {
+                                Alpine.store('app').addToast(data.showToast.type, data.showToast.message);
+                            }
+                        } catch(e) {}
+                    }
+                    if (response.ok) {
+                        this.newPath = '';
+                        // Trigger a refresh of the paths list
+                        htmx.trigger('#watch-paths', 'refreshPaths');
+                    }
+                })
+                .catch(() => {
+                    Alpine.store('app').addToast('error', 'Failed to add path: Network error');
+                })
+                .finally(() => {
+                    this.addingPath = false;
+                });
+        }
+    };
+}
+</script>
+{{end}}

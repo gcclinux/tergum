@@ -1,0 +1,93 @@
+{{define "content"}}
+<div class="space-y-6" x-data="{ jobRunning: false }"
+     @htmx:after-settle.camel.window="if ($event.detail.target && $event.detail.target.id === 'backup-status') { jobRunning = !$event.detail.target.querySelector('.hidden'); }">
+    <!-- Running Job Banner (polls every 2s, hidden when no running jobs) -->
+    <div id="backup-status"
+         hx-get="/api/backups/status"
+         hx-trigger="load, every 2s, sse:backup_progress from:body"
+         hx-swap="innerHTML">
+        <div class="animate-pulse">
+            <div class="h-16 w-full bg-gray-200 dark:bg-gray-700 rounded-lg"></div>
+        </div>
+    </div>
+
+    <!-- Backup Progress (refreshed by SSE backup_progress events) -->
+    <div id="backup-progress"
+         hx-get="/api/backups/progress"
+         hx-trigger="load, sse:backup_progress from:body"
+         hx-swap="outerHTML">
+        <div id="backup-progress" class="hidden"></div>
+    </div>
+
+    <!-- Backup Trigger Buttons -->
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6">
+        <h2 class="text-base font-semibold text-gray-800 dark:text-gray-100 mb-4">Trigger Backup</h2>
+        <div class="flex items-center gap-4">
+            <button class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed"
+                    hx-post="/api/backups/trigger"
+                    hx-vals='{"level":"full"}'
+                    hx-swap="none"
+                    hx-disabled-elt="this"
+                    :disabled="jobRunning">
+                Full Backup
+            </button>
+            <button class="px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white text-sm font-medium rounded-lg transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed"
+                    hx-post="/api/backups/trigger"
+                    hx-vals='{"level":"auto"}'
+                    hx-swap="none"
+                    hx-disabled-elt="this"
+                    :disabled="jobRunning">
+                Auto Backup
+            </button>
+        </div>
+    </div>
+
+    <!-- Backup History Table -->
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6">
+        <h2 class="text-base font-semibold text-gray-800 dark:text-gray-100 mb-4">Backup History</h2>
+        <div id="backup-history" class="overflow-x-auto" hx-get="/api/backups/history" hx-trigger="every 30s" hx-swap="innerHTML">
+            {{if .Jobs}}
+            <table class="w-full text-sm">
+                <thead>
+                    <tr class="border-b border-gray-200 dark:border-gray-700 text-xs uppercase text-gray-500 dark:text-gray-400">
+                        <th class="px-4 py-3 text-left">Backup ID</th>
+                        <th class="px-4 py-3 text-left">Client</th>
+                        <th class="px-4 py-3 text-left">Level</th>
+                        <th class="px-4 py-3 text-left">Status</th>
+                        <th class="px-4 py-3 text-right">Files</th>
+                        <th class="px-4 py-3 text-left">Started</th>
+                        <th class="px-4 py-3 text-center">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {{range .Jobs}}
+                    <tr class="border-b border-gray-100 dark:border-gray-700/50">
+                        <td class="px-4 py-3 font-mono text-gray-900 dark:text-gray-100">{{.BackupID}}</td>
+                        <td class="px-4 py-3 text-gray-600 dark:text-gray-300">{{.ClientID}}</td>
+                        <td class="px-4 py-3 text-gray-600 dark:text-gray-300">{{.Level}}</td>
+                        <td class="px-4 py-3">
+                            {{if eq .Status "completed"}}<span class="text-green-600 dark:text-green-400">✅ completed</span>
+                            {{else if eq .Status "running"}}<span class="text-blue-600 dark:text-blue-400">🔄 running</span>
+                            {{else if eq .Status "failed"}}<span class="text-red-600 dark:text-red-400">❌ failed</span>
+                            {{else if eq .Status "stopped"}}<span class="text-amber-600 dark:text-amber-400">⏹️ stopped</span>
+                            {{else}}{{.Status}}{{end}}
+                        </td>
+                        <td class="px-4 py-3 text-right text-gray-600 dark:text-gray-300">{{.FileCount}}</td>
+                        <td class="px-4 py-3 text-gray-600 dark:text-gray-300 whitespace-nowrap">{{.StartedAt}}</td>
+                        <td class="px-4 py-3 text-center">
+                            <button @click="$store.app.openModal('Delete Backup', '{{.BackupID}}', '/api/backups/{{.BackupID}}', 'DELETE')"
+                                    class="text-red-600 dark:text-red-400 border border-red-300 dark:border-red-600 rounded px-2 py-0.5 text-xs hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors duration-150">
+                                Delete
+                            </button>
+                        </td>
+                    </tr>
+                    {{end}}
+                </tbody>
+            </table>
+            {{else}}
+            <p class="text-gray-500 dark:text-gray-400 italic">No backup jobs found. Run a backup to see history here.</p>
+            {{end}}
+        </div>
+    </div>
+</div>
+{{end}}

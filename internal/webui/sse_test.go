@@ -133,8 +133,11 @@ func TestSSEBroker_ServeHTTP(t *testing.T) {
 	if !strings.Contains(body, ": connected") {
 		t.Error("expected connection comment in SSE stream")
 	}
-	if !strings.Contains(body, "event: test_event") {
-		t.Error("expected event type in SSE stream")
+	if !strings.Contains(body, `"type":"test_event"`) {
+		t.Error("expected JSON type field in SSE stream")
+	}
+	if !strings.Contains(body, `"message":"hello"`) {
+		t.Error("expected JSON message field in SSE stream")
 	}
 	if !strings.Contains(body, "data:") {
 		t.Error("expected data field in SSE stream")

@@ -1,0 +1,35 @@
+{{define "data_card"}}
+{{/*
+    Self-contained metric card partial.
+    Expects a pipeline with fields: .ID, .Title, .Value, .Icon (optional SVG class),
+    .Color (optional: "default"|"warning"|"error"), .RefreshURL (optional htmx endpoint).
+
+    Features:
+    - Rounded-lg card with shadow-sm
+    - Icon slot area (left)
+    - Value displayed prominently with label below
+    - Dark mode support
+    - Can be individually targeted by htmx for refresh via id attribute
+*/}}
+<div id="card-{{.ID}}"
+     class="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6 transition-colors duration-150
+            {{if eq .Color "warning"}}border border-amber-300 dark:border-amber-600{{else if eq .Color "error"}}border border-red-300 dark:border-red-600{{else}}border border-gray-200 dark:border-gray-700{{end}}"
+     {{if .RefreshURL}}hx-get="{{.RefreshURL}}" hx-trigger="every 10s" hx-swap="outerHTML"{{end}}>
+    <div class="flex items-center gap-4">
+        <!-- Icon slot -->
+        <div class="flex-shrink-0 w-12 h-12 flex items-center justify-center rounded-lg
+                    {{if eq .Color "warning"}}bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400{{else if eq .Color "error"}}bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400{{else}}bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400{{end}}">
+            {{if .Icon}}{{.Icon}}{{else}}
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+            </svg>
+            {{end}}
+        </div>
+        <!-- Content -->
+        <div class="flex-1 min-w-0">
+            <p class="text-2xl font-bold text-gray-900 dark:text-gray-100 truncate">{{.Value}}</p>
+            <p class="text-sm text-gray-500 dark:text-gray-400 truncate">{{.Title}}</p>
+        </div>
+    </div>
+</div>
+{{end}}

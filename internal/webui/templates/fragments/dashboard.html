@@ -1,0 +1,98 @@
+{{define "content"}}
+<div class="space-y-6"
+     x-data
+     @sse:backup_completed.window="htmx.trigger('#card-files', 'load'); htmx.trigger('#card-storage', 'load'); htmx.trigger('#activity-feed', 'load')"
+     @sse:backup_started.window="htmx.trigger('#activity-feed', 'load')"
+     @sse:backup_failed.window="htmx.trigger('#activity-feed', 'load')"
+     @sse:client_connected.window="htmx.trigger('#activity-feed', 'load')"
+     @sse:client_disconnected.window="htmx.trigger('#activity-feed', 'load')"
+>
+    <!-- System info row -->
+    <div class="flex items-center gap-3 text-sm text-gray-500 dark:text-gray-400">
+        <span>Node: <strong class="text-gray-700 dark:text-gray-200">{{.NodeRole}}</strong></span>
+        <span>•</span>
+        <span>Version: <strong class="text-gray-700 dark:text-gray-200">{{.Version}}</strong></span>
+        <span>•</span>
+        <span>Uptime: <strong class="text-gray-700 dark:text-gray-200">{{.Uptime}}</strong></span>
+    </div>
+
+    <!-- Data Cards Grid -->
+    <div class="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4">
+        <!-- CPU Usage Card (polls every 3s) -->
+        <div id="card-cpu" class="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-4"
+             hx-get="/api/system/cpu" hx-trigger="load, every 3s" hx-swap="innerHTML">
+            <div class="animate-pulse space-y-3">
+                <div class="h-3 w-16 bg-gray-200 dark:bg-gray-700 rounded"></div>
+                <div class="h-8 w-20 bg-gray-200 dark:bg-gray-700 rounded"></div>
+            </div>
+        </div>
+
+        <!-- Memory Usage Card (polls every 3s) -->
+        <div id="card-memory" class="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-4"
+             hx-get="/api/system/memory" hx-trigger="load, every 3s" hx-swap="innerHTML">
+            <div class="animate-pulse space-y-3">
+                <div class="h-3 w-20 bg-gray-200 dark:bg-gray-700 rounded"></div>
+                <div class="h-8 w-24 bg-gray-200 dark:bg-gray-700 rounded"></div>
+            </div>
+        </div>
+
+        <!-- Total Files Card (polls every 10s) -->
+        <div id="card-files" class="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-4"
+             hx-get="/api/dashboard/files" hx-trigger="load, every 10s" hx-swap="innerHTML">
+            <div class="animate-pulse space-y-3">
+                <div class="h-3 w-20 bg-gray-200 dark:bg-gray-700 rounded"></div>
+                <div class="h-8 w-16 bg-gray-200 dark:bg-gray-700 rounded"></div>
+            </div>
+        </div>
+
+        <!-- Storage Used Card (polls every 10s) -->
+        <div id="card-storage" class="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-4"
+             hx-get="/api/dashboard/storage" hx-trigger="load, every 10s" hx-swap="innerHTML">
+            <div class="animate-pulse space-y-3">
+                <div class="h-3 w-24 bg-gray-200 dark:bg-gray-700 rounded"></div>
+                <div class="h-8 w-20 bg-gray-200 dark:bg-gray-700 rounded"></div>
+            </div>
+        </div>
+
+        <!-- Active Clients Card (polls every 10s, hidden when Node_Role is "client") -->
+        {{if or (eq .NodeRole "server") (eq .NodeRole "both")}}
+        <div id="card-clients" class="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-4"
+             hx-get="/api/dashboard/clients" hx-trigger="load, every 10s" hx-swap="innerHTML">
+            <div class="animate-pulse space-y-3">
+                <div class="h-3 w-24 bg-gray-200 dark:bg-gray-700 rounded"></div>
+                <div class="h-8 w-12 bg-gray-200 dark:bg-gray-700 rounded"></div>
+            </div>
+        </div>
+        {{end}}
+
+        <!-- Version Card (static, no polling needed) -->
+        <div id="card-version" class="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-4">
+            <div class="flex items-center gap-3">
+                <div class="flex-shrink-0 w-10 h-10 flex items-center justify-center rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A2 2 0 013 12V7a4 4 0 014-4z"/>
+                    </svg>
+                </div>
+                <div class="flex-1 min-w-0">
+                    <p class="text-xl font-bold text-gray-900 dark:text-gray-100 truncate">{{.Version}}</p>
+                    <p class="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide">Version</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Recent Activity Feed -->
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">
+        <h2 class="text-base font-semibold text-gray-800 dark:text-gray-100 mb-4">Recent Activity</h2>
+        <div id="activity-feed" hx-get="/api/dashboard/activity" hx-trigger="load, every 10s" hx-swap="innerHTML">
+            <div class="animate-pulse space-y-3">
+                <div class="h-4 w-full bg-gray-200 dark:bg-gray-700 rounded"></div>
+                <div class="h-4 w-3/4 bg-gray-200 dark:bg-gray-700 rounded"></div>
+                <div class="h-4 w-5/6 bg-gray-200 dark:bg-gray-700 rounded"></div>
+                <div class="h-4 w-2/3 bg-gray-200 dark:bg-gray-700 rounded"></div>
+                <div class="h-4 w-4/5 bg-gray-200 dark:bg-gray-700 rounded"></div>
+            </div>
+        </div>
+    </div>
+</div>
+{{end}}
