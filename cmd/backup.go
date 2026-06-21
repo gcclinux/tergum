@@ -13,6 +13,7 @@ import (
 
 	"github.com/ricardopadilha/tergum/internal/backup"
 	"github.com/ricardopadilha/tergum/internal/config"
+	"github.com/ricardopadilha/tergum/internal/connection"
 	"github.com/ricardopadilha/tergum/internal/crypto"
 	"github.com/ricardopadilha/tergum/internal/db"
 	"github.com/ricardopadilha/tergum/internal/model"
@@ -83,13 +84,10 @@ func runBackup(cmd *cobra.Command, args []string) error {
 		masterKey = key
 	}
 
-	// Determine storage directory.
-	storageDir := cfg.StorageDir()
-
-	// Create local server connection (for "both" or local-only mode).
-	serverConn := &backup.LocalServerConnection{
-		StorageDir: storageDir,
-		Repo:       repo,
+	// Create server connection based on node role.
+	serverConn, err := connection.NewServerConnection(cfg)
+	if err != nil {
+		return fmt.Errorf("creating server connection: %w", err)
 	}
 
 	// Create encryptor.

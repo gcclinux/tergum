@@ -14,6 +14,7 @@ import (
 
 	"github.com/ricardopadilha/tergum/internal/config"
 	"github.com/ricardopadilha/tergum/internal/db"
+	registryPkg "github.com/ricardopadilha/tergum/internal/registry"
 )
 
 //go:embed assets
@@ -36,6 +37,8 @@ type Server struct {
 	configPath        string // path to tergum.toml for syncing paths back
 	backupTrigger     BackupTrigger
 	watcherController WatcherController
+	clientRegistry    ClientRegistry
+	clientConnector   ClientConnector
 }
 
 // BackupTrigger is an interface for triggering backups from the Web UI.
@@ -49,6 +52,31 @@ type WatcherController interface {
 	StartWatcher() error
 	StopWatcher() error
 	IsRunning() bool
+}
+
+// ClientConnector sends commands to remote client nodes via gRPC.
+type ClientConnector interface {
+	TriggerClientBackup(ctx context.Context, clientID string) error
+	StartClientWatcher(ctx context.Context, clientID string) error
+	StopClientWatcher(ctx context.Context, clientID string) error
+	GetClientStatus(ctx context.Context, clientID string) (*ClientStatusInfo, error)
+}
+
+// ClientStatusInfo holds the status reported by a remote client.
+type ClientStatusInfo struct {
+	Status           string `json:"status"`
+	BackupID         string `json:"backup_id,omitempty"`
+	FilesProcessed   int64  `json:"files_processed"`
+	BytesTransferred int64  `json:"bytes_transferred"`
+	StartedAt        string `json:"started_at,omitempty"`
+	Message          string `json:"message,omitempty"`
+}
+
+// ClientRegistry is the subset of registry.Registry needed by the webui.
+type ClientRegistry interface {
+	ListClients() []registryPkg.ClientInfo
+	GetClient(clientID string) *registryPkg.ClientInfo
+	SetSchedule(clientID string, schedule registryPkg.ScheduleConfig) error
 }
 
 // ServerOption is a functional option for configuring the web UI server.
@@ -100,6 +128,20 @@ func WithFullConfig(cfg *config.Config) ServerOption {
 func WithWatcherController(wc WatcherController) ServerOption {
 	return func(s *Server) {
 		s.watcherController = wc
+	}
+}
+
+// WithClientRegistry sets the client registry for client management.
+func WithClientRegistry(reg ClientRegistry) ServerOption {
+	return func(s *Server) {
+		s.clientRegistry = reg
+	}
+}
+
+// WithClientConnector sets the client connector for sending commands to remote clients.
+func WithClientConnector(cc ClientConnector) ServerOption {
+	return func(s *Server) {
+		s.clientConnector = cc
 	}
 }
 
@@ -245,6 +287,10 @@ func (s *Server) routes() http.Handler {
 	// System stats API.
 	authed.HandleFunc("/api/system/cpu", s.handleAPISystemCPU)
 	authed.HandleFunc("/api/system/memory", s.handleAPISystemMemory)
+
+	// Client management API.
+	authed.HandleFunc("/api/clients", s.handleAPIClients)
+	authed.HandleFunc("/api/clients/", s.handleAPIClientAction)
 
 	mux.Handle("/", s.auth.Wrap(authed))
 
@@ -472,11 +518,13 @@ type clientsData struct {
 }
 
 type clientView struct {
-	ClientID   string
-	LastSeen   string
-	LastBackup string
-	Status     string
-	FileCount  int64
+	ClientID       string
+	Status         string
+	LastSeen       string
+	LastBackup     string
+	WatcherActive  bool
+	FullBackupCron string
+	AutoBackupCron string
 }
 
 type metricsData struct {
@@ -661,6 +709,33 @@ func (s *Server) handleClients(w http.ResponseWriter, r *http.Request) {
 		Title:   "Clients",
 		Clients: []clientView{},
 	}
+
+	if s.clientRegistry != nil {
+		clients := s.clientRegistry.ListClients()
+		for _, ci := range clients {
+			lastSeen := "never"
+			if !ci.LastSeen.IsZero() {
+				lastSeen = ci.LastSeen.Format("2006-01-02 15:04:05")
+			}
+			lastBackup := "never"
+			if !ci.LastBackup.IsZero() {
+				lastBackup = ci.LastBackup.Format("2006-01-02 15:04:05")
+			}
+			view := clientView{
+				ClientID:      ci.ClientID,
+				Status:        ci.Status,
+				LastSeen:      lastSeen,
+				LastBackup:    lastBackup,
+				WatcherActive: ci.WatcherActive,
+			}
+			if ci.Schedule != nil {
+				view.FullBackupCron = ci.Schedule.FullBackupCron
+				view.AutoBackupCron = ci.Schedule.AutoBackupCron
+			}
+			data.Clients = append(data.Clients, view)
+		}
+	}
+
 	s.renderTemplate(w, "clients.html", data)
 }
 

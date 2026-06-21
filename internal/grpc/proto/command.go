@@ -129,3 +129,26 @@ type RetentionPolicyProto struct {
 type RetentionResponse struct {
 	Policies []*RetentionPolicyProto `json:"policies"`
 }
+
+// WatcherRequest is sent to start or stop the file watcher on a client node.
+type WatcherRequest struct {
+	ClientId string `json:"client_id"`
+}
+
+// WatcherResponse is returned after a watcher start/stop operation.
+type WatcherResponse struct {
+	Success bool   `json:"success"`
+	Message string `json:"message"`
+}
+
+// RegisterRequest is sent by a client to register itself with the server.
+type RegisterRequest struct {
+	ClientId string `json:"client_id"`
+	Address  string `json:"address"`
+}
+
+// RegisterResponse is returned after a client registration attempt.
+type RegisterResponse struct {
+	Success       bool   `json:"success"`
+	ServerVersion string `json:"server_version"`
+}

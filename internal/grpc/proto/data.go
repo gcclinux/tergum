@@ -1,10 +1,50 @@
 package proto
 
+import "encoding/json"
+
 // FileChunk represents a chunk of file data in the upload/download stream.
 // The stream follows the pattern: FileHeader -> data chunks -> FileTrailer.
 type FileChunk struct {
 	// Payload is one of: *FileChunk_Header, *FileChunk_Data, *FileChunk_Trailer
 	Payload isFileChunkPayload
+}
+
+// fileChunkJSON is the JSON wire format for FileChunk.
+type fileChunkJSON struct {
+	Header  *FileHeader  `json:"header,omitempty"`
+	Data    []byte       `json:"data,omitempty"`
+	Trailer *FileTrailer `json:"trailer,omitempty"`
+}
+
+// MarshalJSON implements json.Marshaler for FileChunk.
+func (fc FileChunk) MarshalJSON() ([]byte, error) {
+	var j fileChunkJSON
+	switch p := fc.Payload.(type) {
+	case *FileChunk_Header:
+		j.Header = p.Header
+	case *FileChunk_Data:
+		j.Data = p.Data
+	case *FileChunk_Trailer:
+		j.Trailer = p.Trailer
+	}
+	return json.Marshal(j)
+}
+
+// UnmarshalJSON implements json.Unmarshaler for FileChunk.
+func (fc *FileChunk) UnmarshalJSON(data []byte) error {
+	var j fileChunkJSON
+	if err := json.Unmarshal(data, &j); err != nil {
+		return err
+	}
+	switch {
+	case j.Header != nil:
+		fc.Payload = &FileChunk_Header{Header: j.Header}
+	case j.Trailer != nil:
+		fc.Payload = &FileChunk_Trailer{Trailer: j.Trailer}
+	case j.Data != nil:
+		fc.Payload = &FileChunk_Data{Data: j.Data}
+	}
+	return nil
 }
 
 // GetHeader returns the FileHeader if this chunk contains one.

@@ -15,6 +15,9 @@ type CommandServiceClient interface {
 	ListBackups(ctx context.Context, in *ListBackupsRequest, opts ...grpc.CallOption) (*ListBackupsResponse, error)
 	DeleteFromBackup(ctx context.Context, in *DeleteRequest, opts ...grpc.CallOption) (*DeleteResponse, error)
 	GetRetention(ctx context.Context, in *RetentionRequest, opts ...grpc.CallOption) (*RetentionResponse, error)
+	StartWatcher(ctx context.Context, in *WatcherRequest, opts ...grpc.CallOption) (*WatcherResponse, error)
+	StopWatcher(ctx context.Context, in *WatcherRequest, opts ...grpc.CallOption) (*WatcherResponse, error)
+	RegisterClient(ctx context.Context, in *RegisterRequest, opts ...grpc.CallOption) (*RegisterResponse, error)
 }
 
 type commandServiceClient struct {
@@ -27,13 +30,16 @@ func NewCommandServiceClient(cc grpc.ClientConnInterface) CommandServiceClient {
 }
 
 const (
-	CommandService_TriggerBackup_FullMethodName   = "/tergum.v3.CommandService/TriggerBackup"
-	CommandService_StopBackup_FullMethodName      = "/tergum.v3.CommandService/StopBackup"
-	CommandService_GetStatus_FullMethodName       = "/tergum.v3.CommandService/GetStatus"
-	CommandService_Ping_FullMethodName            = "/tergum.v3.CommandService/Ping"
-	CommandService_ListBackups_FullMethodName     = "/tergum.v3.CommandService/ListBackups"
+	CommandService_TriggerBackup_FullMethodName    = "/tergum.v3.CommandService/TriggerBackup"
+	CommandService_StopBackup_FullMethodName       = "/tergum.v3.CommandService/StopBackup"
+	CommandService_GetStatus_FullMethodName        = "/tergum.v3.CommandService/GetStatus"
+	CommandService_Ping_FullMethodName             = "/tergum.v3.CommandService/Ping"
+	CommandService_ListBackups_FullMethodName      = "/tergum.v3.CommandService/ListBackups"
 	CommandService_DeleteFromBackup_FullMethodName = "/tergum.v3.CommandService/DeleteFromBackup"
-	CommandService_GetRetention_FullMethodName    = "/tergum.v3.CommandService/GetRetention"
+	CommandService_GetRetention_FullMethodName     = "/tergum.v3.CommandService/GetRetention"
+	CommandService_StartWatcher_FullMethodName     = "/tergum.v3.CommandService/StartWatcher"
+	CommandService_StopWatcher_FullMethodName      = "/tergum.v3.CommandService/StopWatcher"
+	CommandService_RegisterClient_FullMethodName   = "/tergum.v3.CommandService/RegisterClient"
 )
 
 func (c *commandServiceClient) TriggerBackup(ctx context.Context, in *BackupRequest, opts ...grpc.CallOption) (*BackupResponse, error) {
@@ -99,6 +105,33 @@ func (c *commandServiceClient) GetRetention(ctx context.Context, in *RetentionRe
 	return out, nil
 }
 
+func (c *commandServiceClient) StartWatcher(ctx context.Context, in *WatcherRequest, opts ...grpc.CallOption) (*WatcherResponse, error) {
+	out := new(WatcherResponse)
+	err := c.cc.Invoke(ctx, CommandService_StartWatcher_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *commandServiceClient) StopWatcher(ctx context.Context, in *WatcherRequest, opts ...grpc.CallOption) (*WatcherResponse, error) {
+	out := new(WatcherResponse)
+	err := c.cc.Invoke(ctx, CommandService_StopWatcher_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *commandServiceClient) RegisterClient(ctx context.Context, in *RegisterRequest, opts ...grpc.CallOption) (*RegisterResponse, error) {
+	out := new(RegisterResponse)
+	err := c.cc.Invoke(ctx, CommandService_RegisterClient_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // CommandServiceServer is the server API for CommandService.
 type CommandServiceServer interface {
 	TriggerBackup(context.Context, *BackupRequest) (*BackupResponse, error)
@@ -108,6 +141,9 @@ type CommandServiceServer interface {
 	ListBackups(context.Context, *ListBackupsRequest) (*ListBackupsResponse, error)
 	DeleteFromBackup(context.Context, *DeleteRequest) (*DeleteResponse, error)
 	GetRetention(context.Context, *RetentionRequest) (*RetentionResponse, error)
+	StartWatcher(context.Context, *WatcherRequest) (*WatcherResponse, error)
+	StopWatcher(context.Context, *WatcherRequest) (*WatcherResponse, error)
+	RegisterClient(context.Context, *RegisterRequest) (*RegisterResponse, error)
 	mustEmbedUnimplementedCommandServiceServer()
 }
 
@@ -134,6 +170,15 @@ func (UnimplementedCommandServiceServer) DeleteFromBackup(context.Context, *Dele
 }
 func (UnimplementedCommandServiceServer) GetRetention(context.Context, *RetentionRequest) (*RetentionResponse, error) {
 	return nil, grpc.Errorf(12, "method GetRetention not implemented") //nolint:staticcheck
+}
+func (UnimplementedCommandServiceServer) StartWatcher(context.Context, *WatcherRequest) (*WatcherResponse, error) {
+	return nil, grpc.Errorf(12, "method StartWatcher not implemented") //nolint:staticcheck
+}
+func (UnimplementedCommandServiceServer) StopWatcher(context.Context, *WatcherRequest) (*WatcherResponse, error) {
+	return nil, grpc.Errorf(12, "method StopWatcher not implemented") //nolint:staticcheck
+}
+func (UnimplementedCommandServiceServer) RegisterClient(context.Context, *RegisterRequest) (*RegisterResponse, error) {
+	return nil, grpc.Errorf(12, "method RegisterClient not implemented") //nolint:staticcheck
 }
 func (UnimplementedCommandServiceServer) mustEmbedUnimplementedCommandServiceServer() {}
 
@@ -179,6 +224,18 @@ var CommandService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetRetention",
 			Handler:    _CommandService_GetRetention_Handler,
+		},
+		{
+			MethodName: "StartWatcher",
+			Handler:    _CommandService_StartWatcher_Handler,
+		},
+		{
+			MethodName: "StopWatcher",
+			Handler:    _CommandService_StopWatcher_Handler,
+		},
+		{
+			MethodName: "RegisterClient",
+			Handler:    _CommandService_RegisterClient_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
@@ -307,6 +364,60 @@ func _CommandService_GetRetention_Handler(srv interface{}, ctx context.Context, 
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(CommandServiceServer).GetRetention(ctx, req.(*RetentionRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _CommandService_StartWatcher_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(WatcherRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(CommandServiceServer).StartWatcher(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: CommandService_StartWatcher_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(CommandServiceServer).StartWatcher(ctx, req.(*WatcherRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _CommandService_StopWatcher_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(WatcherRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(CommandServiceServer).StopWatcher(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: CommandService_StopWatcher_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(CommandServiceServer).StopWatcher(ctx, req.(*WatcherRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _CommandService_RegisterClient_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RegisterRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(CommandServiceServer).RegisterClient(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: CommandService_RegisterClient_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(CommandServiceServer).RegisterClient(ctx, req.(*RegisterRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }

@@ -111,17 +111,17 @@ tergum paths list
 | Command | Status | Description |
 |---------|--------|-------------|
 | `tergum setup` | ✅ Working | Interactive configuration wizard |
-| `tergum server` | ✅ Working | Start all server subsystems |
+| `tergum server` | ✅ Working | Start server or client daemon (role-aware) |
 | `tergum admin` | ✅ Working | Start Web UI only (lightweight) |
-| `tergum backup` | ✅ Working | Run a manual backup |
+| `tergum backup` | ✅ Working | Run a manual backup (local or remote) |
 | `tergum paths` | ✅ Working | Manage include/exclude paths |
 | `tergum list` | ✅ Working | List backup sets and files |
 | `tergum delete` | ✅ Working | Delete backup entries |
 | `tergum retention` | ✅ Working | Manage retention policies |
-| `tergum restore` | ✅ Working | Restore files from backup |
+| `tergum restore` | ✅ Working | Restore files from backup (local or remote) |
 | `tergum stop` | ✅ Working | Stop an in-progress backup |
 | `tergum status` | ✅ Working | Show system status |
-| `tergum watch` | ✅ Working | File watcher for ongoing backup |
+| `tergum watch` | ✅ Working | File watcher for ongoing backup (local or remote) |
 | `tergum version` | ✅ Working | Print version info |
 | `tergum migrate` | 🚧 Planned | Migrate from v2.0 to v3.0 |
 
@@ -143,8 +143,14 @@ Flags:
 ```
 Usage: tergum server [flags]
 
-Starts gRPC services (ports 7400, 7401), web UI (7480), metrics (7490),
-retention engine, and scheduler. Graceful shutdown on SIGTERM/SIGINT.
+Starts in role-aware mode based on [node].role in config:
+  - role "server": gRPC services (7400, 7401), web UI (7480), metrics (7490),
+    retention engine, scheduler, client registry
+  - role "client": client CommandService (7400), heartbeat to server,
+    file watcher (if enabled), accepts remote triggers
+  - role "both": full local server (same as "server" without client registry)
+
+Graceful shutdown on SIGTERM/SIGINT.
 ```
 
 ### tergum admin
@@ -526,7 +532,7 @@ Pages and capabilities:
 - **Retention** — add/remove retention policies with pattern matching
 - **Watchers** — add/remove watch paths for file monitoring
 - **Activity** — real-time event log (SSE)
-- **Clients** — connected client nodes
+- **Clients** — connected client nodes with trigger backup, start/stop watcher, schedule config (server role only)
 - **Metrics** — backup and storage metrics
 
 ---
@@ -552,6 +558,228 @@ tergum paths add /home/user/NewProject
 # 6. Check what's configured
 tergum paths list
 ```
+
+---
+
+## Remote Backup (Client/Server)
+
+Tergum supports multi-machine backup where client nodes stream data to a central server. The server stores all backup data, manages schedules, and provides a single dashboard for the entire infrastructure.
+
+### Architecture Overview
+
+```
+┌──────────────────────┐         mTLS          ┌──────────────────────┐
+│   CLIENT NODE        │ ─────────────────────► │   SERVER NODE        │
+│                      │  Upload / Manifest     │                      │
+│  • Backup Engine     │ ◄───────────────────── │  • DataService :7401 │
+│  • File Watcher      │  Download / Diff       │  • CommandService    │
+│  • CommandService    │                        │    :7400             │
+│    (accepts triggers)│ ◄───────────────────── │  • Client Registry   │
+│  • Heartbeat (30s)   │  TriggerBackup /       │  • Per-Client Sched. │
+│                      │  Start-Stop Watcher    │  • Web UI :7480      │
+└──────────────────────┘                        └──────────────────────┘
+```
+
+Both directions are authenticated with mutual TLS. The client identifies itself using the Common Name (CN) from its certificate.
+
+### Setup Flow
+
+#### 1. Generate certificates on the server
+
+Run the setup wizard on the server machine. This generates a CA and server certificate:
+
+```bash
+# On the server
+tergum setup
+# Choose role: server
+# This generates: ca.crt, server.crt, server.key in ~/.config/tergum/certs/
+```
+
+Or regenerate certificates only:
+
+```bash
+tergum setup --generate-certs
+```
+
+#### 2. Distribute certificates to clients
+
+Copy the CA certificate and generate client certificates for each client machine. The CA (`ca.crt`) must be the same on all nodes:
+
+```bash
+# Copy to each client machine:
+#   ca.crt          → shared CA (same across all nodes)
+#   client.crt      → unique per client (CN = client hostname)
+#   client.key      → unique per client
+```
+
+Alternatively, run `tergum setup` on each client — it will prompt for the server address and generate client certs signed by the same CA (requires the CA key to be present during generation).
+
+#### 3. Configure the client
+
+On each client machine, the config should have:
+
+```toml
+[node]
+role = "client"
+
+[server]
+address = "192.168.1.5"    # server's IP or hostname
+command_port = 7400
+data_port = 7401
+
+[tls]
+ca_cert = "~/.config/tergum/certs/ca.crt"
+cert = "~/.config/tergum/certs/client.crt"
+key = "~/.config/tergum/certs/client.key"
+
+[client]
+include_paths = ["/home/user/Documents", "/home/user/Projects"]
+exclude_patterns = ["*.tmp", ".git/", "node_modules/"]
+```
+
+#### 4. Configure the server
+
+```toml
+[node]
+role = "server"
+
+[server]
+command_port = 7400
+data_port = 7401
+
+[tls]
+ca_cert = "~/.config/tergum/certs/ca.crt"
+cert = "~/.config/tergum/certs/server.crt"
+key = "~/.config/tergum/certs/server.key"
+
+[backup]
+storage_path = "/var/lib/tergum/storage"
+
+[webui]
+enabled = true
+port = 7480
+```
+
+#### 5. Start both daemons
+
+```bash
+# On the server
+tergum server
+# Starts: gRPC services, Web UI, scheduler, registry
+
+# On each client
+tergum server
+# Detects role = "client", starts: client CommandService, heartbeat, file watcher (if enabled)
+```
+
+The `tergum server` command detects the node role from the config and starts the appropriate subsystems.
+
+### Client Operations
+
+Once the client daemon is running, backups work the same as local mode:
+
+```bash
+# Manual backup (streams to remote server)
+TERGUM_PASSPHRASE=mypass tergum backup
+
+# Full backup
+TERGUM_PASSPHRASE=mypass tergum backup --level full
+
+# Restore from server
+TERGUM_PASSPHRASE=mypass tergum restore "*.go" --dest /tmp/restored
+
+# File watcher (continuous backup to server)
+TERGUM_PASSPHRASE=mypass tergum watch
+```
+
+Key differences in remote mode:
+- Files are encrypted locally before upload (passphrase never leaves the client)
+- A manifest exchange determines which files the server already has (deduplication)
+- After backup, the client syncs its database to the server
+- If the server is unreachable, the client retries with exponential backoff (1s → 30s, 5 attempts max)
+
+### Server-Initiated Operations
+
+The server can trigger operations on any connected client:
+
+**Trigger a backup remotely:**
+The server sends a `TriggerBackup` RPC to the client's CommandService. This can be done from the Web UI or by the scheduler.
+
+**Start/stop file watcher remotely:**
+The server can start or stop the file watcher on any client without needing to SSH into the machine.
+
+**Scheduled backups:**
+The server manages per-client cron schedules. When a schedule fires:
+- If the client is online → backup is triggered immediately
+- If the client is offline → the missed backup is queued and triggered within 60 seconds of reconnection
+
+### Web UI Client Management
+
+Access the client management dashboard at `http://server:7480` → **Clients** page.
+
+The clients page shows:
+- **Hostname** — client identity (from certificate CN)
+- **Status** — online/offline with colored indicator
+- **Last Seen** — last heartbeat timestamp
+- **Last Backup** — most recent backup completion time
+- **Watcher** — whether the file watcher is active
+
+**Actions per client:**
+| Action | Description |
+|--------|-------------|
+| Trigger Backup | Sends a backup command to the client |
+| Start Watcher | Starts the file watcher on the client |
+| Stop Watcher | Stops the file watcher on the client |
+| Configure Schedule | Set full/auto backup cron expressions |
+
+**Client detail view** shows:
+- Backup history for that specific client
+- Current watcher status and monitored paths
+- Schedule configuration with inline editing
+- Live backup progress (polled every 5 seconds when a backup is running)
+
+### Connection & Heartbeat
+
+- Clients send a `Ping` RPC to the server every **30 seconds**
+- If 3 consecutive pings are missed (90 seconds), the server marks the client as **offline**
+- When the client reconnects, it's automatically marked **online** and any missed scheduled backups are triggered
+
+### Security
+
+- All communication uses mutual TLS (mTLS) — both sides verify certificates
+- Only certificates signed by the shared CA are accepted
+- The client's certificate CN is used as its identity — no passwords for node-to-node auth
+- Encryption passphrases and master keys remain on the client — data is encrypted before transmission
+- The client's CommandService also requires mTLS, so only the legitimate server can issue commands
+
+### Example: Two-Machine Setup
+
+```bash
+# === SERVER (192.168.1.5) ===
+tergum setup
+# role: server, storage: /var/lib/tergum/storage
+tergum server
+
+# === CLIENT (laptop) ===
+tergum setup
+# role: client, server address: 192.168.1.5
+# Copy ca.crt from server, generate client cert
+export TERGUM_PASSPHRASE=mypassphrase
+tergum server     # starts client daemon (heartbeat + watcher)
+
+# Or run a one-off backup without the daemon:
+tergum backup --level full
+```
+
+### Troubleshooting
+
+| Symptom | Likely Cause |
+|---------|-------------|
+| "server.address is required" | Config has `role = "client"` but no `[server] address` |
+| "certificate signed by unknown authority" | CA cert mismatch between client and server |
+| Client shows "offline" in Web UI | Firewall blocking port 7400 from server → client |
+| "server nodes do not run local backups" | Ran `tergum backup` on a server-role node (use Web UI to trigger clients instead) |
+| Backup fails with connection error | Server unreachable — check network, ports 7400/7401 |
 
 ---
 

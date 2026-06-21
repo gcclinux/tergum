@@ -17,6 +17,7 @@ import (
 	cryptoPkg "github.com/ricardopadilha/tergum/internal/crypto"
 	"github.com/ricardopadilha/tergum/internal/db"
 	"github.com/ricardopadilha/tergum/internal/model"
+	registryPkg "github.com/ricardopadilha/tergum/internal/registry"
 	"github.com/ricardopadilha/tergum/internal/restore"
 )
 
@@ -783,4 +784,333 @@ func (l *localDataSource) DownloadFile(ctx context.Context, hash string) ([]byte
 		return nil, fmt.Errorf("hash %s not found in store", hash)
 	}
 	return data, nil
+}
+
+// handleAPIClients handles GET /api/clients — returns registered clients as JSON.
+func (s *Server) handleAPIClients(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	if s.clientRegistry == nil {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode([]interface{}{})
+		return
+	}
+
+	type clientJSON struct {
+		ClientID       string `json:"client_id"`
+		Address        string `json:"address"`
+		Status         string `json:"status"`
+		LastSeen       string `json:"last_seen"`
+		LastBackup     string `json:"last_backup"`
+		WatcherActive  bool   `json:"watcher_active"`
+		FullBackupCron string `json:"full_backup_cron"`
+		AutoBackupCron string `json:"auto_backup_cron"`
+	}
+
+	clients := s.clientRegistry.ListClients()
+	result := make([]clientJSON, 0, len(clients))
+	for _, ci := range clients {
+		cj := clientJSON{
+			ClientID:      ci.ClientID,
+			Address:       ci.Address,
+			Status:        ci.Status,
+			WatcherActive: ci.WatcherActive,
+		}
+		if !ci.LastSeen.IsZero() {
+			cj.LastSeen = ci.LastSeen.Format(time.RFC3339)
+		}
+		if !ci.LastBackup.IsZero() {
+			cj.LastBackup = ci.LastBackup.Format(time.RFC3339)
+		}
+		if ci.Schedule != nil {
+			cj.FullBackupCron = ci.Schedule.FullBackupCron
+			cj.AutoBackupCron = ci.Schedule.AutoBackupCron
+		}
+		result = append(result, cj)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(result)
+}
+
+// handleAPIClientAction routes client-specific API calls:
+//   - POST /api/clients/{id}/backup
+//   - POST /api/clients/{id}/watcher/start
+//   - POST /api/clients/{id}/watcher/stop
+//   - GET  /api/clients/{id}/status
+//   - PUT  /api/clients/{id}/schedule
+func (s *Server) handleAPIClientAction(w http.ResponseWriter, r *http.Request) {
+	// Parse path: /api/clients/{id}/{action...}
+	path := strings.TrimPrefix(r.URL.Path, "/api/clients/")
+	parts := strings.SplitN(path, "/", 3)
+	if len(parts) < 2 {
+		http.Error(w, "invalid path", http.StatusBadRequest)
+		return
+	}
+
+	clientID := parts[0]
+	action := parts[1]
+	subAction := ""
+	if len(parts) > 2 {
+		subAction = parts[2]
+	}
+
+	switch {
+	case action == "backup" && r.Method == http.MethodPost:
+		s.handleAPIClientBackup(w, r, clientID)
+	case action == "watcher" && subAction == "start" && r.Method == http.MethodPost:
+		s.handleAPIClientWatcherStart(w, r, clientID)
+	case action == "watcher" && subAction == "stop" && r.Method == http.MethodPost:
+		s.handleAPIClientWatcherStop(w, r, clientID)
+	case action == "status" && r.Method == http.MethodGet:
+		s.handleAPIClientStatus(w, r, clientID)
+	case action == "schedule" && r.Method == http.MethodPut:
+		s.handleAPIClientSchedule(w, r, clientID)
+	case action == "history" && r.Method == http.MethodGet:
+		s.handleAPIClientHistory(w, r, clientID)
+	default:
+		http.Error(w, "not found", http.StatusNotFound)
+	}
+}
+
+// handleAPIClientBackup handles POST /api/clients/{id}/backup — triggers backup on client via RPC.
+func (s *Server) handleAPIClientBackup(w http.ResponseWriter, r *http.Request, clientID string) {
+	if s.clientConnector == nil {
+		writeJSONError(w, "client connector not available", http.StatusServiceUnavailable)
+		return
+	}
+	if s.clientRegistry == nil {
+		writeJSONError(w, "registry not available", http.StatusServiceUnavailable)
+		return
+	}
+
+	ci := s.clientRegistry.GetClient(clientID)
+	if ci == nil {
+		writeJSONError(w, "client not found", http.StatusNotFound)
+		return
+	}
+	if ci.Status != "online" {
+		writeJSONError(w, "client is offline", http.StatusConflict)
+		return
+	}
+
+	if err := s.clientConnector.TriggerClientBackup(r.Context(), clientID); err != nil {
+		s.logger.Error("trigger backup on client failed", "client_id", clientID, "error", err)
+		writeJSONError(w, fmt.Sprintf("trigger backup failed: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"message": fmt.Sprintf("backup triggered on client %s", clientID),
+	})
+}
+
+// handleAPIClientWatcherStart handles POST /api/clients/{id}/watcher/start.
+func (s *Server) handleAPIClientWatcherStart(w http.ResponseWriter, r *http.Request, clientID string) {
+	if s.clientConnector == nil {
+		writeJSONError(w, "client connector not available", http.StatusServiceUnavailable)
+		return
+	}
+	if s.clientRegistry == nil {
+		writeJSONError(w, "registry not available", http.StatusServiceUnavailable)
+		return
+	}
+
+	ci := s.clientRegistry.GetClient(clientID)
+	if ci == nil {
+		writeJSONError(w, "client not found", http.StatusNotFound)
+		return
+	}
+	if ci.Status != "online" {
+		writeJSONError(w, "client is offline", http.StatusConflict)
+		return
+	}
+
+	if err := s.clientConnector.StartClientWatcher(r.Context(), clientID); err != nil {
+		s.logger.Error("start watcher on client failed", "client_id", clientID, "error", err)
+		writeJSONError(w, fmt.Sprintf("start watcher failed: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"message": fmt.Sprintf("watcher started on client %s", clientID),
+	})
+}
+
+// handleAPIClientWatcherStop handles POST /api/clients/{id}/watcher/stop.
+func (s *Server) handleAPIClientWatcherStop(w http.ResponseWriter, r *http.Request, clientID string) {
+	if s.clientConnector == nil {
+		writeJSONError(w, "client connector not available", http.StatusServiceUnavailable)
+		return
+	}
+	if s.clientRegistry == nil {
+		writeJSONError(w, "registry not available", http.StatusServiceUnavailable)
+		return
+	}
+
+	ci := s.clientRegistry.GetClient(clientID)
+	if ci == nil {
+		writeJSONError(w, "client not found", http.StatusNotFound)
+		return
+	}
+	if ci.Status != "online" {
+		writeJSONError(w, "client is offline", http.StatusConflict)
+		return
+	}
+
+	if err := s.clientConnector.StopClientWatcher(r.Context(), clientID); err != nil {
+		s.logger.Error("stop watcher on client failed", "client_id", clientID, "error", err)
+		writeJSONError(w, fmt.Sprintf("stop watcher failed: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"message": fmt.Sprintf("watcher stopped on client %s", clientID),
+	})
+}
+
+// handleAPIClientStatus handles GET /api/clients/{id}/status — queries client status via RPC.
+func (s *Server) handleAPIClientStatus(w http.ResponseWriter, r *http.Request, clientID string) {
+	if s.clientConnector == nil {
+		writeJSONError(w, "client connector not available", http.StatusServiceUnavailable)
+		return
+	}
+	if s.clientRegistry == nil {
+		writeJSONError(w, "registry not available", http.StatusServiceUnavailable)
+		return
+	}
+
+	ci := s.clientRegistry.GetClient(clientID)
+	if ci == nil {
+		writeJSONError(w, "client not found", http.StatusNotFound)
+		return
+	}
+
+	// If client is offline, return cached registry info without RPC.
+	if ci.Status != "online" {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"status":  "offline",
+			"message": "client is not reachable",
+		})
+		return
+	}
+
+	status, err := s.clientConnector.GetClientStatus(r.Context(), clientID)
+	if err != nil {
+		s.logger.Error("get client status failed", "client_id", clientID, "error", err)
+		writeJSONError(w, fmt.Sprintf("get status failed: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(status)
+}
+
+// handleAPIClientSchedule handles PUT /api/clients/{id}/schedule — updates client schedule.
+func (s *Server) handleAPIClientSchedule(w http.ResponseWriter, r *http.Request, clientID string) {
+	if s.clientRegistry == nil {
+		writeJSONError(w, "registry not available", http.StatusServiceUnavailable)
+		return
+	}
+
+	ci := s.clientRegistry.GetClient(clientID)
+	if ci == nil {
+		writeJSONError(w, "client not found", http.StatusNotFound)
+		return
+	}
+
+	var req struct {
+		FullBackupCron string `json:"full_backup_cron"`
+		AutoBackupCron string `json:"auto_backup_cron"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSONError(w, "invalid JSON body", http.StatusBadRequest)
+		return
+	}
+
+	schedule := registryPkg.ScheduleConfig{
+		FullBackupCron: req.FullBackupCron,
+		AutoBackupCron: req.AutoBackupCron,
+	}
+	if err := s.clientRegistry.SetSchedule(clientID, schedule); err != nil {
+		s.logger.Error("set client schedule failed", "client_id", clientID, "error", err)
+		writeJSONError(w, fmt.Sprintf("set schedule failed: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"message": fmt.Sprintf("schedule updated for client %s", clientID),
+	})
+}
+
+// handleAPIClientHistory handles GET /api/clients/{id}/history — returns backup job history for a client.
+func (s *Server) handleAPIClientHistory(w http.ResponseWriter, r *http.Request, clientID string) {
+	if s.repo == nil {
+		writeJSONError(w, "database not available", http.StatusServiceUnavailable)
+		return
+	}
+
+	// Return the last 10 backup jobs for this client.
+	filter := db.JobFilter{
+		ClientID: &clientID,
+		Limit:    10,
+	}
+	jobs, err := s.repo.ListJobs(r.Context(), filter)
+	if err != nil {
+		s.logger.Error("list client history failed", "client_id", clientID, "error", err)
+		writeJSONError(w, "failed to load history", http.StatusInternalServerError)
+		return
+	}
+
+	type jobJSON struct {
+		BackupID   string `json:"backup_id"`
+		Level      string `json:"level"`
+		Status     string `json:"status"`
+		FileCount  int64  `json:"file_count"`
+		BytesNew   int64  `json:"bytes_new"`
+		StartedAt  string `json:"started_at"`
+		FinishedAt string `json:"finished_at,omitempty"`
+		Duration   string `json:"duration,omitempty"`
+		Error      string `json:"error,omitempty"`
+	}
+
+	result := make([]jobJSON, 0, len(jobs))
+	for _, j := range jobs {
+		jj := jobJSON{
+			BackupID:  j.BackupID,
+			Level:     j.Level,
+			Status:    string(j.Status),
+			FileCount: j.FileCount,
+			BytesNew:  j.BytesNew,
+			StartedAt: j.StartedAt.Format(time.RFC3339),
+			Error:     j.ErrorMessage,
+		}
+		if j.FinishedAt != nil {
+			jj.FinishedAt = j.FinishedAt.Format(time.RFC3339)
+			jj.Duration = j.FinishedAt.Sub(j.StartedAt).Round(time.Second).String()
+		}
+		result = append(result, jj)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(result)
+}
+
+// writeJSONError writes a JSON error response.
+func writeJSONError(w http.ResponseWriter, message string, statusCode int) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(statusCode)
+	json.NewEncoder(w).Encode(map[string]string{"error": message})
 }

@@ -5,6 +5,7 @@ package server
 import (
 	"context"
 	"crypto/tls"
+	"database/sql"
 	"encoding/hex"
 	"fmt"
 	"log/slog"
@@ -22,17 +23,22 @@ import (
 
 	"github.com/ricardopadilha/tergum/internal/backup"
 	"github.com/ricardopadilha/tergum/internal/config"
+	"github.com/ricardopadilha/tergum/internal/connection"
 	"github.com/ricardopadilha/tergum/internal/crypto"
 	"github.com/ricardopadilha/tergum/internal/db"
 	grpcpkg "github.com/ricardopadilha/tergum/internal/grpc"
 	"github.com/ricardopadilha/tergum/internal/grpc/proto"
 	"github.com/ricardopadilha/tergum/internal/model"
 	"github.com/ricardopadilha/tergum/internal/observe"
+	"github.com/ricardopadilha/tergum/internal/registry"
 	"github.com/ricardopadilha/tergum/internal/retention"
 	"github.com/ricardopadilha/tergum/internal/scheduler"
 	"github.com/ricardopadilha/tergum/internal/storage"
 	tlspkg "github.com/ricardopadilha/tergum/internal/tls"
+	"github.com/ricardopadilha/tergum/internal/watcher"
 	"github.com/ricardopadilha/tergum/internal/webui"
+
+	_ "modernc.org/sqlite"
 )
 
 // Version is the current Tergum version, set at build time.
@@ -57,8 +63,10 @@ type Server struct {
 	sched           scheduler.Scheduler
 
 	// Infrastructure
-	repo  db.Repository
-	store storage.Store
+	repo       db.Repository
+	store      storage.Store
+	registry   *registry.Registry
+	registryDB *sql.DB
 
 	// Listeners (stored for shutdown)
 	cmdListener  net.Listener
@@ -91,6 +99,11 @@ func (s *Server) Start(ctx context.Context) error {
 		return fmt.Errorf("setup logging: %w", err)
 	}
 
+	// If role is "client", start the client daemon flow instead of the server.
+	if s.cfg.Node.Role == "client" {
+		return s.startClient(ctx)
+	}
+
 	// Initialize database.
 	repo, err := db.NewRepository(s.cfg.Database.Path, true)
 	if err != nil {
@@ -110,6 +123,34 @@ func (s *Server) Start(ctx context.Context) error {
 		return fmt.Errorf("load server TLS: %w", err)
 	}
 
+	// Initialize client registry.
+	// The registry uses its own database connection to the same SQLite file,
+	// managing the client_registry and missed_schedules tables.
+	registryDB, err := openRegistryDB(s.cfg.Database.Path)
+	if err != nil {
+		return fmt.Errorf("open registry database: %w", err)
+	}
+	reg, err := registry.New(registry.Config{
+		DB:     registryDB,
+		Logger: observe.Logger("registry"),
+	})
+	if err != nil {
+		return fmt.Errorf("create client registry: %w", err)
+	}
+	s.registry = reg
+	s.registryDB = registryDB
+
+	// Start registry background offline checker.
+	regCtx, regCancel := context.WithCancel(ctx)
+	defer regCancel()
+	go reg.Start(regCtx)
+
+	// Load client TLS for connecting to clients (server acts as client when sending RPCs).
+	clientTLS, err := tlsMgr.LoadClientTLS(s.cfg.TLS.CACert, s.cfg.TLS.Cert, s.cfg.TLS.Key)
+	if err != nil {
+		s.logger.Warn("could not load client TLS for remote connector (client management disabled)", "error", err)
+	}
+
 	// Initialize engines.
 	retEngine := retention.New(repo, cas)
 	s.retentionEngine = retEngine
@@ -124,6 +165,7 @@ func (s *Server) Start(ctx context.Context) error {
 		Repo:            repo,
 		DeletionEngine:  nil, // wired separately when deletion adapter is complete
 		RetentionEngine: retEngine,
+		Registry:        reg,
 		MaxBackups:      s.cfg.Backup.MaxConcurrentUploads,
 		Version:         Version,
 	})
@@ -223,6 +265,18 @@ func (s *Server) Start(ctx context.Context) error {
 		// Note: The gRPC mTLS certificates use Ed25519 which browsers don't support.
 		// The web UI runs on plain HTTP. For production, put it behind a reverse proxy
 		// with a browser-compatible certificate (ECDSA/RSA).
+
+		// Wire client registry and remote connector for client management.
+		webuiOpts = append(webuiOpts, webui.WithClientRegistry(reg))
+		if clientTLS != nil {
+			connector := webui.NewRemoteClientConnector(webui.RemoteClientConnectorConfig{
+				Registry: reg,
+				TLSCfg:   clientTLS,
+				Logger:   observe.Logger("client-connector"),
+			})
+			webuiOpts = append(webuiOpts, webui.WithClientConnector(connector))
+			s.logger.Info("remote client connector enabled")
+		}
 
 		uiServer, err := webui.NewServer(
 			s.cfg.WebUI,
@@ -331,10 +385,249 @@ func (s *Server) Stop() error {
 			}
 		}
 
+		// Close registry database connection.
+		if s.registryDB != nil {
+			if err := s.registryDB.Close(); err != nil {
+				s.logger.Error("registry database close error", "error", err)
+			}
+		}
+
 		s.logger.Info("graceful shutdown complete")
 	})
 
 	return stopErr
+}
+
+// startClient runs the client daemon flow: opens the local database, derives the
+// master key, starts a client-side CommandService, connects to the remote server,
+// registers, starts heartbeat, optionally starts file watcher, and waits for shutdown.
+func (s *Server) startClient(ctx context.Context) error {
+	// 1. Open local database.
+	repo, err := db.NewRepository(s.cfg.Database.Path, s.cfg.Database.WALMode)
+	if err != nil {
+		return fmt.Errorf("open database: %w", err)
+	}
+	s.repo = repo
+
+	// 2. Derive master key from TERGUM_PASSPHRASE.
+	masterKey, err := loadMasterKeyFromEnv(s.cfg)
+	if err != nil {
+		return fmt.Errorf("derive master key: %w", err)
+	}
+
+	var encryptor *crypto.AESEncryptor
+	if s.cfg.Encryption.Enabled {
+		encryptor = crypto.NewEncryptor()
+	}
+
+	// 3. Load TLS for the client's own CommandService listener (server TLS for accepting connections).
+	tlsMgr := tlspkg.NewManager()
+	serverTLS, err := tlsMgr.LoadServerTLS(s.cfg.TLS.CACert, s.cfg.TLS.Cert, s.cfg.TLS.Key)
+	if err != nil {
+		return fmt.Errorf("load server TLS for client listener: %w", err)
+	}
+
+	// Load client TLS to get the clientID (certificate CN) and connect to the server.
+	clientTLS, clientID, err := connection.LoadClientTLS(s.cfg)
+	if err != nil {
+		return fmt.Errorf("load client TLS: %w", err)
+	}
+
+	// Create remote server connection for backup operations.
+	serverConn, err := connection.NewServerConnection(s.cfg)
+	if err != nil {
+		return fmt.Errorf("create server connection: %w", err)
+	}
+
+	// Build the ClientCommandServer.
+	cmdHandler := grpcpkg.NewClientCommandServer(grpcpkg.ClientCommandServerConfig{
+		ServerConn: serverConn,
+		Repo:       repo,
+		Encryptor:  encryptor,
+		Cfg:        s.cfg,
+		MasterKey:  masterKey,
+		Version:    Version,
+	})
+
+	// Start gRPC server for client-side CommandService on :7400.
+	creds := credentials.NewTLS(serverTLS)
+	s.grpcCmd = grpc.NewServer(grpc.Creds(creds))
+	proto.RegisterCommandServiceServer(s.grpcCmd, cmdHandler)
+
+	cmdAddr := fmt.Sprintf(":%d", s.cfg.Server.CommandPort)
+	s.cmdListener, err = net.Listen("tcp", cmdAddr)
+	if err != nil {
+		return fmt.Errorf("listen client command port %d: %w", s.cfg.Server.CommandPort, err)
+	}
+	s.logger.Info("client CommandService listening", "port", s.cfg.Server.CommandPort)
+
+	go func() {
+		if err := s.grpcCmd.Serve(s.cmdListener); err != nil {
+			s.logger.Error("client gRPC server error", "error", err)
+		}
+	}()
+
+	// 4. Connect to remote server.
+	serverClient, err := grpcpkg.Connect(
+		ctx,
+		s.cfg.Server.Address,
+		s.cfg.Server.CommandPort,
+		s.cfg.Server.DataPort,
+		clientTLS,
+	)
+	if err != nil {
+		return fmt.Errorf("connect to server: %w", err)
+	}
+
+	// Determine this client's advertised address for the server to call back.
+	hostname := s.cfg.Node.Hostname
+	if hostname == "" {
+		hostname, _ = os.Hostname()
+	}
+	clientAddress := fmt.Sprintf("%s:%d", hostname, s.cfg.Server.CommandPort)
+
+	// 5. Send RegisterClient RPC.
+	_, regErr := serverClient.RegisterClient(ctx, clientID, clientAddress)
+	if regErr != nil {
+		// Log but don't fail — the heartbeat loop will retry registration.
+		s.logger.Warn("initial client registration failed (will retry via heartbeat)",
+			"error", regErr,
+		)
+	} else {
+		s.logger.Info("registered with server",
+			"client_id", clientID,
+			"address", clientAddress,
+		)
+	}
+
+	// 6. Start heartbeat loop.
+	heartbeatCtx, heartbeatCancel := context.WithCancel(ctx)
+	go grpcpkg.StartHeartbeat(heartbeatCtx, serverClient, clientID, clientAddress, 30*time.Second)
+
+	// 7. If watcher is enabled, start file watcher with RemoteServerConnection.
+	var fw watcher.Watcher
+	var ongoing *scheduler.OngoingBackup
+	var watchCancel context.CancelFunc
+
+	if s.cfg.Watcher.Enabled {
+		// Resolve include and exclude paths.
+		includePaths, _ := repo.ListIncludePaths(ctx)
+		if len(includePaths) == 0 {
+			includePaths = s.cfg.Client.IncludePaths
+		}
+
+		excludePatterns, _ := repo.ListExcludePatterns(ctx)
+		if len(excludePatterns) == 0 {
+			excludePatterns = s.cfg.Client.ExcludePatterns
+		}
+
+		if len(includePaths) > 0 {
+			watcherCfg := watcher.Config{
+				DebounceMs:       s.cfg.Watcher.DebounceMs,
+				StabilitySeconds: s.cfg.Watcher.StabilitySeconds,
+				ExcludePatterns:  excludePatterns,
+				Repository:       repo,
+			}
+
+			fileWatcher, fwErr := watcher.NewFileWatcher(watcherCfg)
+			if fwErr != nil {
+				s.logger.Warn("failed to create file watcher", "error", fwErr)
+			} else {
+				var watchCtx context.Context
+				watchCtx, watchCancel = context.WithCancel(ctx)
+
+				if startErr := fileWatcher.Start(watchCtx); startErr != nil {
+					s.logger.Warn("failed to start file watcher", "error", startErr)
+					watchCancel()
+				} else {
+					for _, p := range includePaths {
+						if addErr := fileWatcher.AddPath(p, true); addErr != nil {
+							s.logger.Warn("cannot watch path", "path", p, "error", addErr)
+						}
+					}
+
+					fw = fileWatcher
+					cmdHandler.SetWatcher(fw)
+
+					// Start ongoing backup processor.
+					batchInterval := time.Duration(s.cfg.Watcher.BatchIntervalMinutes) * time.Minute
+					if batchInterval <= 0 {
+						batchInterval = 5 * time.Minute
+					}
+
+					ongoing = scheduler.NewOngoingBackup(scheduler.OngoingConfig{
+						Watcher:       fw,
+						Server:        serverConn,
+						Repo:          repo,
+						Encryptor:     encryptor,
+						MasterKey:     masterKey,
+						BatchInterval: batchInterval,
+					})
+
+					if startErr := ongoing.Start(watchCtx); startErr != nil {
+						s.logger.Warn("failed to start ongoing backup", "error", startErr)
+					} else {
+						s.logger.Info("file watcher and ongoing backup started",
+							"paths", len(includePaths),
+							"batch_interval", batchInterval,
+						)
+					}
+				}
+			}
+		} else {
+			s.logger.Warn("watcher enabled but no include paths configured")
+		}
+	}
+
+	s.logger.Info("tergum client daemon started",
+		"client_id", clientID,
+		"server", s.cfg.Server.Address,
+		"command_port", s.cfg.Server.CommandPort,
+	)
+
+	// 8. Wait for SIGTERM/SIGINT, then graceful shutdown.
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGTERM, syscall.SIGINT)
+
+	select {
+	case sig := <-sigCh:
+		s.logger.Info("received shutdown signal", "signal", sig)
+	case <-ctx.Done():
+		s.logger.Info("context cancelled, shutting down")
+	}
+
+	// Graceful shutdown.
+	s.logger.Info("starting client graceful shutdown")
+
+	// Stop heartbeat.
+	heartbeatCancel()
+
+	// Stop watcher and ongoing backup.
+	if ongoing != nil {
+		ongoing.Stop()
+	}
+	if fw != nil {
+		fw.Stop()
+	}
+	if watchCancel != nil {
+		watchCancel()
+	}
+
+	// Stop gRPC command server.
+	if s.grpcCmd != nil {
+		s.grpcCmd.GracefulStop()
+		s.logger.Info("client gRPC server stopped")
+	}
+
+	// Close database.
+	if s.repo != nil {
+		if err := s.repo.Close(); err != nil {
+			s.logger.Error("database close error", "error", err)
+		}
+	}
+
+	s.logger.Info("client graceful shutdown complete")
+	return nil
 }
 
 // runRetentionLoop runs the retention engine every hour.
@@ -443,4 +736,22 @@ func loadMasterKeyFromEnv(cfg *config.Config) ([]byte, error) {
 
 	enc := crypto.NewEncryptor()
 	return enc.DeriveKey(passphrase, salt)
+}
+
+// openRegistryDB opens a SQLite connection to the same database file for the
+// client registry. The registry manages its own tables (client_registry, missed_schedules)
+// and needs a separate connection to avoid lifecycle conflicts with the main repository.
+func openRegistryDB(dbPath string) (*sql.DB, error) {
+	db, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		return nil, fmt.Errorf("open sqlite for registry: %w", err)
+	}
+
+	// Enable WAL mode for better concurrency with the main repo connection.
+	if _, err := db.Exec("PRAGMA journal_mode=WAL"); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("set WAL mode: %w", err)
+	}
+
+	return db, nil
 }

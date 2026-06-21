@@ -10,6 +10,9 @@ import (
 	"github.com/ricardopadilha/tergum/internal/db"
 	"github.com/ricardopadilha/tergum/internal/grpc/proto"
 	"github.com/ricardopadilha/tergum/internal/model"
+	"github.com/ricardopadilha/tergum/internal/registry"
+	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/peer"
 )
 
 // DeletionEngine defines the interface for deletion operations.
@@ -30,6 +33,7 @@ type CommandServer struct {
 	repo            db.Repository
 	deletionEngine  DeletionEngine
 	retentionEngine RetentionEngine
+	registry        *registry.Registry
 	backupSem       *Semaphore
 	version         string
 	startedAt       time.Time
@@ -41,7 +45,8 @@ type CommandServerConfig struct {
 	Repo            db.Repository
 	DeletionEngine  DeletionEngine
 	RetentionEngine RetentionEngine
-	MaxBackups      int // max concurrent backups, default 4
+	Registry        *registry.Registry // optional; nil in local "both" mode
+	MaxBackups      int                // max concurrent backups, default 4
 	Version         string
 }
 
@@ -62,6 +67,7 @@ func NewCommandServer(cfg CommandServerConfig) *CommandServer {
 		repo:            cfg.Repo,
 		deletionEngine:  cfg.DeletionEngine,
 		retentionEngine: cfg.RetentionEngine,
+		registry:        cfg.Registry,
 		backupSem:       NewSemaphore(maxBackups),
 		version:         version,
 		startedAt:       time.Now(),
@@ -165,6 +171,13 @@ func (s *CommandServer) GetStatus(ctx context.Context, req *proto.StatusRequest)
 
 // Ping returns server version and uptime.
 func (s *CommandServer) Ping(ctx context.Context, req *proto.PingRequest) (*proto.PingResponse, error) {
+	// If registry is configured, update the client's heartbeat.
+	if s.registry != nil {
+		if clientID, err := clientIDFromContext(ctx); err == nil && clientID != "" {
+			_ = s.registry.Heartbeat(clientID)
+		}
+	}
+
 	uptime := time.Since(s.startedAt).Truncate(time.Second)
 	return &proto.PingResponse{
 		Version: s.version,
@@ -276,6 +289,59 @@ func (s *CommandServer) GetRetention(ctx context.Context, req *proto.RetentionRe
 	return &proto.RetentionResponse{
 		Policies: protoPolicies,
 	}, nil
+}
+
+// RegisterClient handles a client registration request. It records the client
+// in the registry with its ID and callback address.
+func (s *CommandServer) RegisterClient(ctx context.Context, req *proto.RegisterRequest) (*proto.RegisterResponse, error) {
+	clientID := req.ClientId
+	// Prefer the certificate CN as the authoritative client identity when available.
+	if cn, err := clientIDFromContext(ctx); err == nil && cn != "" {
+		clientID = cn
+	}
+
+	if clientID == "" {
+		return nil, MapError(&model.ConfigError{Message: "client_id is required"})
+	}
+
+	if s.registry == nil {
+		// In local "both" mode the registry is not configured; accept gracefully.
+		return &proto.RegisterResponse{
+			Success:       true,
+			ServerVersion: s.version,
+		}, nil
+	}
+
+	_, err := s.registry.Register(clientID, req.Address)
+	if err != nil {
+		return nil, MapError(err)
+	}
+
+	return &proto.RegisterResponse{
+		Success:       true,
+		ServerVersion: s.version,
+	}, nil
+}
+
+// clientIDFromContext extracts the client identity from the mTLS peer
+// certificate Common Name (CN). Returns empty string if TLS info is unavailable.
+func clientIDFromContext(ctx context.Context) (string, error) {
+	p, ok := peer.FromContext(ctx)
+	if !ok {
+		return "", fmt.Errorf("no peer info in context")
+	}
+
+	tlsInfo, ok := p.AuthInfo.(credentials.TLSInfo)
+	if !ok {
+		return "", fmt.Errorf("no TLS info in peer")
+	}
+
+	if len(tlsInfo.State.PeerCertificates) == 0 {
+		return "", fmt.Errorf("no peer certificates")
+	}
+
+	cn := tlsInfo.State.PeerCertificates[0].Subject.CommonName
+	return cn, nil
 }
 
 // Ensure CommandServer satisfies the interface at compile time.

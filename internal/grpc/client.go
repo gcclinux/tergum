@@ -106,6 +106,12 @@ func ConnectWithConfig(ctx context.Context, address string, commandPort int, dat
 	return NewTergumClient(commandConn, dataConn, cfg), nil
 }
 
+// DataClient returns the underlying DataServiceClient for use by components
+// that need direct access to the data service (e.g., RemoteServerConnection, RemoteDataSource).
+func (c *TergumClient) DataClient() proto.DataServiceClient {
+	return c.data
+}
+
 // --- CommandService Methods ---
 
 // TriggerBackup sends a backup request to the server.
@@ -193,6 +199,46 @@ func (c *TergumClient) GetRetention(ctx context.Context, clientID string) (*prot
 		var e error
 		resp, e = c.command.GetRetention(ctx, &proto.RetentionRequest{
 			ClientId: clientID,
+		})
+		return e
+	})
+	return resp, err
+}
+
+// StartWatcher sends a start watcher request to the target.
+func (c *TergumClient) StartWatcher(ctx context.Context, clientID string) (*proto.WatcherResponse, error) {
+	var resp *proto.WatcherResponse
+	err := c.withRetry(ctx, func() error {
+		var e error
+		resp, e = c.command.StartWatcher(ctx, &proto.WatcherRequest{
+			ClientId: clientID,
+		})
+		return e
+	})
+	return resp, err
+}
+
+// StopWatcher sends a stop watcher request to the target.
+func (c *TergumClient) StopWatcher(ctx context.Context, clientID string) (*proto.WatcherResponse, error) {
+	var resp *proto.WatcherResponse
+	err := c.withRetry(ctx, func() error {
+		var e error
+		resp, e = c.command.StopWatcher(ctx, &proto.WatcherRequest{
+			ClientId: clientID,
+		})
+		return e
+	})
+	return resp, err
+}
+
+// RegisterClient registers this client with the server.
+func (c *TergumClient) RegisterClient(ctx context.Context, clientID, address string) (*proto.RegisterResponse, error) {
+	var resp *proto.RegisterResponse
+	err := c.withRetry(ctx, func() error {
+		var e error
+		resp, e = c.command.RegisterClient(ctx, &proto.RegisterRequest{
+			ClientId: clientID,
+			Address:  address,
 		})
 		return e
 	})

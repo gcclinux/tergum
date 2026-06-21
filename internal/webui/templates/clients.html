@@ -1,31 +1,471 @@
 {{template "header" .}}
 <h1 class="text-lg font-bold p-4">Connected Clients</h1>
+
 <div class="bg-white rounded shadow p-4 m-4">
-    <table>
-        <thead>
-            <tr>
-                <th class="p-4">Client ID</th>
-                <th class="p-4">Last Seen</th>
-                <th class="p-4">Last Backup</th>
-                <th class="p-4">Status</th>
-                <th class="p-4">Files</th>
-                <th class="p-4">Actions</th>
-            </tr>
-        </thead>
-        <tbody>
-            {{range .Clients}}
-            <tr>
-                <td class="p-4">{{.ClientID}}</td>
-                <td class="p-4">{{.LastSeen}}</td>
-                <td class="p-4">{{.LastBackup}}</td>
-                <td class="p-4">{{.Status}}</td>
-                <td class="p-4">{{.FileCount}}</td>
-                <td class="p-4">
-                    <button hx-post="/api/backups/trigger">Trigger Backup</button>
-                </td>
-            </tr>
-            {{end}}
-        </tbody>
-    </table>
+    <div id="clients-table">
+        <table class="w-full text-sm">
+            <thead>
+                <tr class="border-b-2 border-gray-200 text-xs text-gray-500 uppercase">
+                    <th class="p-3 text-left">Hostname</th>
+                    <th class="p-3 text-left">Status</th>
+                    <th class="p-3 text-left">Last Seen</th>
+                    <th class="p-3 text-left">Last Backup</th>
+                    <th class="p-3 text-left">Watcher</th>
+                    <th class="p-3 text-center">Actions</th>
+                </tr>
+            </thead>
+            <tbody id="clients-body">
+                {{if not .Clients}}
+                <tr>
+                    <td colspan="6" class="p-4 text-gray-500 italic text-center">No clients registered.</td>
+                </tr>
+                {{else}}
+                {{range .Clients}}
+                <tr class="border-b border-gray-100 hover:bg-gray-50 cursor-pointer" data-client-id="{{.ClientID}}" onclick="toggleClientDetail('{{.ClientID}}')">
+                    <td class="p-3 font-mono text-xs">{{.ClientID}}</td>
+                    <td class="p-3">
+                        {{if eq .Status "online"}}
+                        <span class="inline-flex items-center">
+                            <span class="w-2 h-2 rounded-full bg-green-500 mr-2"></span>
+                            <span class="text-green-700">online</span>
+                        </span>
+                        {{else}}
+                        <span class="inline-flex items-center">
+                            <span class="w-2 h-2 rounded-full bg-red-500 mr-2"></span>
+                            <span class="text-red-700">offline</span>
+                        </span>
+                        {{end}}
+                    </td>
+                    <td class="p-3 text-gray-600">{{.LastSeen}}</td>
+                    <td class="p-3 text-gray-600">{{.LastBackup}}</td>
+                    <td class="p-3">
+                        {{if .WatcherActive}}
+                        <span class="text-green-600 text-xs font-medium">running</span>
+                        {{else}}
+                        <span class="text-gray-400 text-xs">stopped</span>
+                        {{end}}
+                    </td>
+                    <td class="p-3 text-center">
+                        <button onclick="event.stopPropagation(); triggerBackup('{{.ClientID}}')"
+                            class="text-xs bg-blue-500 text-white px-2 py-1 rounded hover:bg-blue-600 mr-1"
+                            {{if ne .Status "online"}}disabled title="Client is offline"{{end}}>
+                            Trigger Backup
+                        </button>
+                        {{if .WatcherActive}}
+                        <button onclick="event.stopPropagation(); stopWatcher('{{.ClientID}}')"
+                            class="text-xs bg-yellow-500 text-white px-2 py-1 rounded hover:bg-yellow-600 mr-1"
+                            {{if ne .Status "online"}}disabled title="Client is offline"{{end}}>
+                            Stop Watcher
+                        </button>
+                        {{else}}
+                        <button onclick="event.stopPropagation(); startWatcher('{{.ClientID}}')"
+                            class="text-xs bg-green-500 text-white px-2 py-1 rounded hover:bg-green-600 mr-1"
+                            {{if ne .Status "online"}}disabled title="Client is offline"{{end}}>
+                            Start Watcher
+                        </button>
+                        {{end}}
+                    </td>
+                </tr>
+                <!-- Detail row (hidden by default) -->
+                <tr class="hidden" id="detail-row-{{.ClientID}}">
+                    <td colspan="6" class="p-0">
+                        <div class="bg-gray-50 border-t border-b border-gray-200 p-4">
+                            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                <!-- Backup History -->
+                                <div class="bg-white rounded shadow p-3">
+                                    <h3 class="text-xs font-bold text-gray-700 uppercase mb-2">Backup History (Last 10)</h3>
+                                    <div id="history-{{.ClientID}}" class="text-xs text-gray-500 italic">Loading...</div>
+                                </div>
+                                <!-- Live Status -->
+                                <div class="bg-white rounded shadow p-3">
+                                    <h3 class="text-xs font-bold text-gray-700 uppercase mb-2">Current Status</h3>
+                                    <div id="live-status-{{.ClientID}}" class="text-xs text-gray-500 italic">Loading...</div>
+                                </div>
+                                <!-- Schedule Config -->
+                                <div class="bg-white rounded shadow p-3">
+                                    <h3 class="text-xs font-bold text-gray-700 uppercase mb-2">Schedule Configuration</h3>
+                                    <div class="space-y-2">
+                                        <label class="block text-xs text-gray-500">
+                                            Full Backup Cron:
+                                            <input type="text" id="detail-full-cron-{{.ClientID}}" value="{{.FullBackupCron}}"
+                                                placeholder="0 2 * * *" class="mt-1 block w-full border rounded px-2 py-1 text-xs">
+                                        </label>
+                                        <label class="block text-xs text-gray-500">
+                                            Auto Backup Cron:
+                                            <input type="text" id="detail-auto-cron-{{.ClientID}}" value="{{.AutoBackupCron}}"
+                                                placeholder="*/30 * * * *" class="mt-1 block w-full border rounded px-2 py-1 text-xs">
+                                        </label>
+                                        <button onclick="event.stopPropagation(); saveDetailSchedule('{{.ClientID}}')"
+                                            class="text-xs bg-gray-600 text-white px-3 py-1 rounded hover:bg-gray-700 mt-1">
+                                            Save Schedule
+                                        </button>
+                                        <span id="detail-schedule-msg-{{.ClientID}}" class="text-xs ml-2"></span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </td>
+                </tr>
+                {{end}}
+                {{end}}
+            </tbody>
+        </table>
+    </div>
 </div>
+
+<!-- Schedule Configuration -->
+{{if .Clients}}
+<div class="bg-white rounded shadow p-4 m-4">
+    <h2 class="text-md font-bold mb-3">Schedule Configuration</h2>
+    <div id="schedule-forms">
+        {{range .Clients}}
+        <div class="border-b border-gray-100 p-3" id="schedule-{{.ClientID}}">
+            <div class="flex items-center gap-4 flex-wrap">
+                <span class="font-mono text-xs text-gray-700 w-40">{{.ClientID}}</span>
+                <label class="text-xs text-gray-500">
+                    Full Backup Cron:
+                    <input type="text" id="full-cron-{{.ClientID}}" value="{{.FullBackupCron}}"
+                        placeholder="0 2 * * *" class="ml-1 border rounded px-2 py-1 text-xs w-32">
+                </label>
+                <label class="text-xs text-gray-500">
+                    Auto Backup Cron:
+                    <input type="text" id="auto-cron-{{.ClientID}}" value="{{.AutoBackupCron}}"
+                        placeholder="*/30 * * * *" class="ml-1 border rounded px-2 py-1 text-xs w-32">
+                </label>
+                <button onclick="saveSchedule('{{.ClientID}}')"
+                    class="text-xs bg-gray-600 text-white px-3 py-1 rounded hover:bg-gray-700">
+                    Save
+                </button>
+                <span id="schedule-msg-{{.ClientID}}" class="text-xs"></span>
+            </div>
+        </div>
+        {{end}}
+    </div>
+</div>
+{{end}}
+
+<!-- Status/notification area -->
+<div id="client-notification" class="m-4 hidden"></div>
+
+<script>
+// Auto-refresh client status every 10 seconds.
+let refreshInterval = null;
+// Track status polling intervals for expanded clients.
+let statusPollers = {};
+// Track which clients are expanded.
+let expandedClients = {};
+
+function toggleClientDetail(clientID) {
+    const detailRow = document.getElementById(`detail-row-${clientID}`);
+    if (!detailRow) return;
+
+    if (detailRow.classList.contains('hidden')) {
+        // Expand: show the detail row and load data.
+        detailRow.classList.remove('hidden');
+        expandedClients[clientID] = true;
+        loadClientHistory(clientID);
+        loadClientStatus(clientID);
+        // Start polling status every 5 seconds.
+        statusPollers[clientID] = setInterval(() => loadClientStatus(clientID), 5000);
+    } else {
+        // Collapse: hide the detail row and stop polling.
+        detailRow.classList.add('hidden');
+        delete expandedClients[clientID];
+        if (statusPollers[clientID]) {
+            clearInterval(statusPollers[clientID]);
+            delete statusPollers[clientID];
+        }
+    }
+}
+
+function loadClientHistory(clientID) {
+    const container = document.getElementById(`history-${clientID}`);
+    if (!container) return;
+
+    fetch(`/api/clients/${clientID}/history`)
+        .then(r => r.json())
+        .then(jobs => {
+            if (!jobs || jobs.length === 0) {
+                container.innerHTML = '<p class="text-gray-400 italic">No backup history.</p>';
+                return;
+            }
+            let html = '<table class="w-full text-xs"><thead><tr class="border-b border-gray-200 text-gray-500 uppercase">';
+            html += '<th class="py-1 text-left">Date</th><th class="py-1 text-left">Level</th>';
+            html += '<th class="py-1 text-left">Status</th><th class="py-1 text-right">Files</th>';
+            html += '<th class="py-1 text-right">Size</th><th class="py-1 text-right">Duration</th>';
+            html += '</tr></thead><tbody>';
+            jobs.forEach(j => {
+                const date = j.started_at ? new Date(j.started_at).toLocaleString() : '-';
+                const statusColor = j.status === 'completed' ? 'text-green-600' :
+                    j.status === 'failed' ? 'text-red-600' :
+                    j.status === 'running' ? 'text-blue-600' : 'text-gray-600';
+                const size = formatBytes(j.bytes_new || 0);
+                const duration = j.duration || '-';
+                html += `<tr class="border-b border-gray-50">`;
+                html += `<td class="py-1">${date}</td>`;
+                html += `<td class="py-1">${j.level}</td>`;
+                html += `<td class="py-1 ${statusColor}">${j.status}</td>`;
+                html += `<td class="py-1 text-right">${j.file_count}</td>`;
+                html += `<td class="py-1 text-right">${size}</td>`;
+                html += `<td class="py-1 text-right">${duration}</td>`;
+                html += `</tr>`;
+            });
+            html += '</tbody></table>';
+            container.innerHTML = html;
+        })
+        .catch(err => {
+            container.innerHTML = `<p class="text-red-500">Failed to load: ${err}</p>`;
+        });
+}
+
+function loadClientStatus(clientID) {
+    const container = document.getElementById(`live-status-${clientID}`);
+    if (!container) return;
+
+    fetch(`/api/clients/${clientID}/status`)
+        .then(r => r.json())
+        .then(status => {
+            if (status.error) {
+                container.innerHTML = `<p class="text-red-500">${status.error}</p>`;
+                return;
+            }
+            let html = '<div class="space-y-1">';
+            const statusColor = status.status === 'running' ? 'text-blue-600' :
+                status.status === 'idle' ? 'text-green-600' :
+                status.status === 'offline' ? 'text-red-600' : 'text-gray-600';
+
+            html += `<p><span class="text-gray-500">Status:</span> <span class="font-medium ${statusColor}">${status.status}</span></p>`;
+
+            if (status.status === 'running') {
+                html += `<p><span class="text-gray-500">Backup:</span> <span class="font-mono">${(status.backup_id || '').substring(0, 12)}</span></p>`;
+                html += `<p><span class="text-gray-500">Files:</span> ${status.files_processed || 0}</p>`;
+                html += `<p><span class="text-gray-500">Transferred:</span> ${formatBytes(status.bytes_transferred || 0)}</p>`;
+                if (status.started_at) {
+                    html += `<p><span class="text-gray-500">Started:</span> ${new Date(status.started_at).toLocaleString()}</p>`;
+                }
+                html += '<div class="mt-2"><span class="inline-flex items-center"><span class="w-2 h-2 rounded-full bg-blue-500 animate-pulse mr-1"></span><span class="text-blue-600 text-xs">backup in progress</span></span></div>';
+            }
+
+            if (status.message) {
+                html += `<p class="text-gray-400 mt-1">${status.message}</p>`;
+            }
+            html += '</div>';
+            container.innerHTML = html;
+        })
+        .catch(err => {
+            container.innerHTML = `<p class="text-red-500">Failed to load: ${err}</p>`;
+        });
+}
+
+function saveDetailSchedule(clientID) {
+    const fullCron = document.getElementById(`detail-full-cron-${clientID}`).value.trim();
+    const autoCron = document.getElementById(`detail-auto-cron-${clientID}`).value.trim();
+    const msgEl = document.getElementById(`detail-schedule-msg-${clientID}`);
+
+    fetch(`/api/clients/${clientID}/schedule`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ full_backup_cron: fullCron, auto_backup_cron: autoCron })
+    })
+        .then(r => r.json())
+        .then(data => {
+            if (data.error) {
+                msgEl.textContent = data.error;
+                msgEl.className = 'text-xs text-red-600 ml-2';
+            } else {
+                msgEl.textContent = 'Saved!';
+                msgEl.className = 'text-xs text-green-600 ml-2';
+            }
+            setTimeout(() => { msgEl.textContent = ''; }, 3000);
+        })
+        .catch(err => {
+            msgEl.textContent = 'Failed: ' + err;
+            msgEl.className = 'text-xs text-red-600 ml-2';
+        });
+}
+
+function formatBytes(bytes) {
+    if (bytes >= 1024 * 1024 * 1024) return (bytes / (1024 * 1024 * 1024)).toFixed(1) + ' GB';
+    if (bytes >= 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+    if (bytes >= 1024) return (bytes / 1024).toFixed(1) + ' KB';
+    return bytes + ' B';
+}
+
+function refreshClients() {
+    fetch('/api/clients')
+        .then(r => r.json())
+        .then(clients => {
+            const tbody = document.getElementById('clients-body');
+            if (!clients || clients.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" class="p-4 text-gray-500 italic text-center">No clients registered.</td></tr>';
+                return;
+            }
+            let html = '';
+            clients.forEach(c => {
+                const statusDot = c.status === 'online'
+                    ? '<span class="w-2 h-2 rounded-full bg-green-500 mr-2"></span><span class="text-green-700">online</span>'
+                    : '<span class="w-2 h-2 rounded-full bg-red-500 mr-2"></span><span class="text-red-700">offline</span>';
+                const watcherStatus = c.watcher_active
+                    ? '<span class="text-green-600 text-xs font-medium">running</span>'
+                    : '<span class="text-gray-400 text-xs">stopped</span>';
+                const disabled = c.status !== 'online' ? 'disabled title="Client is offline"' : '';
+                const lastSeen = c.last_seen ? new Date(c.last_seen).toLocaleString() : 'never';
+                const lastBackup = c.last_backup ? new Date(c.last_backup).toLocaleString() : 'never';
+
+                let watcherBtn = '';
+                if (c.watcher_active) {
+                    watcherBtn = `<button onclick="event.stopPropagation(); stopWatcher('${c.client_id}')" class="text-xs bg-yellow-500 text-white px-2 py-1 rounded hover:bg-yellow-600 mr-1" ${disabled}>Stop Watcher</button>`;
+                } else {
+                    watcherBtn = `<button onclick="event.stopPropagation(); startWatcher('${c.client_id}')" class="text-xs bg-green-500 text-white px-2 py-1 rounded hover:bg-green-600 mr-1" ${disabled}>Start Watcher</button>`;
+                }
+
+                const isExpanded = expandedClients[c.client_id] || false;
+
+                html += `<tr class="border-b border-gray-100 hover:bg-gray-50 cursor-pointer" data-client-id="${c.client_id}" onclick="toggleClientDetail('${c.client_id}')">
+                    <td class="p-3 font-mono text-xs">${c.client_id}</td>
+                    <td class="p-3"><span class="inline-flex items-center">${statusDot}</span></td>
+                    <td class="p-3 text-gray-600">${lastSeen}</td>
+                    <td class="p-3 text-gray-600">${lastBackup}</td>
+                    <td class="p-3">${watcherStatus}</td>
+                    <td class="p-3 text-center">
+                        <button onclick="event.stopPropagation(); triggerBackup('${c.client_id}')" class="text-xs bg-blue-500 text-white px-2 py-1 rounded hover:bg-blue-600 mr-1" ${disabled}>Trigger Backup</button>
+                        ${watcherBtn}
+                    </td>
+                </tr>`;
+
+                // Detail row
+                const hiddenClass = isExpanded ? '' : 'hidden';
+                html += `<tr class="${hiddenClass}" id="detail-row-${c.client_id}">
+                    <td colspan="6" class="p-0">
+                        <div class="bg-gray-50 border-t border-b border-gray-200 p-4">
+                            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                <div class="bg-white rounded shadow p-3">
+                                    <h3 class="text-xs font-bold text-gray-700 uppercase mb-2">Backup History (Last 10)</h3>
+                                    <div id="history-${c.client_id}" class="text-xs text-gray-500 italic">Loading...</div>
+                                </div>
+                                <div class="bg-white rounded shadow p-3">
+                                    <h3 class="text-xs font-bold text-gray-700 uppercase mb-2">Current Status</h3>
+                                    <div id="live-status-${c.client_id}" class="text-xs text-gray-500 italic">Loading...</div>
+                                </div>
+                                <div class="bg-white rounded shadow p-3">
+                                    <h3 class="text-xs font-bold text-gray-700 uppercase mb-2">Schedule Configuration</h3>
+                                    <div class="space-y-2">
+                                        <label class="block text-xs text-gray-500">
+                                            Full Backup Cron:
+                                            <input type="text" id="detail-full-cron-${c.client_id}" value="${c.full_backup_cron || ''}"
+                                                placeholder="0 2 * * *" class="mt-1 block w-full border rounded px-2 py-1 text-xs">
+                                        </label>
+                                        <label class="block text-xs text-gray-500">
+                                            Auto Backup Cron:
+                                            <input type="text" id="detail-auto-cron-${c.client_id}" value="${c.auto_backup_cron || ''}"
+                                                placeholder="*/30 * * * *" class="mt-1 block w-full border rounded px-2 py-1 text-xs">
+                                        </label>
+                                        <button onclick="event.stopPropagation(); saveDetailSchedule('${c.client_id}')"
+                                            class="text-xs bg-gray-600 text-white px-3 py-1 rounded hover:bg-gray-700 mt-1">
+                                            Save Schedule
+                                        </button>
+                                        <span id="detail-schedule-msg-${c.client_id}" class="text-xs ml-2"></span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </td>
+                </tr>`;
+            });
+            tbody.innerHTML = html;
+
+            // Re-load data for any expanded clients.
+            Object.keys(expandedClients).forEach(cid => {
+                loadClientHistory(cid);
+                loadClientStatus(cid);
+            });
+        })
+        .catch(err => console.error('Failed to refresh clients:', err));
+}
+
+function showNotification(message, type) {
+    const el = document.getElementById('client-notification');
+    const colors = {
+        success: 'bg-green-100 text-green-800',
+        error: 'bg-red-100 text-red-800',
+        info: 'bg-blue-100 text-blue-800'
+    };
+    el.className = `m-4 p-3 rounded text-sm ${colors[type] || colors.info}`;
+    el.textContent = message;
+    el.classList.remove('hidden');
+    setTimeout(() => el.classList.add('hidden'), 5000);
+}
+
+function triggerBackup(clientID) {
+    fetch(`/api/clients/${clientID}/backup`, { method: 'POST' })
+        .then(r => r.json())
+        .then(data => {
+            if (data.error) {
+                showNotification(data.error, 'error');
+            } else {
+                showNotification(data.message, 'success');
+            }
+        })
+        .catch(err => showNotification('Request failed: ' + err, 'error'));
+}
+
+function startWatcher(clientID) {
+    fetch(`/api/clients/${clientID}/watcher/start`, { method: 'POST' })
+        .then(r => r.json())
+        .then(data => {
+            if (data.error) {
+                showNotification(data.error, 'error');
+            } else {
+                showNotification(data.message, 'success');
+                refreshClients();
+            }
+        })
+        .catch(err => showNotification('Request failed: ' + err, 'error'));
+}
+
+function stopWatcher(clientID) {
+    fetch(`/api/clients/${clientID}/watcher/stop`, { method: 'POST' })
+        .then(r => r.json())
+        .then(data => {
+            if (data.error) {
+                showNotification(data.error, 'error');
+            } else {
+                showNotification(data.message, 'success');
+                refreshClients();
+            }
+        })
+        .catch(err => showNotification('Request failed: ' + err, 'error'));
+}
+
+function saveSchedule(clientID) {
+    const fullCron = document.getElementById(`full-cron-${clientID}`).value.trim();
+    const autoCron = document.getElementById(`auto-cron-${clientID}`).value.trim();
+    const msgEl = document.getElementById(`schedule-msg-${clientID}`);
+
+    fetch(`/api/clients/${clientID}/schedule`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ full_backup_cron: fullCron, auto_backup_cron: autoCron })
+    })
+        .then(r => r.json())
+        .then(data => {
+            if (data.error) {
+                msgEl.textContent = data.error;
+                msgEl.className = 'text-xs text-red-600';
+            } else {
+                msgEl.textContent = 'Saved!';
+                msgEl.className = 'text-xs text-green-600';
+            }
+            setTimeout(() => { msgEl.textContent = ''; }, 3000);
+        })
+        .catch(err => {
+            msgEl.textContent = 'Failed: ' + err;
+            msgEl.className = 'text-xs text-red-600';
+        });
+}
+
+// Start auto-refresh.
+refreshInterval = setInterval(refreshClients, 10000);
+</script>
+
 {{template "footer" .}}

@@ -248,6 +248,28 @@ func (r *SQLiteRepository) createSchema() error {
 			enabled         INTEGER DEFAULT 1,
 			created_at      TEXT NOT NULL DEFAULT (datetime('now'))
 		)`)
+
+		stmts = append(stmts, `CREATE TABLE IF NOT EXISTS client_registry (
+			client_id        TEXT PRIMARY KEY,
+			address          TEXT NOT NULL,
+			status           TEXT NOT NULL DEFAULT 'offline',
+			last_seen        TEXT,
+			last_backup      TEXT,
+			watcher_active   INTEGER DEFAULT 0,
+			full_backup_cron TEXT DEFAULT '',
+			auto_backup_cron TEXT DEFAULT '',
+			registered_at    TEXT NOT NULL DEFAULT (datetime('now'))
+		)`)
+
+		stmts = append(stmts, `CREATE TABLE IF NOT EXISTS missed_schedules (
+			id           INTEGER PRIMARY KEY AUTOINCREMENT,
+			client_id    TEXT NOT NULL,
+			level        TEXT NOT NULL,
+			scheduled_at TEXT NOT NULL,
+			resolved     INTEGER DEFAULT 0,
+			resolved_at  TEXT,
+			FOREIGN KEY (client_id) REFERENCES client_registry(client_id)
+		)`)
 	}
 
 	for _, stmt := range stmts {

@@ -12,8 +12,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/ricardopadilha/tergum/internal/backup"
 	"github.com/ricardopadilha/tergum/internal/config"
+	"github.com/ricardopadilha/tergum/internal/connection"
 	"github.com/ricardopadilha/tergum/internal/crypto"
 	"github.com/ricardopadilha/tergum/internal/db"
 	"github.com/ricardopadilha/tergum/internal/scheduler"
@@ -124,11 +124,11 @@ func runWatch(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("no paths could be watched")
 	}
 
-	// Create local server connection.
-	storageDir := cfg.StorageDir()
-	serverConn := &backup.LocalServerConnection{
-		StorageDir: storageDir,
-		Repo:       repo,
+	// Create server connection based on node role.
+	serverConn, err := connection.NewServerConnection(cfg)
+	if err != nil {
+		fw.Stop()
+		return fmt.Errorf("creating server connection: %w", err)
 	}
 
 	// Create ongoing backup processor.
@@ -158,7 +158,7 @@ func runWatch(cmd *cobra.Command, args []string) error {
 	fmt.Printf("  Debounce:          %dms\n", cfg.Watcher.DebounceMs)
 	fmt.Printf("  Stability gate:    %ds\n", cfg.Watcher.StabilitySeconds)
 	fmt.Printf("  Batch interval:    %s\n", batchInterval)
-	fmt.Printf("  Storage:           %s\n", storageDir)
+	fmt.Printf("  Storage:           %s\n", cfg.StorageDir())
 	fmt.Printf("\nPress Ctrl+C to stop.\n\n")
 
 	// Wait for shutdown signal.

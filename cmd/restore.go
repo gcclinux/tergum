@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/ricardopadilha/tergum/internal/config"
+	"github.com/ricardopadilha/tergum/internal/connection"
 	"github.com/ricardopadilha/tergum/internal/crypto"
 	"github.com/ricardopadilha/tergum/internal/db"
 	"github.com/ricardopadilha/tergum/internal/restore"
@@ -75,9 +76,11 @@ func runRestore(cmd *cobra.Command, args []string) error {
 		encryptor = crypto.NewEncryptor()
 	}
 
-	// Create local data source.
-	storageDir := cfg.StorageDir()
-	source := &restore.LocalDataSource{StorageDir: storageDir}
+	// Create data source based on node role (local or remote).
+	source, err := connection.NewDataSource(cfg)
+	if err != nil {
+		return fmt.Errorf("creating data source: %w", err)
+	}
 
 	// Create restore engine.
 	engine := restore.NewRestoreEngine(source, repo, encryptor, masterKey)
