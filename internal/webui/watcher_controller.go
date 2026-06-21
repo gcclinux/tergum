@@ -24,6 +24,7 @@ type LocalWatcherController struct {
 	stabilitySec     int
 	batchMinutes     int
 	excludePatterns  []string
+	broker           *SSEBroker
 
 	mu       sync.Mutex
 	fw       *watcher.FileWatcher
@@ -64,6 +65,11 @@ func (c *LocalWatcherController) IsRunning() bool {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return c.running
+}
+
+// SetBroker sets the SSE broker for publishing watcher events.
+func (c *LocalWatcherController) SetBroker(b *SSEBroker) {
+	c.broker = b
 }
 
 // StartWatcher starts the file watcher and ongoing backup processor.
@@ -153,6 +159,12 @@ func (c *LocalWatcherController) StartWatcher() error {
 	c.running = true
 
 	slog.Info("watcher started from web UI")
+	if c.broker != nil {
+		c.broker.Publish(ActivityEvent{
+			Type:    "watcher_started",
+			Message: "File watcher started",
+		})
+	}
 	return nil
 }
 
@@ -180,6 +192,12 @@ func (c *LocalWatcherController) StopWatcher() error {
 	c.ongoing = nil
 
 	slog.Info("watcher stopped from web UI")
+	if c.broker != nil {
+		c.broker.Publish(ActivityEvent{
+			Type:    "watcher_stopped",
+			Message: "File watcher stopped",
+		})
+	}
 	return nil
 }
 

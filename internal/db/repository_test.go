@@ -607,14 +607,24 @@ func TestDeleteEntries_AllBackups(t *testing.T) {
 		FilePath: "/shared.txt", FileSize: 10, OS: "linux", BackupDate: now,
 	})
 
-	// With AllBackups=true but no other filter, DeleteEntries returns 0 (no conditions).
+	// With AllBackups=true but no other filter, DeleteEntries deletes ALL entries.
 	deleted, err := repo.DeleteEntries(ctx, DeleteFilter{AllBackups: true})
 	if err != nil {
 		t.Fatalf("DeleteEntries AllBackups only: %v", err)
 	}
-	if deleted != 0 {
-		t.Errorf("expected 0 deleted with AllBackups only, got %d", deleted)
+	if deleted != 2 {
+		t.Errorf("expected 2 deleted with AllBackups (all entries), got %d", deleted)
 	}
+
+	// Re-insert for next test.
+	repo.InsertBackupEntry(ctx, model.BackupEntry{
+		BackupID: "job-all-1", Blake3Hash: "ha1", FileName: "shared.txt",
+		FilePath: "/shared.txt", FileSize: 10, OS: "linux", BackupDate: now,
+	})
+	repo.InsertBackupEntry(ctx, model.BackupEntry{
+		BackupID: "job-all-2", Blake3Hash: "ha2", FileName: "shared.txt",
+		FilePath: "/shared.txt", FileSize: 10, OS: "linux", BackupDate: now,
+	})
 
 	// With AllBackups + FilePath, delete the file across all backup sets.
 	deleted, err = repo.DeleteEntries(ctx, DeleteFilter{FilePath: "/shared.txt", AllBackups: true})

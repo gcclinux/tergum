@@ -263,11 +263,20 @@ func TestInteractiveSetupFullFlow(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	// Save and restore the real config file since runInteractiveSetup writes to it.
-	realCfgPath := filepath.Join(defaultConfigDirForTest(), "tergum.toml")
+	configDir := defaultConfigDirForTest()
+	realCfgPath := filepath.Join(configDir, "tergum.toml")
 	origData, origErr := os.ReadFile(realCfgPath)
+	saltData, saltErr := os.ReadFile(filepath.Join(configDir, "salt"))
+	verifyData, verifyErr := os.ReadFile(filepath.Join(configDir, "key_verify"))
 	defer func() {
 		if origErr == nil {
 			os.WriteFile(realCfgPath, origData, 0600)
+		}
+		if saltErr == nil {
+			os.WriteFile(filepath.Join(configDir, "salt"), saltData, 0600)
+		}
+		if verifyErr == nil {
+			os.WriteFile(filepath.Join(configDir, "key_verify"), verifyData, 0600)
 		}
 	}()
 

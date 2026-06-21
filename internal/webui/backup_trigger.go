@@ -20,6 +20,7 @@ type LocalBackupTrigger struct {
 	storageDir string
 	masterKey  []byte
 	encEnabled bool
+	broker     *SSEBroker
 	mu         sync.Mutex
 	running    bool
 }
@@ -33,6 +34,11 @@ func NewLocalBackupTrigger(repo db.Repository, storageDir string, masterKey []by
 		masterKey:  masterKey,
 		encEnabled: encEnabled,
 	}
+}
+
+// SetBroker sets the SSE broker for publishing backup events.
+func (t *LocalBackupTrigger) SetBroker(b *SSEBroker) {
+	t.broker = b
 }
 
 // IsAvailable returns true if the trigger can start a backup.
@@ -109,6 +115,12 @@ func (t *LocalBackupTrigger) TriggerBackup(level string) error {
 		}
 
 		slog.Info("web-triggered backup starting", "level", level)
+		if t.broker != nil {
+			t.broker.Publish(ActivityEvent{
+				Type:    "backup_started",
+				Message: fmt.Sprintf("Backup %s started (web UI)", level),
+			})
+		}
 		result, err := engine.RunBackup(ctx, backup.BackupRequest{
 			Level:       backupLevel,
 			ClientID:    hostname,
@@ -116,6 +128,12 @@ func (t *LocalBackupTrigger) TriggerBackup(level string) error {
 		})
 		if err != nil {
 			slog.Error("web-triggered backup failed", "error", err)
+			if t.broker != nil {
+				t.broker.Publish(ActivityEvent{
+					Type:    "backup_failed",
+					Message: fmt.Sprintf("Backup %s failed: %v", level, err),
+				})
+			}
 			return
 		}
 		slog.Info("web-triggered backup completed",
@@ -123,6 +141,12 @@ func (t *LocalBackupTrigger) TriggerBackup(level string) error {
 			"files", result.FilesProcessed,
 			"bytes_new", result.BytesNew,
 		)
+		if t.broker != nil {
+			t.broker.Publish(ActivityEvent{
+				Type:    "backup_completed",
+				Message: fmt.Sprintf("Backup %s completed: %d files, %d bytes new", level, result.FilesProcessed, result.BytesNew),
+			})
+		}
 	}()
 
 	return nil

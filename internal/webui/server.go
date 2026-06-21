@@ -9,6 +9,7 @@ import (
 	"io/fs"
 	"log/slog"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/ricardopadilha/tergum/internal/config"
@@ -152,6 +153,18 @@ func NewServer(cfg config.WebUIConfig, username, password string, opts ...Server
 		opt(s)
 	}
 
+	// Wire broker to backup trigger for SSE events.
+	if s.backupTrigger != nil {
+		if bt, ok := s.backupTrigger.(*LocalBackupTrigger); ok {
+			bt.SetBroker(s.broker)
+		}
+	}
+	if s.watcherController != nil {
+		if wc, ok := s.watcherController.(*LocalWatcherController); ok {
+			wc.SetBroker(s.broker)
+		}
+	}
+
 	// Register routes.
 	s.httpServer.Handler = s.routes()
 
@@ -216,6 +229,8 @@ func (s *Server) routes() http.Handler {
 	// Restore API endpoints.
 	authed.HandleFunc("/api/restore/search", s.handleAPIRestoreSearch)
 	authed.HandleFunc("/api/restore/backups", s.handleAPIRestoreBackups)
+	authed.HandleFunc("/api/restore/files", s.handleAPIRestoreFiles)
+	authed.HandleFunc("/api/restore/run", s.handleAPIRestoreFile)
 
 	// Dashboard API.
 	authed.HandleFunc("/api/dashboard", s.handleAPIDashboard)
@@ -226,6 +241,10 @@ func (s *Server) routes() http.Handler {
 	// Watcher control API.
 	authed.HandleFunc("/api/watcher/start", s.handleAPIWatcherControl)
 	authed.HandleFunc("/api/watcher/stop", s.handleAPIWatcherControl)
+
+	// System stats API.
+	authed.HandleFunc("/api/system/cpu", s.handleAPISystemCPU)
+	authed.HandleFunc("/api/system/memory", s.handleAPISystemMemory)
 
 	mux.Handle("/", s.auth.Wrap(authed))
 
@@ -239,6 +258,9 @@ func (s *Server) Start() error {
 
 	// Start session cleanup goroutine.
 	go s.cleanupSessions()
+
+	// Start job activity watcher (publishes SSE events for CLI-initiated backups).
+	go s.watchJobActivity()
 
 	if s.httpServer.TLSConfig != nil {
 		return s.httpServer.ListenAndServeTLS("", "")
@@ -263,6 +285,69 @@ func (s *Server) cleanupSessions() {
 	defer ticker.Stop()
 	for range ticker.C {
 		s.sessions.Cleanup()
+	}
+}
+
+// watchJobActivity polls the database for job changes and publishes SSE events.
+func (s *Server) watchJobActivity() {
+	if s.repo == nil {
+		return
+	}
+
+	ticker := time.NewTicker(3 * time.Second)
+	defer ticker.Stop()
+
+	// Track known jobs to detect new ones and status changes.
+	knownJobs := make(map[string]string) // backup_id -> status
+
+	// Initial load.
+	ctx := context.Background()
+	jobs, err := s.repo.ListJobs(ctx, db.JobFilter{Limit: 50})
+	if err == nil {
+		for _, j := range jobs {
+			knownJobs[j.BackupID] = string(j.Status)
+		}
+	}
+
+	for range ticker.C {
+		jobs, err := s.repo.ListJobs(ctx, db.JobFilter{Limit: 50})
+		if err != nil {
+			continue
+		}
+
+		for _, j := range jobs {
+			prevStatus, known := knownJobs[j.BackupID]
+			currentStatus := string(j.Status)
+
+			if !known {
+				// New job appeared.
+				knownJobs[j.BackupID] = currentStatus
+				s.broker.Publish(ActivityEvent{
+					Type:    "backup_started",
+					Message: fmt.Sprintf("Backup %s started (%s)", j.Level, j.BackupID[:12]),
+				})
+			} else if prevStatus != currentStatus {
+				// Status changed.
+				knownJobs[j.BackupID] = currentStatus
+				switch j.Status {
+				case "completed":
+					s.broker.Publish(ActivityEvent{
+						Type:    "backup_completed",
+						Message: fmt.Sprintf("Backup %s completed: %d files, %s", j.Level, j.FileCount, formatSize(j.BytesNew)),
+					})
+				case "failed":
+					s.broker.Publish(ActivityEvent{
+						Type:    "backup_failed",
+						Message: fmt.Sprintf("Backup %s failed: %s", j.Level, j.ErrorMessage),
+					})
+				case "stopped":
+					s.broker.Publish(ActivityEvent{
+						Type:    "backup_stopped",
+						Message: fmt.Sprintf("Backup %s stopped", j.Level),
+					})
+				}
+			}
+		}
 	}
 }
 
@@ -337,6 +422,7 @@ type backupJobView struct {
 
 type restoreData struct {
 	Title string
+	Jobs  []backupJobView
 }
 
 type configData struct {
@@ -480,7 +566,27 @@ func (s *Server) handleBackups(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleRestore(w http.ResponseWriter, r *http.Request) {
-	data := restoreData{Title: "Restore"}
+	data := restoreData{
+		Title: "Restore",
+		Jobs:  []backupJobView{},
+	}
+
+	if s.repo != nil {
+		jobs, err := s.repo.ListJobs(r.Context(), db.JobFilter{Limit: 100})
+		if err == nil {
+			for _, j := range jobs {
+				data.Jobs = append(data.Jobs, backupJobView{
+					BackupID:  j.BackupID,
+					ClientID:  j.ClientID,
+					Level:     j.Level,
+					Status:    string(j.Status),
+					FileCount: j.FileCount,
+					StartedAt: j.StartedAt.Format("2006-01-02 15:04:05"),
+				})
+			}
+		}
+	}
+
 	s.renderTemplate(w, "restore.html", data)
 }
 
@@ -572,5 +678,69 @@ func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 			ConnectedClients: 0,
 		},
 	}
+
+	if s.repo != nil {
+		jobs, err := s.repo.ListJobs(r.Context(), db.JobFilter{})
+		if err == nil {
+			var totalFiles, totalBytes, totalDeduped int64
+			for _, j := range jobs {
+				totalFiles += j.FileCount
+				totalBytes += j.BytesNew
+				totalDeduped += j.FilesDeduped
+			}
+			data.Metrics.FilesBackedUp = totalFiles
+			data.Metrics.BytesTransferred = formatSize(totalBytes)
+
+			if totalFiles > 0 {
+				ratio := float64(totalDeduped) / float64(totalFiles) * 100
+				data.Metrics.DedupRatio = fmt.Sprintf("%.1f%%", ratio)
+			}
+		}
+
+		// Count unique hashes from a recent query.
+		paths, err := s.repo.GetAllFilePaths(r.Context())
+		if err == nil {
+			data.Metrics.UniqueFiles = int64(len(paths))
+		}
+	}
+
+	// Get storage size.
+	if s.fullCfg != nil {
+		storageDir := s.fullCfg.StorageDir()
+		data.Metrics.StorageUsed = formatSize(dirSizeQuick(storageDir))
+	} else if s.configPath != "" {
+		cfg, err := config.Load(s.configPath)
+		if err == nil {
+			data.Metrics.StorageUsed = formatSize(dirSizeQuick(cfg.StorageDir()))
+		}
+	}
+
 	s.renderTemplate(w, "metrics.html", data)
+}
+
+// dirSizeQuick estimates directory size by listing top-level prefix dirs.
+func dirSizeQuick(path string) int64 {
+	var size int64
+	entries, err := os.ReadDir(path)
+	if err != nil {
+		return 0
+	}
+	for _, entry := range entries {
+		if entry.IsDir() {
+			subPath := path + "/" + entry.Name()
+			subEntries, err := os.ReadDir(subPath)
+			if err != nil {
+				continue
+			}
+			for _, f := range subEntries {
+				if !f.IsDir() {
+					info, err := f.Info()
+					if err == nil {
+						size += info.Size()
+					}
+				}
+			}
+		}
+	}
+	return size
 }

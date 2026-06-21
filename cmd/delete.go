@@ -25,12 +25,14 @@ Examples:
   tergum delete /path/to/file --backup-id abc123    # delete file from backup
   tergum delete /path/to/folder/ --all-backups      # delete folder from all backups
   tergum delete --all-backups                       # delete ALL backups (dangerous)
-  tergum delete --all-backups --dry-run             # preview full deletion`,
+  tergum delete --all-backups --dry-run             # preview full deletion
+  tergum delete --all-activity                      # clear activity/restore history`,
 		RunE: runDelete,
 	}
 
 	cmd.Flags().String("backup-id", "", "target a specific backup set")
 	cmd.Flags().Bool("all-backups", false, "delete across all backup sets")
+	cmd.Flags().Bool("all-activity", false, "clear all activity history (restore history and orphan job records)")
 
 	return cmd
 }
@@ -38,10 +40,16 @@ Examples:
 func runDelete(cmd *cobra.Command, args []string) error {
 	backupID, _ := cmd.Flags().GetString("backup-id")
 	allBackups, _ := cmd.Flags().GetBool("all-backups")
+	allActivity, _ := cmd.Flags().GetBool("all-activity")
+
+	// Handle --all-activity separately.
+	if allActivity {
+		return runDeleteActivity(cmd)
+	}
 
 	// Validate flags.
 	if backupID == "" && !allBackups {
-		return fmt.Errorf("must specify --backup-id or --all-backups")
+		return fmt.Errorf("must specify --backup-id, --all-backups, or --all-activity")
 	}
 
 	cfg, err := config.Load(cfgFile)
@@ -119,6 +127,31 @@ func runDelete(cmd *cobra.Command, args []string) error {
 			prefix, result.EntriesDeleted, result.BytesFreed, result.FilesRemoved, result.JobsRemoved),
 	)
 
+	return nil
+}
+
+func runDeleteActivity(cmd *cobra.Command) error {
+	cfg, err := config.Load(cfgFile)
+	if err != nil {
+		return fmt.Errorf("loading config: %w", err)
+	}
+
+	repo, err := db.NewRepository(cfg.Database.Path, cfg.Database.WALMode)
+	if err != nil {
+		return fmt.Errorf("opening database: %w", err)
+	}
+	defer repo.Close()
+
+	ctx := context.Background()
+	deleted, err := repo.DeleteAllActivity(ctx)
+	if err != nil {
+		return fmt.Errorf("deleting activity: %w", err)
+	}
+
+	printOutput(
+		map[string]interface{}{"activity_deleted": deleted},
+		fmt.Sprintf("Activity cleared: %d records deleted.", deleted),
+	)
 	return nil
 }
 

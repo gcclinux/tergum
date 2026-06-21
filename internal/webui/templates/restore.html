@@ -1,21 +1,139 @@
 {{template "header" .}}
 <h1 class="text-lg font-bold p-4">Restore File Browser</h1>
+
 <div class="bg-white rounded shadow p-4 m-4">
     <h2 class="font-bold mb-4">Search Files</h2>
-    <p class="text-sm text-gray-600 mb-4">Search for files in your backups by name or path. Use the CLI for actual restore:<br>
-        <code class="bg-gray-100 px-2 py-1 rounded text-sm">TERGUM_PASSPHRASE=... tergum restore "query" --dest /path</code>
+    <p class="text-sm text-gray-600 mb-4">Search for files in your backups by name or path. To restore, use the CLI:<br>
+        <code style="background:#f3f4f6; padding:2px 8px; border-radius:4px; font-size:12px;">TERGUM_PASSPHRASE=... tergum restore "query" --dest /path</code>
     </p>
     <input type="text" name="query" placeholder="Search by filename or path (e.g. *.go, report.pdf, /home/user/Documents/)"
-           class="border rounded px-3 py-2 w-full text-sm"
+           style="border:1px solid #d1d5db; border-radius:4px; padding:8px 12px; width:100%; font-size:13px;"
            hx-get="/api/restore/search" hx-trigger="keyup changed delay:400ms" hx-target="#search-results" hx-swap="innerHTML">
-    <div id="search-results" class="mt-4">
-        <p class="text-gray-500 italic text-sm">Type to search...</p>
+    <div id="search-results" style="margin-top:16px;">
+        <p style="color:#9ca3af; font-style:italic; font-size:13px;">Type to search...</p>
     </div>
 </div>
+
 <div class="bg-white rounded shadow p-4 m-4">
     <h2 class="font-bold mb-4">Browse by Backup</h2>
-    <div hx-get="/api/restore/backups" hx-trigger="load" hx-swap="innerHTML">
-        <p class="text-gray-500 italic text-sm">Loading...</p>
+    <div style="width:100%">
+        <table style="width:100%; border-collapse:collapse; font-size:13px; font-family:monospace;">
+            <thead>
+                <tr style="border-bottom:2px solid #e5e7eb; text-transform:uppercase; font-size:11px; color:#6b7280;">
+                    <th style="padding:10px 16px; text-align:left; width:30%;">Backup ID</th>
+                    <th style="padding:10px 16px; text-align:left; width:14%;">Client</th>
+                    <th style="padding:10px 16px; text-align:left; width:10%;">Level</th>
+                    <th style="padding:10px 16px; text-align:left; width:14%;">Status</th>
+                    <th style="padding:10px 16px; text-align:right; width:8%;">Files</th>
+                    <th style="padding:10px 16px; text-align:left; width:16%;">Started</th>
+                    <th style="padding:10px 16px; text-align:center; width:8%;">Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {{range .Jobs}}
+                <tr style="border-bottom:1px solid #f3f4f6;">
+                    <td style="padding:8px 16px; color:#374151;">{{.BackupID}}</td>
+                    <td style="padding:8px 16px; color:#4b5563;">{{.ClientID}}</td>
+                    <td style="padding:8px 16px; color:#4b5563;">{{.Level}}</td>
+                    <td style="padding:8px 16px;">
+                        {{if eq .Status "completed"}}<span style="color:#059669;">✅ completed</span>
+                        {{else if eq .Status "running"}}<span style="color:#2563eb;">🔄 running</span>
+                        {{else if eq .Status "failed"}}<span style="color:#dc2626;">❌ failed</span>
+                        {{else if eq .Status "stopped"}}<span style="color:#d97706;">⏹️ stopped</span>
+                        {{else}}{{.Status}}{{end}}
+                    </td>
+                    <td style="padding:8px 16px; text-align:right; color:#4b5563;">{{.FileCount}}</td>
+                    <td style="padding:8px 16px; color:#4b5563; white-space:nowrap;">{{.StartedAt}}</td>
+                    <td style="padding:8px 16px; text-align:center;">
+                        <button onclick="openFileList('{{.BackupID}}')"
+                                style="color:#2563eb; border:1px solid #93c5fd; border-radius:4px; padding:2px 8px; font-size:11px; cursor:pointer;">List</button>
+                    </td>
+                </tr>
+                {{end}}
+            </tbody>
+        </table>
     </div>
 </div>
+
+<!-- File List Modal -->
+<div id="file-modal" style="display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.5); z-index:1000; align-items:center; justify-content:center;">
+    <div style="background:white; border-radius:8px; padding:24px; max-width:80%; max-height:80vh; overflow-y:auto; margin:auto; position:relative; top:10vh;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+            <h3 style="font-weight:bold; font-size:16px;" id="modal-title">Files in Backup</h3>
+            <button onclick="closeFileList()" style="font-size:20px; cursor:pointer; border:none; background:none; color:#6b7280;">✕</button>
+        </div>
+        <div id="modal-content">
+            <p style="color:#9ca3af;">Loading...</p>
+        </div>
+    </div>
+</div>
+
+<script>
+function openFileList(backupId) {
+    var modal = document.getElementById('file-modal');
+    var title = document.getElementById('modal-title');
+    var content = document.getElementById('modal-content');
+
+    title.textContent = 'Files in Backup ' + backupId.substring(0, 12) + '...';
+    content.innerHTML = '<p style="color:#9ca3af;">Loading...</p>';
+    modal.style.display = 'flex';
+
+    fetch('/api/restore/files?backup_id=' + backupId)
+        .then(function(r) { return r.text(); })
+        .then(function(html) { content.innerHTML = html; })
+        .catch(function(e) { content.innerHTML = '<p style="color:#dc2626;">Failed to load files.</p>'; });
+}
+
+function closeFileList() {
+    document.getElementById('file-modal').style.display = 'none';
+}
+
+function restoreFile(hash, filePath) {
+    var dest = prompt('Restore destination folder:', '/tmp/tergum-restored');
+    if (!dest) return;
+
+    fetch('/api/restore/run', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+        body: 'hash=' + encodeURIComponent(hash) + '&path=' + encodeURIComponent(filePath) + '&dest=' + encodeURIComponent(dest)
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        if (data.error) {
+            alert('Error: ' + data.error);
+        } else {
+            alert('Restore started!\n' + data.message);
+        }
+    })
+    .catch(function(e) { alert('Restore failed: ' + e); });
+}
+
+function restoreBackup(backupId) {
+    var dest = prompt('Restore all files to folder:', '/tmp/tergum-restored');
+    if (!dest) return;
+
+    fetch('/api/restore/run', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+        body: 'backup_id=' + encodeURIComponent(backupId) + '&dest=' + encodeURIComponent(dest)
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        if (data.error) {
+            alert('Error: ' + data.error);
+        } else {
+            alert('Restore started!\n' + data.message);
+        }
+    })
+    .catch(function(e) { alert('Restore failed: ' + e); });
+}
+
+// Close modal on escape key or clicking outside
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') closeFileList();
+});
+document.getElementById('file-modal').addEventListener('click', function(e) {
+    if (e.target === this) closeFileList();
+});
+</script>
 {{template "footer" .}}

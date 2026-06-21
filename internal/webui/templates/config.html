@@ -80,43 +80,6 @@
     </div>
 </div>
 
-<!-- General Config Section -->
-<div class="bg-white rounded shadow p-4 m-4">
-    <h2 class="font-bold text-lg mb-4">General Settings</h2>
-    <form hx-post="/api/config" hx-swap="outerHTML">
-        <h3 class="font-bold mb-2">Node</h3>
-        <label class="block mb-2 text-sm">Role:
-            <select name="node.role" class="border rounded px-2 py-1 ml-2">
-                <option value="client">Client</option>
-                <option value="server">Server</option>
-                <option value="both">Both</option>
-            </select>
-        </label>
-
-        <h3 class="font-bold mt-4 mb-2">Server</h3>
-        <label class="block mb-2 text-sm">Address:
-            <input type="text" name="server.address" class="border rounded px-2 py-1 ml-2">
-        </label>
-        <label class="block mb-2 text-sm">Command Port:
-            <input type="number" name="server.command_port" class="border rounded px-2 py-1 ml-2 w-24">
-        </label>
-        <label class="block mb-2 text-sm">Data Port:
-            <input type="number" name="server.data_port" class="border rounded px-2 py-1 ml-2 w-24">
-        </label>
-
-        <h3 class="font-bold mt-4 mb-2">Backup</h3>
-        <label class="block mb-2 text-sm">Chunk Size:
-            <input type="number" name="backup.chunk_size" class="border rounded px-2 py-1 ml-2 w-24">
-        </label>
-
-        <div class="mt-4">
-            <button type="submit" class="bg-gray-600 text-white px-4 py-2 rounded text-sm hover:bg-gray-700">
-                Save Configuration
-            </button>
-        </div>
-    </form>
-</div>
-
 <script>
 function pathsManager() {
     return {

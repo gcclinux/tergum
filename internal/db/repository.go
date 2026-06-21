@@ -45,6 +45,7 @@ type RestoreRecord struct {
 	FileName     string
 	SourceBackup string
 	RestoredTo   string
+	RestoredAt   time.Time
 	RestoredBy   string
 	Success      bool
 }
@@ -92,6 +93,8 @@ type Repository interface {
 
 	// Restore operations
 	RecordRestore(ctx context.Context, entry RestoreRecord) error
+	ListRestoreHistory(ctx context.Context, limit int) ([]RestoreRecord, error)
+	DeleteAllActivity(ctx context.Context) (int64, error)
 
 	// Watcher operations
 	SaveWatchPath(ctx context.Context, wp WatchPath) error
@@ -592,6 +595,60 @@ func (r *SQLiteRepository) RecordRestore(ctx context.Context, entry RestoreRecor
 		entry.Blake3Hash, entry.FileName, entry.SourceBackup, entry.RestoredTo, restoredBy, success,
 	)
 	return err
+}
+
+// ListRestoreHistory returns the most recent restore events, ordered by restored_at DESC.
+func (r *SQLiteRepository) ListRestoreHistory(ctx context.Context, limit int) ([]RestoreRecord, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	rows, err := r.db.QueryContext(ctx,
+		`SELECT blake3_hash, file_name, source_backup, restored_to, restored_at, restored_by, success
+		 FROM restore_history ORDER BY restored_at DESC LIMIT ?`, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var records []RestoreRecord
+	for rows.Next() {
+		var rec RestoreRecord
+		var success int
+		var restoredAt string
+		if err := rows.Scan(&rec.Blake3Hash, &rec.FileName, &rec.SourceBackup, &rec.RestoredTo, &restoredAt, &rec.RestoredBy, &success); err != nil {
+			return nil, err
+		}
+		rec.Success = success == 1
+		t, err := time.Parse(time.DateTime, restoredAt)
+		if err == nil {
+			rec.RestoredAt = t
+		}
+		records = append(records, rec)
+	}
+	return records, rows.Err()
+}
+
+// DeleteAllActivity clears restore history and completed/failed/stopped backup job records.
+func (r *SQLiteRepository) DeleteAllActivity(ctx context.Context) (int64, error) {
+	var total int64
+
+	// Delete restore history.
+	res, err := r.db.ExecContext(ctx, `DELETE FROM restore_history`)
+	if err != nil {
+		return 0, err
+	}
+	n, _ := res.RowsAffected()
+	total += n
+
+	// Delete non-running backup jobs (keep running ones).
+	res, err = r.db.ExecContext(ctx, `DELETE FROM backup_jobs WHERE status != 'running'`)
+	if err != nil {
+		return total, err
+	}
+	n, _ = res.RowsAffected()
+	total += n
+
+	return total, nil
 }
 
 // SaveWatchPath inserts or updates a watch path (upsert on path).

@@ -295,11 +295,12 @@ Usage: tergum delete [target] [flags]
 Flags:
       --backup-id string   Target a specific backup set
       --all-backups        Delete across all backup sets
+      --all-activity       Clear all activity history (restore history and job records)
       --dry-run            Preview what would be deleted
       --json               Output as JSON
 ```
 
-Must specify either `--backup-id` or `--all-backups`.
+Must specify either `--backup-id`, `--all-backups`, or `--all-activity`.
 
 ```bash
 # Delete a specific backup set
@@ -319,9 +320,20 @@ tergum delete /home/user/Downloads/ --all-backups
 
 # Preview folder deletion
 tergum delete /home/user/Downloads/ --all-backups --dry-run
+
+# Clear activity history (restore records + completed job records)
+tergum delete --all-activity
+
+# Full clean slate (delete all backups AND clear activity)
+tergum delete --all-backups
+tergum delete --all-activity
 ```
 
 Output shows: entries deleted, bytes freed, physical storage files removed, and orphan jobs cleaned up.
+
+Notes:
+- `--all-activity` clears restore history and completed/failed/stopped job records (keeps running jobs)
+- Physical storage files are only removed when no other backup entry references the same content hash
 
 ### tergum retention
 

@@ -1,28 +1,47 @@
 {{template "header" .}}
-<h1 class="text-lg font-bold p-4">Metrics Visualization</h1>
-<div class="flex">
-    <div class="bg-white rounded shadow p-4 m-4">
-        <h2 class="font-bold">Backup Statistics</h2>
-        <div hx-get="/api/metrics/backup" hx-trigger="every 30s" hx-swap="innerHTML">
-            <p>Files Backed Up: {{.Metrics.FilesBackedUp}}</p>
-            <p>Bytes Transferred: {{.Metrics.BytesTransferred}}</p>
-            <p>Dedup Ratio: {{.Metrics.DedupRatio}}</p>
-        </div>
+<h1 class="text-lg font-bold p-4">Metrics</h1>
+
+<div class="grid grid-cols-2 md:grid-cols-4 gap-4 m-4">
+    <div class="bg-white rounded shadow p-4">
+        <h2 class="text-xs text-gray-500 uppercase">Files Backed Up</h2>
+        <p class="text-2xl font-bold mt-1">{{.Metrics.FilesBackedUp}}</p>
     </div>
-    <div class="bg-white rounded shadow p-4 m-4">
-        <h2 class="font-bold">Storage Usage</h2>
-        <div hx-get="/api/metrics/storage" hx-trigger="every 30s" hx-swap="innerHTML">
-            <p>Total Storage: {{.Metrics.StorageUsed}}</p>
-            <p>Unique Files: {{.Metrics.UniqueFiles}}</p>
-        </div>
+    <div class="bg-white rounded shadow p-4">
+        <h2 class="text-xs text-gray-500 uppercase">Bytes Transferred</h2>
+        <p class="text-2xl font-bold mt-1">{{.Metrics.BytesTransferred}}</p>
+    </div>
+    <div class="bg-white rounded shadow p-4">
+        <h2 class="text-xs text-gray-500 uppercase">Dedup Ratio</h2>
+        <p class="text-2xl font-bold mt-1">{{.Metrics.DedupRatio}}</p>
+        <p class="text-xs text-gray-400">files saved by dedup</p>
+    </div>
+    <div class="bg-white rounded shadow p-4">
+        <h2 class="text-xs text-gray-500 uppercase">Unique File Paths</h2>
+        <p class="text-2xl font-bold mt-1">{{.Metrics.UniqueFiles}}</p>
     </div>
 </div>
-<div class="bg-white rounded shadow p-4 m-4">
-    <h2 class="font-bold">gRPC Performance</h2>
-    <div hx-get="/api/metrics/grpc" hx-trigger="every 30s" hx-swap="innerHTML">
-        <p>Total Requests: {{.Metrics.GRPCRequests}}</p>
-        <p>Errors: {{.Metrics.GRPCErrors}}</p>
-        <p>Connected Clients: {{.Metrics.ConnectedClients}}</p>
+
+<div class="grid grid-cols-2 md:grid-cols-3 gap-4 m-4">
+    <div class="bg-white rounded shadow p-4">
+        <h2 class="text-xs text-gray-500 uppercase">Storage on Disk</h2>
+        <p class="text-2xl font-bold mt-1">{{.Metrics.StorageUsed}}</p>
     </div>
+    <div class="bg-white rounded shadow p-4" hx-get="/api/system/cpu" hx-trigger="load, every 5s" hx-swap="innerHTML">
+        <h2 class="text-xs text-gray-500 uppercase">CPU Load</h2>
+        <p class="text-2xl font-bold mt-1">...</p>
+    </div>
+    <div class="bg-white rounded shadow p-4" hx-get="/api/system/memory" hx-trigger="load, every 5s" hx-swap="innerHTML">
+        <h2 class="text-xs text-gray-500 uppercase">Memory</h2>
+        <p class="text-2xl font-bold mt-1">...</p>
+    </div>
+</div>
+
+<div class="bg-white rounded shadow p-4 m-4">
+    <h2 class="font-bold mb-3">Prometheus Endpoint</h2>
+    <p class="text-sm text-gray-600">
+        Raw Prometheus metrics are exposed at
+        <a href="http://localhost:7490/metrics" class="text-blue-600 underline" target="_blank">http://localhost:7490/metrics</a>
+        (when metrics server is enabled).
+    </p>
 </div>
 {{template "footer" .}}

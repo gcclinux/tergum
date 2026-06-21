@@ -416,6 +416,10 @@ func (m *mockRepo) ListRetentionPolicies(ctx context.Context) ([]model.Retention
 	return nil, nil
 }
 func (m *mockRepo) RecordRestore(ctx context.Context, entry db.RestoreRecord) error { return nil }
+func (m *mockRepo) ListRestoreHistory(ctx context.Context, limit int) ([]db.RestoreRecord, error) {
+	return nil, nil
+}
+func (m *mockRepo) DeleteAllActivity(ctx context.Context) (int64, error) { return 0, nil }
 func (m *mockRepo) SaveWatchPath(ctx context.Context, wp db.WatchPath) error        { return nil }
 func (m *mockRepo) LoadWatchPaths(ctx context.Context) ([]db.WatchPath, error)      { return nil, nil }
 func (m *mockRepo) DeleteWatchPath(ctx context.Context, path string) error          { return nil }

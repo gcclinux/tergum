@@ -394,9 +394,55 @@ func (fw *FileWatcher) onStabilityExpired(path string) {
 
 	fw.stableCount.Add(1)
 
+	// Update the watched_path record in DB with last event time and increment count.
+	if fw.cfg.Repository != nil {
+		fw.updateWatchPathEvent(path, info.ModTime())
+	}
+
 	// Send to channel (non-blocking if buffer is full, drop).
 	select {
 	case fw.stableCh <- sf:
 	case <-fw.ctx.Done():
 	}
+}
+
+// updateWatchPathEvent finds the parent watched path for a file and updates its DB record.
+func (fw *FileWatcher) updateWatchPathEvent(filePath string, eventTime time.Time) {
+	fw.mu.Lock()
+	var matchedPath string
+	for wp := range fw.watchedPaths {
+		if strings.HasPrefix(filePath, wp) {
+			if len(wp) > len(matchedPath) {
+				matchedPath = wp
+			}
+		}
+	}
+	recursive := fw.watchedPaths[matchedPath]
+	fw.mu.Unlock()
+
+	if matchedPath == "" {
+		return
+	}
+
+	// Load current watch path to increment count.
+	paths, err := fw.cfg.Repository.LoadWatchPaths(fw.ctx)
+	if err != nil {
+		return
+	}
+
+	var currentCount int64
+	for _, wp := range paths {
+		if wp.Path == matchedPath {
+			currentCount = wp.EventCount
+			break
+		}
+	}
+
+	_ = fw.cfg.Repository.SaveWatchPath(fw.ctx, db.WatchPath{
+		Path:       matchedPath,
+		Recursive:  recursive,
+		Enabled:    true,
+		LastEvent:  &eventTime,
+		EventCount: currentCount + 1,
+	})
 }
