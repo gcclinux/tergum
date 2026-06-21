@@ -167,7 +167,7 @@ func (s *Server) handleAPIRetentionAdd(w http.ResponseWriter, r *http.Request) {
 	}
 	if keepVersionsStr != "" {
 		v, err := strconv.Atoi(keepVersionsStr)
-		if err == nil && v > 0 {
+		if err == nil && v >= 0 {
 			policy.KeepVersions = v
 		}
 	}
@@ -189,7 +189,7 @@ func (s *Server) handleAPIRetentionAdd(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprint(w, `<form hx-post="/api/retention" hx-swap="outerHTML">`)
 	fmt.Fprint(w, `<label class="p-4">Name: <input type="text" name="name" required></label>`)
 	fmt.Fprint(w, `<label class="p-4">Keep Days: <input type="number" name="keep_days"></label>`)
-	fmt.Fprint(w, `<label class="p-4">Keep Versions: <input type="number" name="keep_versions" value="1" min="1"></label>`)
+	fmt.Fprint(w, `<label class="p-4">Keep Versions: <input type="number" name="keep_versions" value="1" min="0"></label>`)
 	fmt.Fprint(w, `<label class="p-4">Pattern: <input type="text" name="pattern" placeholder="*.log"></label>`)
 	fmt.Fprint(w, `<label class="p-4">Priority: <input type="number" name="priority" value="0"></label>`)
 	fmt.Fprint(w, `<div class="p-4"><button type="submit" class="bg-gray-100 rounded p-4">Add Policy</button>`)

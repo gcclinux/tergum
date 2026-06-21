@@ -611,3 +611,193 @@ func TestEvaluate_DisabledPolicyIgnored(t *testing.T) {
 		t.Errorf("expected 0 expired (policy disabled), got %d", result.EntriesExpired)
 	}
 }
+
+func TestEvaluate_PurgeModeKeepVersionsZero(t *testing.T) {
+	engine, repo, cas := testSetup(t)
+	ctx := context.Background()
+
+	insertTestJob(t, repo, "job1")
+	insertTestJob(t, repo, "job2")
+	insertTestJob(t, repo, "job3")
+	now := time.Now()
+
+	hash1 := "aaaa" + strings.Repeat("a", 60)
+	hash2 := "bbbb" + strings.Repeat("b", 60)
+	hash3 := "cccc" + strings.Repeat("c", 60)
+
+	// Three versions: all older than 7 days.
+	insertTestEntry(t, repo, "job1", hash1, "/tmp/cache/data.bin", 100, now.Add(-30*24*time.Hour))
+	insertTestEntry(t, repo, "job2", hash2, "/tmp/cache/data.bin", 200, now.Add(-14*24*time.Hour))
+	insertTestEntry(t, repo, "job3", hash3, "/tmp/cache/data.bin", 300, now.Add(-10*24*time.Hour))
+
+	// Store physical files.
+	if err := cas.Put(ctx, hash1, strings.NewReader("content1")); err != nil {
+		t.Fatalf("Put hash1: %v", err)
+	}
+	if err := cas.Put(ctx, hash2, strings.NewReader("content2")); err != nil {
+		t.Fatalf("Put hash2: %v", err)
+	}
+	if err := cas.Put(ctx, hash3, strings.NewReader("content3")); err != nil {
+		t.Fatalf("Put hash3: %v", err)
+	}
+
+	// Purge policy: keep_versions=0, keep_days=7. Pattern matches the path.
+	keepDays := 7
+	err := engine.AddPolicy(ctx, model.RetentionPolicy{
+		Name:         "purge-tmp",
+		KeepDays:     &keepDays,
+		KeepVersions: 0,
+		Pattern:      "/tmp/cache/*",
+		Priority:     10,
+		Enabled:      true,
+	})
+	if err != nil {
+		t.Fatalf("AddPolicy: %v", err)
+	}
+
+	engine.SetClock(func() time.Time { return now })
+
+	result, err := engine.Evaluate(ctx, false)
+	if err != nil {
+		t.Fatalf("Evaluate: %v", err)
+	}
+
+	// ALL three versions are older than 7 days and keep_versions=0,
+	// so all should be expired (including the latest).
+	if result.EntriesExpired != 3 {
+		t.Errorf("expected 3 expired (purge mode), got %d", result.EntriesExpired)
+	}
+
+	// No versions should remain.
+	versions, err := repo.GetFileVersions(ctx, "/tmp/cache/data.bin")
+	if err != nil {
+		t.Fatalf("GetFileVersions: %v", err)
+	}
+	if len(versions) != 0 {
+		t.Errorf("expected 0 remaining versions in purge mode, got %d", len(versions))
+	}
+
+	// All physical files should be deleted (each hash is unique, refcount = 0).
+	for _, hash := range []string{hash1, hash2, hash3} {
+		exists, err := cas.Exists(ctx, hash)
+		if err != nil {
+			t.Fatalf("Exists %s: %v", hash[:8], err)
+		}
+		if exists {
+			t.Errorf("hash %s should be deleted from storage in purge mode", hash[:8])
+		}
+	}
+
+	if result.FilesDeleted != 3 {
+		t.Errorf("expected 3 physical files deleted, got %d", result.FilesDeleted)
+	}
+
+	// Protected count should be 0 (purge mode doesn't protect anything).
+	if result.Protected != 0 {
+		t.Errorf("expected 0 protected in purge mode, got %d", result.Protected)
+	}
+}
+
+func TestEvaluate_PurgeModeRecentVersionsKept(t *testing.T) {
+	engine, repo, _ := testSetup(t)
+	ctx := context.Background()
+
+	insertTestJob(t, repo, "job1")
+	insertTestJob(t, repo, "job2")
+	insertTestJob(t, repo, "job3")
+	now := time.Now()
+
+	// Three versions: some are newer than 7 days.
+	insertTestEntry(t, repo, "job1", "aaaa"+strings.Repeat("a", 60), "/tmp/cache/recent.bin", 100, now.Add(-30*24*time.Hour))
+	insertTestEntry(t, repo, "job2", "bbbb"+strings.Repeat("b", 60), "/tmp/cache/recent.bin", 200, now.Add(-3*24*time.Hour))  // within 7 days
+	insertTestEntry(t, repo, "job3", "cccc"+strings.Repeat("c", 60), "/tmp/cache/recent.bin", 300, now.Add(-1*24*time.Hour))  // within 7 days
+
+	// Purge policy: keep_versions=0, keep_days=7.
+	keepDays := 7
+	err := engine.AddPolicy(ctx, model.RetentionPolicy{
+		Name:         "purge-tmp",
+		KeepDays:     &keepDays,
+		KeepVersions: 0,
+		Pattern:      "/tmp/cache/*",
+		Priority:     10,
+		Enabled:      true,
+	})
+	if err != nil {
+		t.Fatalf("AddPolicy: %v", err)
+	}
+
+	engine.SetClock(func() time.Time { return now })
+
+	result, err := engine.Evaluate(ctx, true) // dry run
+	if err != nil {
+		t.Fatalf("Evaluate: %v", err)
+	}
+
+	// Only the oldest version (30 days old) should expire.
+	// The other two are within the 7-day window.
+	if result.EntriesExpired != 1 {
+		t.Errorf("expected 1 expired in purge mode (only old one), got %d", result.EntriesExpired)
+	}
+}
+
+func TestEvaluate_PurgeModeSingleVersionFile(t *testing.T) {
+	engine, repo, cas := testSetup(t)
+	ctx := context.Background()
+
+	insertTestJob(t, repo, "job1")
+	now := time.Now()
+
+	hash := "aaaa" + strings.Repeat("a", 60)
+
+	// Single version, older than keep_days.
+	insertTestEntry(t, repo, "job1", hash, "/tmp/cache/single.bin", 100, now.Add(-30*24*time.Hour))
+
+	// Store physical file.
+	if err := cas.Put(ctx, hash, strings.NewReader("content")); err != nil {
+		t.Fatalf("Put: %v", err)
+	}
+
+	// Purge policy: keep_versions=0.
+	keepDays := 7
+	err := engine.AddPolicy(ctx, model.RetentionPolicy{
+		Name:         "purge-tmp",
+		KeepDays:     &keepDays,
+		KeepVersions: 0,
+		Pattern:      "/tmp/cache/*",
+		Priority:     10,
+		Enabled:      true,
+	})
+	if err != nil {
+		t.Fatalf("AddPolicy: %v", err)
+	}
+
+	engine.SetClock(func() time.Time { return now })
+
+	result, err := engine.Evaluate(ctx, false)
+	if err != nil {
+		t.Fatalf("Evaluate: %v", err)
+	}
+
+	// In purge mode, single-version files ARE deleted (unlike standard mode).
+	if result.EntriesExpired != 1 {
+		t.Errorf("expected 1 expired (single file, purge mode), got %d", result.EntriesExpired)
+	}
+
+	// Physical file should be gone.
+	exists, err := cas.Exists(ctx, hash)
+	if err != nil {
+		t.Fatalf("Exists: %v", err)
+	}
+	if exists {
+		t.Error("physical file should be deleted in purge mode for single-version file")
+	}
+
+	if result.FilesDeleted != 1 {
+		t.Errorf("expected 1 file deleted, got %d", result.FilesDeleted)
+	}
+
+	// Protected should be 0.
+	if result.Protected != 0 {
+		t.Errorf("expected 0 protected in purge mode, got %d", result.Protected)
+	}
+}

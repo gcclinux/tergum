@@ -23,10 +23,12 @@ By default, all backup data is kept FOREVER unless a retention policy explicitly
 targets it. Policies use glob patterns to match specific files or folders.
 
 Safety rules:
-  - The most recent version of any file is NEVER deleted
-  - Files with only one version are NEVER touched
+  - The most recent version of any file is NEVER deleted (unless keep_versions = 0)
+  - Files with only one version are NEVER touched (unless keep_versions = 0)
   - No matching policy = keep forever
   - KeepDays not set = keep forever (even if policy matches)
+  - keep_versions = 0 enables PURGE MODE: all versions are eligible for deletion
+    after keep_days expires, including the latest version and single-version files
 
 This means full backup images are preserved indefinitely unless you specifically
 create a policy targeting them.`,
@@ -195,12 +197,17 @@ Examples:
   # Keep tmp files for 3 days
   tergum retention add cleanup-tmp --pattern "*.tmp" --keep-days 3 --priority 10
 
+  # PURGE: delete everything in a folder after 7 days (no versions kept, removed from disk)
+  tergum retention add purge-cache --pattern "/home/user/.cache/*" --keep-days 7 --keep-versions 0
+
   # Keep everything else forever (this is the DEFAULT even without a policy)
 
 Notes:
   - Omitting --keep-days means the policy will never expire entries (keep forever)
   - --keep-versions ensures at least N versions are kept regardless of age
-  - The latest version of any file is ALWAYS protected regardless of policies
+  - --keep-versions 0 enables PURGE MODE: all versions (including the latest) are deleted
+    after keep-days, and physical storage is freed when no references remain
+  - The latest version of any file is protected UNLESS keep-versions is 0
   - Higher --priority policies are evaluated first (first-match-wins)`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -262,7 +269,7 @@ Notes:
 	}
 
 	cmd.Flags().Int("keep-days", 0, "number of days to retain versions (0 = forever)")
-	cmd.Flags().Int("keep-versions", 1, "minimum number of versions to always keep")
+	cmd.Flags().Int("keep-versions", 1, "minimum versions to keep (0 = purge all after keep-days)")
 	cmd.Flags().String("pattern", "*", "glob pattern to match file paths")
 	cmd.Flags().Int("priority", 0, "policy evaluation priority (higher = evaluated first)")
 

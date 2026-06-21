@@ -2,38 +2,40 @@
 <h1 class="text-lg font-bold p-4">Retention Policies</h1>
 <div class="bg-white rounded shadow p-4 m-4">
     <h2 class="font-bold mb-2">Active Policies</h2>
-    <p class="text-sm text-gray-600 mb-4">Files not matching any policy are kept <strong>forever</strong>. The latest version of any file is always protected.</p>
+    <p class="text-sm text-gray-600 mb-4">Files not matching any policy are kept <strong>forever</strong>. The latest version of any file is always protected (unless keep_versions = 0).</p>
     {{if .Policies}}
-    <table class="w-full text-sm">
-        <thead>
-            <tr class="border-b">
-                <th class="p-3 text-left">Name</th>
-                <th class="p-3 text-left">Pattern</th>
-                <th class="p-3 text-left">Keep Days</th>
-                <th class="p-3 text-left">Keep Versions</th>
-                <th class="p-3 text-left">Priority</th>
-                <th class="p-3 text-left">Enabled</th>
-                <th class="p-3 text-left">Actions</th>
-            </tr>
-        </thead>
-        <tbody>
-            {{range .Policies}}
-            <tr class="border-b hover:bg-gray-50">
-                <td class="p-3 font-bold">{{.Name}}</td>
-                <td class="p-3 font-mono text-xs">{{.Pattern}}</td>
-                <td class="p-3">{{if .KeepDays}}{{.KeepDays}}{{else}}Forever{{end}}</td>
-                <td class="p-3">{{.KeepVersions}}</td>
-                <td class="p-3">{{.Priority}}</td>
-                <td class="p-3">{{if .Enabled}}Yes{{else}}No{{end}}</td>
-                <td class="p-3">
-                    <button hx-delete="/api/retention/{{.Name}}" hx-target="closest tr" hx-swap="outerHTML"
-                            hx-confirm="Remove policy '{{.Name}}'?"
-                            class="text-red-600 hover:text-red-800 text-sm">Remove</button>
-                </td>
-            </tr>
-            {{end}}
-        </tbody>
-    </table>
+    <div style="width:100%">
+        <table style="width:100%; border-collapse:collapse; font-size:13px; font-family:monospace;">
+            <thead>
+                <tr style="border-bottom:2px solid #e5e7eb; text-transform:uppercase; font-size:11px; color:#6b7280;">
+                    <th style="padding:10px 16px; text-align:left; width:16%;">Name</th>
+                    <th style="padding:10px 16px; text-align:left; width:28%;">Pattern</th>
+                    <th style="padding:10px 16px; text-align:right; width:12%;">Keep Days</th>
+                    <th style="padding:10px 16px; text-align:right; width:14%;">Keep Versions</th>
+                    <th style="padding:10px 16px; text-align:right; width:10%;">Priority</th>
+                    <th style="padding:10px 16px; text-align:center; width:10%;">Enabled</th>
+                    <th style="padding:10px 16px; text-align:center; width:10%;">Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {{range .Policies}}
+                <tr style="border-bottom:1px solid #f3f4f6;">
+                    <td style="padding:8px 16px; color:#374151; font-weight:bold;">{{.Name}}</td>
+                    <td style="padding:8px 16px; color:#4b5563; font-size:11px;">{{.Pattern}}</td>
+                    <td style="padding:8px 16px; text-align:right; color:#4b5563;">{{if .KeepDays}}{{.KeepDays}}{{else}}<span style="color:#9ca3af;">Forever</span>{{end}}</td>
+                    <td style="padding:8px 16px; text-align:right; color:#4b5563;">{{if eq .KeepVersions 0}}<span style="color:#dc2626; font-weight:bold;">PURGE</span>{{else}}{{.KeepVersions}}{{end}}</td>
+                    <td style="padding:8px 16px; text-align:right; color:#4b5563;">{{.Priority}}</td>
+                    <td style="padding:8px 16px; text-align:center;">{{if .Enabled}}<span style="color:#059669;">Yes</span>{{else}}<span style="color:#9ca3af;">No</span>{{end}}</td>
+                    <td style="padding:8px 16px; text-align:center;">
+                        <button hx-delete="/api/retention/{{.Name}}" hx-target="closest tr" hx-swap="outerHTML"
+                                hx-confirm="Remove policy '{{.Name}}'?"
+                                style="color:#ef4444; border:1px solid #fca5a5; border-radius:4px; padding:2px 8px; font-size:11px; cursor:pointer;">Remove</button>
+                    </td>
+                </tr>
+                {{end}}
+            </tbody>
+        </table>
+    </div>
     {{else}}
     <p class="text-gray-500 italic">No retention policies configured. All backups are kept forever.</p>
     {{end}}
@@ -51,8 +53,8 @@
             <label class="block text-sm">Keep Days (0 = forever):
                 <input type="number" name="keep_days" min="0" class="border rounded px-3 py-2 w-full mt-1">
             </label>
-            <label class="block text-sm">Keep Versions (min):
-                <input type="number" name="keep_versions" value="1" min="1" class="border rounded px-3 py-2 w-full mt-1">
+            <label class="block text-sm">Keep Versions (0 = purge all):
+                <input type="number" name="keep_versions" value="1" min="0" class="border rounded px-3 py-2 w-full mt-1">
             </label>
             <label class="block text-sm">Priority (higher = first):
                 <input type="number" name="priority" value="0" class="border rounded px-3 py-2 w-full mt-1">

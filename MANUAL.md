@@ -354,7 +354,7 @@ Subcommands:
 
 Flags for add:
   --keep-days int        Days to retain versions (0 = forever)
-  --keep-versions int    Minimum versions to always keep (default 1)
+  --keep-versions int    Minimum versions to keep; 0 = purge all after keep-days (default 1)
   --pattern string       Glob pattern to match file paths (default "*")
   --priority int         Evaluation priority (higher = evaluated first)
 
@@ -368,8 +368,9 @@ Global flags apply:
 **Key behavior:**
 - Files with NO matching policy are kept **forever**
 - `--keep-days 0` (or omitting it) means keep forever
-- The **latest version** of any file is NEVER deleted regardless of policies
-- Files with only **one version** are never touched
+- The **latest version** of any file is NEVER deleted unless `--keep-versions 0` (purge mode)
+- Files with only **one version** are never touched unless `--keep-versions 0` (purge mode)
+- `--keep-versions 0` = purge mode: all versions deleted after `keep-days`, including the latest
 - Higher priority policies are evaluated first (first-match-wins)
 
 ```bash
@@ -396,6 +397,36 @@ tergum retention list
 # Remove a policy (files revert to "keep forever")
 tergum retention remove cleanup-logs
 ```
+
+#### Purge Mode (keep-versions 0)
+
+Setting `--keep-versions 0` enables purge mode: ALL versions of matching files are
+deleted after `keep-days` expires, including the latest version and single-version files.
+Physical storage is freed when no other backup entry references the same content hash.
+
+This is useful when you want a folder's contents to be completely removed from backups
+after a certain age — no trace left in the database or on disk.
+
+```bash
+# Delete everything in .cache after 7 days (nothing preserved)
+tergum retention add purge-cache --pattern "/home/user/.cache/*" --keep-days 7 --keep-versions 0
+
+# Purge Downloads after 14 days
+tergum retention add purge-downloads --pattern "/home/user/Downloads/*" --keep-days 14 --keep-versions 0
+
+# Purge temp build artifacts after 3 days
+tergum retention add purge-builds --pattern "/tmp/builds/*" --keep-days 3 --keep-versions 0 --priority 20
+
+# Always preview first!
+tergum retention run --dry-run
+```
+
+**Safety notes for purge mode:**
+- There is no "latest version protection" — if the file is older than `keep-days`, it's gone
+- Single-version files ARE deleted (unlike standard mode where they're always kept)
+- The `keep-days` time condition still applies: files newer than `keep-days` are safe
+- Physical storage files are only removed when their reference count drops to zero
+- Use `--dry-run` before running retention to see what would be purged
 
 ### tergum stop
 
