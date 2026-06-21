@@ -437,10 +437,20 @@ func (s *Server) renderTemplate(w http.ResponseWriter, page string, data any) {
 	}
 }
 
+// nodeRole returns the configured node role, defaulting to "both" when
+// fullCfg is nil (e.g., when running via `tergum admin`).
+func (s *Server) nodeRole() string {
+	if s.fullCfg != nil && s.fullCfg.Node.Role != "" {
+		return s.fullCfg.Node.Role
+	}
+	return "both"
+}
+
 // Page data types.
 
 type dashboardData struct {
 	Title         string
+	NodeRole      string
 	Uptime        string
 	Version       string
 	TotalFiles    int64
@@ -453,8 +463,9 @@ type dashboardData struct {
 }
 
 type backupsData struct {
-	Title string
-	Jobs  []backupJobView
+	Title    string
+	NodeRole string
+	Jobs     []backupJobView
 }
 
 type backupJobView struct {
@@ -467,17 +478,20 @@ type backupJobView struct {
 }
 
 type restoreData struct {
-	Title string
-	Jobs  []backupJobView
+	Title    string
+	NodeRole string
+	Jobs     []backupJobView
 }
 
 type configData struct {
-	Title  string
-	Config config.Config
+	Title    string
+	NodeRole string
+	Config   config.Config
 }
 
 type retentionData struct {
 	Title    string
+	NodeRole string
 	Policies []retentionPolicyView
 }
 
@@ -492,6 +506,7 @@ type retentionPolicyView struct {
 
 type watchersData struct {
 	Title          string
+	NodeRole       string
 	WatchPaths     []watchPathView
 	WatcherEnabled bool
 	WatcherRunning bool
@@ -509,12 +524,14 @@ type watchPathView struct {
 }
 
 type activityData struct {
-	Title string
+	Title    string
+	NodeRole string
 }
 
 type clientsData struct {
-	Title   string
-	Clients []clientView
+	Title    string
+	NodeRole string
+	Clients  []clientView
 }
 
 type clientView struct {
@@ -528,8 +545,9 @@ type clientView struct {
 }
 
 type metricsData struct {
-	Title   string
-	Metrics metricsView
+	Title    string
+	NodeRole string
+	Metrics  metricsView
 }
 
 type metricsView struct {
@@ -554,6 +572,7 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 
 	data := dashboardData{
 		Title:         "Dashboard",
+		NodeRole:      s.nodeRole(),
 		Uptime:        "N/A",
 		Version:       "3.0.0",
 		TotalFiles:    0,
@@ -586,8 +605,9 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleBackups(w http.ResponseWriter, r *http.Request) {
 	data := backupsData{
-		Title: "Backups",
-		Jobs:  []backupJobView{},
+		Title:    "Backups",
+		NodeRole: s.nodeRole(),
+		Jobs:     []backupJobView{},
 	}
 
 	if s.repo != nil {
@@ -615,8 +635,9 @@ func (s *Server) handleBackups(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleRestore(w http.ResponseWriter, r *http.Request) {
 	data := restoreData{
-		Title: "Restore",
-		Jobs:  []backupJobView{},
+		Title:    "Restore",
+		NodeRole: s.nodeRole(),
+		Jobs:     []backupJobView{},
 	}
 
 	if s.repo != nil {
@@ -639,13 +660,14 @@ func (s *Server) handleRestore(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
-	data := configData{Title: "Configuration"}
+	data := configData{Title: "Configuration", NodeRole: s.nodeRole()}
 	s.renderTemplate(w, "config.html", data)
 }
 
 func (s *Server) handleRetention(w http.ResponseWriter, r *http.Request) {
 	data := retentionData{
 		Title:    "Retention Policies",
+		NodeRole: s.nodeRole(),
 		Policies: []retentionPolicyView{},
 	}
 
@@ -672,6 +694,7 @@ func (s *Server) handleRetention(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleWatchers(w http.ResponseWriter, r *http.Request) {
 	data := watchersData{
 		Title:      "Watchers",
+		NodeRole:   s.nodeRole(),
 		WatchPaths: []watchPathView{},
 	}
 
@@ -700,14 +723,15 @@ func (s *Server) handleWatchers(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleActivity(w http.ResponseWriter, r *http.Request) {
-	data := activityData{Title: "Activity Log"}
+	data := activityData{Title: "Activity Log", NodeRole: s.nodeRole()}
 	s.renderTemplate(w, "activity.html", data)
 }
 
 func (s *Server) handleClients(w http.ResponseWriter, r *http.Request) {
 	data := clientsData{
-		Title:   "Clients",
-		Clients: []clientView{},
+		Title:    "Clients",
+		NodeRole: s.nodeRole(),
+		Clients:  []clientView{},
 	}
 
 	if s.clientRegistry != nil {
@@ -741,7 +765,8 @@ func (s *Server) handleClients(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 	data := metricsData{
-		Title: "Metrics",
+		Title:    "Metrics",
+		NodeRole: s.nodeRole(),
 		Metrics: metricsView{
 			FilesBackedUp:    0,
 			BytesTransferred: "0 B",
