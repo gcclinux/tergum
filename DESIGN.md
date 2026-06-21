@@ -1823,3 +1823,37 @@ These are explicitly **out of scope** for the initial v3.0 release but inform ar
 | Error handling | `System.exit()` | Structured errors, retries, graceful shutdown |
 | Cross-compile | N/A (JVM) | `GOOS/GOARCH` native binaries |
 | Container | Not supported | Dockerfile included |
+
+---
+
+## Future Enhancements
+
+### Block-Level / Content-Defined Chunking
+
+**Current approach:** File-level deduplication. Each file is hashed as a whole. If any byte changes, the entire file is re-uploaded as a new version.
+
+**Limitation:** Editing a single line in a 1GB file causes the entire 1GB to be stored again.
+
+**Future improvement:** Implement variable-size content-defined chunking (CDC) using a rolling hash (e.g., Buzhash or Rabin fingerprint). This would:
+
+- Split files into variable-size blocks (typically 4KB–1MB) based on content boundaries
+- Only upload blocks that are genuinely new
+- Reconstruct files on restore by reassembling blocks in order
+- Dramatically reduce storage for large files with small edits (e.g., database files, virtual disk images, log files)
+
+**Impact:** Requires changes to the chunking layer, CAS storage (store blocks instead of whole files), manifest format (file → ordered list of block hashes), and restore logic (reassemble blocks). The encryption model (per-block DEK) and dedup logic (per-block hash) remain conceptually the same.
+
+**Complexity:** Medium-high. Would be a v4.0 feature.
+
+---
+
+### Additional Future Ideas
+
+- **Compression** — LZ4 or Zstandard compression before encryption (reduces storage and transfer)
+- **Remote server mode** — client/server over network using gRPC (currently local-only for backup engine)
+- **Snapshot mounting** — FUSE mount to browse backup contents as a filesystem
+- **Bandwidth throttling** — limit upload/download speed for network backups
+- **Email/webhook notifications** — alert on backup failure or retention events
+- **Multi-passphrase support** — different keys for different backup sets
+- **Incremental manifest** — only scan files modified since last backup (using mtime index)
+- **Web UI restore** — direct file download from browser (currently restores to server filesystem)

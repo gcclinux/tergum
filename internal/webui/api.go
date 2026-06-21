@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -365,20 +366,22 @@ func (s *Server) handleAPIActivityRecent(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	fmt.Fprint(w, `<table style="width:100%; border-collapse:collapse; font-size:13px; font-family:monospace;">`)
-	fmt.Fprint(w, `<thead><tr style="border-bottom:2px solid #e5e7eb; text-transform:uppercase; font-size:11px; color:#6b7280;">`)
-	fmt.Fprint(w, `<th style="padding:10px 16px; text-align:left; width:4%;"></th>`)
-	fmt.Fprint(w, `<th style="padding:10px 16px; text-align:left; width:10%;">Type</th>`)
-	fmt.Fprint(w, `<th style="padding:10px 16px; text-align:left; width:10%;">Status</th>`)
-	fmt.Fprint(w, `<th style="padding:10px 16px; text-align:left; width:16%;">Date</th>`)
-	fmt.Fprint(w, `<th style="padding:10px 16px; text-align:left; width:32%;">Details</th>`)
-	fmt.Fprint(w, `<th style="padding:10px 16px; text-align:right; width:8%;">Files</th>`)
-	fmt.Fprint(w, `<th style="padding:10px 16px; text-align:right; width:10%;">Size</th>`)
-	fmt.Fprint(w, `<th style="padding:10px 16px; text-align:right; width:10%;">Duration</th>`)
-	fmt.Fprint(w, `</tr></thead><tbody>`)
+	// Build a unified activity list sorted by time (newest first).
+	type activityRow struct {
+		Timestamp time.Time
+		Icon      string
+		Type      string
+		Status    string
+		StatusClr string
+		Date      string
+		Details   string
+		Files     string
+		Size      string
+		Duration  string
+	}
 
-	// Merge and sort by time (interleave backups and restores).
-	// First render backups.
+	var rows []activityRow
+
 	for _, j := range jobs {
 		icon := "🔵"
 		switch j.Status {
@@ -392,7 +395,6 @@ func (s *Server) handleAPIActivityRecent(w http.ResponseWriter, r *http.Request)
 			icon = "🔄"
 		}
 
-		started := j.StartedAt.Format("2006-01-02 15:04:05")
 		duration := "-"
 		if j.FinishedAt != nil {
 			duration = j.FinishedAt.Sub(j.StartedAt).Round(time.Second).String()
@@ -400,44 +402,73 @@ func (s *Server) handleAPIActivityRecent(w http.ResponseWriter, r *http.Request)
 			duration = time.Since(j.StartedAt).Round(time.Second).String()
 		}
 
-		fmt.Fprintf(w, `<tr style="border-bottom:1px solid #f3f4f6;">`)
-		fmt.Fprintf(w, `<td style="padding:8px 16px;">%s</td>`, icon)
-		fmt.Fprintf(w, `<td style="padding:8px 16px; color:#4b5563;">Backup %s</td>`, j.Level)
-		fmt.Fprintf(w, `<td style="padding:8px 16px; color:#4b5563;">%s</td>`, string(j.Status))
-		fmt.Fprintf(w, `<td style="padding:8px 16px; color:#4b5563; white-space:nowrap;">%s</td>`, started)
-		fmt.Fprintf(w, `<td style="padding:8px 16px; color:#9ca3af; font-size:11px;">%s</td>`, j.BackupID)
-		fmt.Fprintf(w, `<td style="padding:8px 16px; text-align:right; color:#4b5563;">%d</td>`, j.FileCount)
-		fmt.Fprintf(w, `<td style="padding:8px 16px; text-align:right; color:#4b5563;">%s</td>`, formatSize(j.BytesNew))
-		fmt.Fprintf(w, `<td style="padding:8px 16px; text-align:right; color:#4b5563;">%s</td>`, duration)
-		fmt.Fprintf(w, `</tr>`)
+		rows = append(rows, activityRow{
+			Timestamp: j.StartedAt,
+			Icon:      icon,
+			Type:      "Backup " + j.Level,
+			Status:    string(j.Status),
+			StatusClr: "#4b5563",
+			Date:      j.StartedAt.Format("2006-01-02 15:04:05"),
+			Details:   j.BackupID,
+			Files:     fmt.Sprintf("%d", j.FileCount),
+			Size:      formatSize(j.BytesNew),
+			Duration:  duration,
+		})
 	}
 
-	// Render restores.
 	for _, rec := range restores {
 		icon := "📥"
+		status := "success"
+		statusClr := "#059669"
 		if !rec.Success {
 			icon = "❌"
-		}
-		restoredAt := rec.RestoredAt.Format("2006-01-02 15:04:05")
-
-		fmt.Fprintf(w, `<tr style="border-bottom:1px solid #f3f4f6;">`)
-		fmt.Fprintf(w, `<td style="padding:8px 16px;">%s</td>`, icon)
-		fmt.Fprintf(w, `<td style="padding:8px 16px; color:#7c3aed;">Restore</td>`)
-		status := "success"
-		statusColor := "#059669"
-		if !rec.Success {
 			status = "failed"
-			statusColor = "#dc2626"
+			statusClr = "#dc2626"
 		}
-		fmt.Fprintf(w, `<td style="padding:8px 16px; color:%s;">%s</td>`, statusColor, status)
-		fmt.Fprintf(w, `<td style="padding:8px 16px; color:#4b5563; white-space:nowrap;">%s</td>`, restoredAt)
-		fmt.Fprintf(w, `<td style="padding:8px 16px; color:#4b5563; font-size:11px;">%s</td>`, rec.FileName)
-		fmt.Fprintf(w, `<td style="padding:8px 16px; text-align:right; color:#4b5563;">1</td>`)
-		fmt.Fprintf(w, `<td style="padding:8px 16px; text-align:right; color:#9ca3af;">-</td>`)
-		fmt.Fprintf(w, `<td style="padding:8px 16px; text-align:right; color:#9ca3af;">-</td>`)
-		fmt.Fprintf(w, `</tr>`)
+
+		rows = append(rows, activityRow{
+			Timestamp: rec.RestoredAt,
+			Icon:      icon,
+			Type:      "Restore",
+			Status:    status,
+			StatusClr: statusClr,
+			Date:      rec.RestoredAt.Format("2006-01-02 15:04:05"),
+			Details:   rec.FileName,
+			Files:     "1",
+			Size:      "-",
+			Duration:  "-",
+		})
 	}
 
+	// Sort newest first.
+	sort.Slice(rows, func(i, j int) bool {
+		return rows[i].Timestamp.After(rows[j].Timestamp)
+	})
+
+	fmt.Fprint(w, `<table style="width:100%; border-collapse:collapse; font-size:13px; font-family:monospace;">`)
+	fmt.Fprint(w, `<thead><tr style="border-bottom:2px solid #e5e7eb; text-transform:uppercase; font-size:11px; color:#6b7280;">`)
+	fmt.Fprint(w, `<th style="padding:10px 16px; text-align:left; width:4%;"></th>`)
+	fmt.Fprint(w, `<th style="padding:10px 16px; text-align:left; width:10%;">Type</th>`)
+	fmt.Fprint(w, `<th style="padding:10px 16px; text-align:left; width:10%;">Status</th>`)
+	fmt.Fprint(w, `<th style="padding:10px 16px; text-align:left; width:16%;">Date</th>`)
+	fmt.Fprint(w, `<th style="padding:10px 16px; text-align:left; width:32%;">Details</th>`)
+	fmt.Fprint(w, `<th style="padding:10px 16px; text-align:right; width:8%;">Files</th>`)
+	fmt.Fprint(w, `<th style="padding:10px 16px; text-align:right; width:10%;">Size</th>`)
+	fmt.Fprint(w, `<th style="padding:10px 16px; text-align:right; width:10%;">Duration</th>`)
+	fmt.Fprint(w, `</tr></thead><tbody>`)
+
+	for _, row := range rows {
+		fmt.Fprintf(w, `<tr style="border-bottom:1px solid #f3f4f6;">`)
+		fmt.Fprintf(w, `<td style="padding:8px 16px;">%s</td>`, row.Icon)
+		fmt.Fprintf(w, `<td style="padding:8px 16px; color:#4b5563;">%s</td>`, row.Type)
+		fmt.Fprintf(w, `<td style="padding:8px 16px; color:%s;">%s</td>`, row.StatusClr, row.Status)
+		fmt.Fprintf(w, `<td style="padding:8px 16px; color:#4b5563; white-space:nowrap;">%s</td>`, row.Date)
+		fmt.Fprintf(w, `<td style="padding:8px 16px; color:#9ca3af; font-size:11px;">%s</td>`, row.Details)
+		fmt.Fprintf(w, `<td style="padding:8px 16px; text-align:right; color:#4b5563;">%s</td>`, row.Files)
+		fmt.Fprintf(w, `<td style="padding:8px 16px; text-align:right; color:#4b5563;">%s</td>`, row.Size)
+		fmt.Fprintf(w, `<td style="padding:8px 16px; text-align:right; color:#4b5563;">%s</td>`, row.Duration)
+		fmt.Fprintf(w, `</tr>`)
+	}
 	fmt.Fprint(w, `</tbody></table>`)
 }
 
