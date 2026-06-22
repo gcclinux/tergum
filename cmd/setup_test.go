@@ -228,6 +228,14 @@ func TestWriteConfigTOML(t *testing.T) {
 }
 
 func TestInteractiveSetupRequiresPassphrase(t *testing.T) {
+	tmpDir := t.TempDir()
+	if os.PathSeparator == '\\' {
+		t.Setenv("APPDATA", tmpDir)
+		t.Setenv("USERPROFILE", tmpDir)
+	} else {
+		t.Setenv("HOME", tmpDir)
+	}
+
 	// Provide inputs for all prompts but leave passphrase empty
 	input := strings.NewReader("client\nlocalhost\n\nn\n\n")
 	var output bytes.Buffer
@@ -244,6 +252,14 @@ func TestInteractiveSetupRequiresPassphrase(t *testing.T) {
 }
 
 func TestInteractiveSetupShortPassphrase(t *testing.T) {
+	tmpDir := t.TempDir()
+	if os.PathSeparator == '\\' {
+		t.Setenv("APPDATA", tmpDir)
+		t.Setenv("USERPROFILE", tmpDir)
+	} else {
+		t.Setenv("HOME", tmpDir)
+	}
+
 	// Provide all prompts with a too-short passphrase
 	input := strings.NewReader("client\nlocalhost\n\nn\nshort\n")
 	var output bytes.Buffer
@@ -261,24 +277,12 @@ func TestInteractiveSetupShortPassphrase(t *testing.T) {
 
 func TestInteractiveSetupFullFlow(t *testing.T) {
 	tmpDir := t.TempDir()
-
-	// Save and restore the real config file since runInteractiveSetup writes to it.
-	configDir := defaultConfigDirForTest()
-	realCfgPath := filepath.Join(configDir, "tergum.toml")
-	origData, origErr := os.ReadFile(realCfgPath)
-	saltData, saltErr := os.ReadFile(filepath.Join(configDir, "salt"))
-	verifyData, verifyErr := os.ReadFile(filepath.Join(configDir, "key_verify"))
-	defer func() {
-		if origErr == nil {
-			os.WriteFile(realCfgPath, origData, 0600)
-		}
-		if saltErr == nil {
-			os.WriteFile(filepath.Join(configDir, "salt"), saltData, 0600)
-		}
-		if verifyErr == nil {
-			os.WriteFile(filepath.Join(configDir, "key_verify"), verifyData, 0600)
-		}
-	}()
+	if os.PathSeparator == '\\' {
+		t.Setenv("APPDATA", tmpDir)
+		t.Setenv("USERPROFILE", tmpDir)
+	} else {
+		t.Setenv("HOME", tmpDir)
+	}
 
 	// Provide all required inputs:
 	// role=client, server_address=localhost, storage_path=<tmpdir>/storage, generate_certs=n, passphrase=mysecretpass123
@@ -340,3 +344,60 @@ func defaultConfigDirForTest() string {
 	home, _ := os.UserHomeDir()
 	return filepath.Join(home, ".config", "tergum")
 }
+
+func TestInteractiveSetupExistingConfig(t *testing.T) {
+	tmpDir := t.TempDir()
+	if os.PathSeparator == '\\' {
+		t.Setenv("APPDATA", tmpDir)
+		t.Setenv("USERPROFILE", tmpDir)
+	} else {
+		t.Setenv("HOME", tmpDir)
+	}
+
+	storagePath := filepath.Join(tmpDir, "storage")
+
+	// Phase 1: Initial Setup
+	inputs1 := fmt.Sprintf("client\nlocalhost\n%s\nn\nmysecretpass123\n\ny\ny\n\nn\n\n\n", storagePath)
+	var output1 bytes.Buffer
+	wiz1 := newSetupWizard(strings.NewReader(inputs1), &output1)
+	if err := runInteractiveSetup(wiz1); err != nil {
+		t.Fatalf("first setup failed: %v\noutput: %s", err, output1.String())
+	}
+
+	// Verify salt file exists
+	configDir := defaultConfigDirForTest()
+	saltPath := filepath.Join(configDir, "salt")
+	if _, err := os.Stat(saltPath); err != nil {
+		t.Fatalf("expected salt file to exist: %v", err)
+	}
+	originalSalt, _ := os.ReadFile(saltPath)
+
+	// Phase 2: Rerun setup, choose NOT to overwrite, verify correct passphrase
+	// inputs: role, server, storage, certs, overwrite=n, passphrase=mysecretpass123
+	inputs2 := fmt.Sprintf("client\nlocalhost\n%s\nn\nn\nmysecretpass123\n\ny\ny\n\nn\n\n\n", storagePath)
+	var output2 bytes.Buffer
+	wiz2 := newSetupWizard(strings.NewReader(inputs2), &output2)
+	if err := runInteractiveSetup(wiz2); err != nil {
+		t.Fatalf("setup with correct passphrase failed: %v\noutput: %s", err, output2.String())
+	}
+
+	// Verify salt was NOT overwritten
+	newSalt, _ := os.ReadFile(saltPath)
+	if !bytes.Equal(originalSalt, newSalt) {
+		t.Error("salt was overwritten despite choosing not to")
+	}
+
+	// Phase 3: Rerun setup, choose NOT to overwrite, enter WRONG passphrase, do NOT retry
+	// inputs: role, server, storage, certs, overwrite=n, passphrase=wrongpass, retry=n
+	inputs3 := fmt.Sprintf("client\nlocalhost\n%s\nn\nn\nwrongpass\nn\n", storagePath)
+	var output3 bytes.Buffer
+	wiz3 := newSetupWizard(strings.NewReader(inputs3), &output3)
+	err := runInteractiveSetup(wiz3)
+	if err == nil {
+		t.Fatal("expected setup to fail with wrong passphrase")
+	}
+	if !strings.Contains(err.Error(), "incorrect passphrase") {
+		t.Errorf("expected incorrect passphrase error, got: %v\noutput: %s", err, output3.String())
+	}
+}
+

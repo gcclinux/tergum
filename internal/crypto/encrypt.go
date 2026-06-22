@@ -5,9 +5,11 @@ import (
 	"crypto/cipher"
 	"crypto/rand"
 	"encoding/binary"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
+	"strings"
 
 	"golang.org/x/crypto/argon2"
 )
@@ -274,3 +276,36 @@ func aesKeyUnwrap(kek, ciphertext []byte) ([]byte, error) {
 
 	return output, nil
 }
+
+// VerifyMasterKey checks if the masterKey can decrypt the verification token stored in key_verify file.
+func (e *AESEncryptor) VerifyMasterKey(masterKey []byte, verifyData string) (bool, error) {
+	parts := strings.Split(strings.TrimSpace(verifyData), ":")
+	if len(parts) != 3 {
+		return false, fmt.Errorf("invalid key_verify format")
+	}
+
+	ciphertext, err := hex.DecodeString(parts[0])
+	if err != nil {
+		return false, fmt.Errorf("failed to decode ciphertext: %w", err)
+	}
+	wrappedDEK, err := hex.DecodeString(parts[1])
+	if err != nil {
+		return false, fmt.Errorf("failed to decode wrappedDEK: %w", err)
+	}
+	nonce, err := hex.DecodeString(parts[2])
+	if err != nil {
+		return false, fmt.Errorf("failed to decode nonce: %w", err)
+	}
+
+	plaintext, err := e.Decrypt(ciphertext, wrappedDEK, nonce, masterKey)
+	if err != nil {
+		return false, err
+	}
+
+	if string(plaintext) != "tergum-key-verification" {
+		return false, fmt.Errorf("decrypted token mismatch")
+	}
+
+	return true, nil
+}
+

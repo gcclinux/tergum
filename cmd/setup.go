@@ -177,50 +177,114 @@ func runInteractiveSetup(wiz *setupWizard) error {
 	}
 
 	// 5. Encryption passphrase
-	passphrase := wiz.prompt("Encryption passphrase (min 8 characters)", "")
-	if passphrase == "" {
-		return fmt.Errorf("encryption passphrase is required")
-	}
-	if len(passphrase) < 8 {
-		return fmt.Errorf("passphrase must be at least 8 characters")
-	}
-
-	// Derive master key from passphrase
-	salt := make([]byte, 16)
-	if _, err := io.ReadFull(rand.Reader, salt); err != nil {
-		return fmt.Errorf("failed to generate salt: %w", err)
-	}
-
-	enc := crypto.NewEncryptor()
-	masterKey, err := enc.DeriveKey(passphrase, salt)
-	if err != nil {
-		return fmt.Errorf("failed to derive master key: %w", err)
-	}
-
-	// Store salt and encrypted master key verification token in config dir
-	if err := os.MkdirAll(configDir, 0700); err != nil {
-		return fmt.Errorf("cannot create config directory: %w", err)
-	}
-
 	saltPath := filepath.Join(configDir, "salt")
-	if err := os.WriteFile(saltPath, []byte(hex.EncodeToString(salt)), 0600); err != nil {
-		return fmt.Errorf("cannot write salt file: %w", err)
+	verifyPath := filepath.Join(configDir, "key_verify")
+	existingConfigExists := false
+
+	if _, err := os.Stat(saltPath); err == nil {
+		if _, err := os.Stat(verifyPath); err == nil {
+			existingConfigExists = true
+		}
 	}
 
-	// Store a verification token (encrypt known plaintext to verify passphrase later)
-	verificationPlaintext := []byte("tergum-key-verification")
-	ciphertext, wrappedDEK, nonce, err := enc.Encrypt(verificationPlaintext, masterKey)
-	if err != nil {
-		return fmt.Errorf("failed to create verification token: %w", err)
+	var salt []byte
+	var masterKey []byte
+	var err error
+	enc := crypto.NewEncryptor()
+
+	if existingConfigExists {
+		fmt.Fprintln(wiz.writer, "\nAn existing encryption configuration was found.")
+		fmt.Fprintln(wiz.writer, "WARNING: Overwriting it will make all past backups permanently undecryptable!")
+		
+		overwrite := wiz.promptYesNo("Do you want to overwrite the existing encryption configuration and start fresh?", false)
+		if !overwrite {
+			// Read existing salt
+			saltHex, err := os.ReadFile(saltPath)
+			if err != nil {
+				return fmt.Errorf("cannot read existing salt file: %w", err)
+			}
+			salt, err = hex.DecodeString(strings.TrimSpace(string(saltHex)))
+			if err != nil {
+				return fmt.Errorf("invalid existing salt file: %w", err)
+			}
+
+			// Read existing verify token
+			verifyData, err := os.ReadFile(verifyPath)
+			if err != nil {
+				return fmt.Errorf("cannot read existing verification file: %w", err)
+			}
+
+			// Prompt for existing passphrase to verify
+			for {
+				passphrase := wiz.prompt("Enter existing encryption passphrase to verify", "")
+				if passphrase == "" {
+					return fmt.Errorf("encryption passphrase is required")
+				}
+				
+				masterKey, err = enc.DeriveKey(passphrase, salt)
+				if err != nil {
+					return fmt.Errorf("failed to derive master key: %w", err)
+				}
+
+				if ok, _ := enc.VerifyMasterKey(masterKey, string(verifyData)); ok {
+					fmt.Fprintln(wiz.writer, "Passphrase verified successfully. Existing encryption configuration kept.")
+					break
+				}
+				
+				fmt.Fprintln(wiz.writer, "Incorrect passphrase for the existing configuration.")
+				retry := wiz.promptYesNo("Do you want to try again?", true)
+				if !retry {
+					return fmt.Errorf("setup cancelled: incorrect passphrase")
+				}
+			}
+		} else {
+			existingConfigExists = false
+		}
 	}
-	verifyData := fmt.Sprintf("%s:%s:%s",
-		hex.EncodeToString(ciphertext),
-		hex.EncodeToString(wrappedDEK),
-		hex.EncodeToString(nonce),
-	)
-	verifyPath := filepath.Join(configDir, "key_verify")
-	if err := os.WriteFile(verifyPath, []byte(verifyData), 0600); err != nil {
-		return fmt.Errorf("cannot write verification file: %w", err)
+
+	if !existingConfigExists {
+		passphrase := wiz.prompt("Encryption passphrase (min 8 characters)", "")
+		if passphrase == "" {
+			return fmt.Errorf("encryption passphrase is required")
+		}
+		if len(passphrase) < 8 {
+			return fmt.Errorf("passphrase must be at least 8 characters")
+		}
+
+		// Derive master key from passphrase
+		salt = make([]byte, 16)
+		if _, err := io.ReadFull(rand.Reader, salt); err != nil {
+			return fmt.Errorf("failed to generate salt: %w", err)
+		}
+
+		masterKey, err = enc.DeriveKey(passphrase, salt)
+		if err != nil {
+			return fmt.Errorf("failed to derive master key: %w", err)
+		}
+
+		// Store salt and encrypted master key verification token in config dir
+		if err := os.MkdirAll(configDir, 0700); err != nil {
+			return fmt.Errorf("cannot create config directory: %w", err)
+		}
+
+		if err := os.WriteFile(saltPath, []byte(hex.EncodeToString(salt)), 0600); err != nil {
+			return fmt.Errorf("cannot write salt file: %w", err)
+		}
+
+		// Store a verification token (encrypt known plaintext to verify passphrase later)
+		verificationPlaintext := []byte("tergum-key-verification")
+		ciphertext, wrappedDEK, nonce, err := enc.Encrypt(verificationPlaintext, masterKey)
+		if err != nil {
+			return fmt.Errorf("failed to create verification token: %w", err)
+		}
+		verifyData := fmt.Sprintf("%s:%s:%s",
+			hex.EncodeToString(ciphertext),
+			hex.EncodeToString(wrappedDEK),
+			hex.EncodeToString(nonce),
+		)
+		if err := os.WriteFile(verifyPath, []byte(verifyData), 0600); err != nil {
+			return fmt.Errorf("cannot write verification file: %w", err)
+		}
 	}
 
 	// 6. Backup paths — what to back up

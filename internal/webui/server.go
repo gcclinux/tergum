@@ -41,6 +41,7 @@ type Server struct {
 	watcherController WatcherController
 	clientRegistry    ClientRegistry
 	clientConnector   ClientConnector
+	startTime         time.Time
 }
 
 // BackupTrigger is an interface for triggering backups from the Web UI.
@@ -197,6 +198,7 @@ func NewServer(cfg config.WebUIConfig, username, password string, opts ...Server
 		broker:       broker,
 		logger:       slog.Default().With(slog.String("component", "webui")),
 		cfg:          cfg,
+		startTime:    time.Now(),
 	}
 
 	// Apply options.
@@ -319,6 +321,7 @@ func (s *Server) routes() http.Handler {
 	// System stats API.
 	authed.HandleFunc("/api/system/cpu", s.handleAPISystemCPU)
 	authed.HandleFunc("/api/system/memory", s.handleAPISystemMemory)
+	authed.HandleFunc("/api/system/network", s.handleAPISystemNetwork)
 
 	// Metrics API.
 	authed.HandleFunc("/api/metrics/cards", s.handleAPIMetricsCards)
@@ -632,15 +635,31 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	uptime := "N/A"
+	if !s.startTime.IsZero() {
+		uptime = time.Since(s.startTime).Round(time.Second).String()
+	}
+
 	data := dashboardData{
 		Title:         "Dashboard",
 		NodeRole:      s.nodeRole(),
 		NavItems:      FilterNavItems(s.nodeRole()),
-		Uptime:        "N/A",
+		Uptime:        uptime,
 		Version:       "3.0.0",
 		TotalFiles:    0,
 		TotalSize:     "0 B",
 		ActiveClients: 0,
+	}
+
+	// Calculate active clients from registry and running jobs.
+	onlineClients := make(map[string]bool)
+	if s.clientRegistry != nil {
+		clients := s.clientRegistry.ListClients()
+		for _, c := range clients {
+			if c.Status == "online" {
+				onlineClients[c.ClientID] = true
+			}
+		}
 	}
 
 	if s.repo != nil {
@@ -650,11 +669,20 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 			for _, j := range jobs {
 				totalFiles += j.FileCount
 				totalBytes += j.BytesNew
+				if j.Status == model.JobRunning {
+					if j.ClientID != "" {
+						onlineClients[j.ClientID] = true
+					} else {
+						onlineClients["local"] = true
+					}
+				}
 			}
 			data.TotalFiles = totalFiles
 			data.TotalSize = formatSize(totalBytes)
 		}
 	}
+	data.ActiveClients = len(onlineClients)
+
 
 	// System stats.
 	cpu, memUsed, memTotal, memPct := getSystemStats()

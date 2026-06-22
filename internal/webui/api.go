@@ -520,14 +520,25 @@ func (s *Server) handleAPIRestoreSearch(w http.ResponseWriter, r *http.Request) 
 	}
 
 	w.Header().Set("Content-Type", "text/html")
-	fmt.Fprintf(w, `<p class="text-sm text-gray-600 mb-2">Found %d file(s):</p>`, len(entries))
-	fmt.Fprint(w, `<table class="w-full text-sm"><thead><tr>`)
-	fmt.Fprint(w, `<th class="p-2 text-left">Path</th><th class="p-2 text-left">Size</th><th class="p-2 text-left">Backup Date</th>`)
+	fmt.Fprintf(w, `<p class="text-xs text-gray-500 dark:text-gray-400 mb-3">Found %d file(s):</p>`, len(entries))
+	fmt.Fprint(w, `<table class="w-full text-sm text-left">`)
+	fmt.Fprint(w, `<thead class="border-b border-gray-200 dark:border-gray-700 text-xs uppercase text-gray-500 dark:text-gray-400">`)
+	fmt.Fprint(w, `<tr>`)
+	fmt.Fprint(w, `<th class="px-4 py-2 font-medium text-left">Path</th>`)
+	fmt.Fprint(w, `<th class="px-4 py-2 font-medium text-right">Size</th>`)
+	fmt.Fprint(w, `<th class="px-4 py-2 font-medium text-left">Backup Date</th>`)
+	fmt.Fprint(w, `<th class="px-4 py-2 font-medium text-center">Actions</th>`)
 	fmt.Fprint(w, `</tr></thead><tbody>`)
 	for _, e := range entries {
 		date := e.BackupDate.Format("2006-01-02 15:04")
-		fmt.Fprintf(w, `<tr class="hover:bg-gray-50"><td class="p-2 font-mono text-xs">%s</td>`, e.FilePath)
-		fmt.Fprintf(w, `<td class="p-2">%s</td><td class="p-2">%s</td></tr>`, formatSize(e.FileSize), date)
+		fmt.Fprintf(w, `<tr class="border-b border-gray-100 dark:border-gray-700/50 hover:bg-gray-50 dark:hover:bg-gray-750 transition-colors">`)
+		fmt.Fprintf(w, `<td class="px-4 py-2 font-mono text-xs text-gray-400 dark:text-gray-400 break-all" title="%s">%s</td>`, e.FilePath, truncatePath(e.FilePath, 100))
+		fmt.Fprintf(w, `<td class="px-4 py-2 text-right text-gray-700 dark:text-gray-300">%s</td>`, formatSize(e.FileSize))
+		fmt.Fprintf(w, `<td class="px-4 py-2 text-gray-700 dark:text-gray-300 whitespace-nowrap">%s</td>`, date)
+		fmt.Fprintf(w, `<td class="px-4 py-2 text-center">`)
+		fmt.Fprintf(w, `<button onclick="restoreFile('%s','%s')" class="px-2.5 py-1 text-green-600 dark:text-green-400 border border-green-300 dark:border-green-800 rounded text-xs font-semibold hover:bg-green-50 dark:hover:bg-green-900/20 transition-colors">Restore</button>`, e.Blake3Hash, escapeJS(e.FilePath))
+		fmt.Fprintf(w, `</td>`)
+		fmt.Fprintf(w, `</tr>`)
 	}
 	fmt.Fprint(w, `</tbody></table>`)
 }
@@ -535,25 +546,47 @@ func (s *Server) handleAPIRestoreSearch(w http.ResponseWriter, r *http.Request) 
 // handleAPIRestoreBackups handles GET /api/restore/backups — lists backups for browsing.
 func (s *Server) handleAPIRestoreBackups(w http.ResponseWriter, r *http.Request) {
 	if s.repo == nil {
-		fmt.Fprint(w, `<p class="text-gray-500">Database not available.</p>`)
+		fmt.Fprint(w, `<p class="text-gray-500 dark:text-gray-400 italic">Database not available.</p>`)
 		return
 	}
 
 	jobs, err := s.repo.ListJobs(r.Context(), db.JobFilter{Limit: 20})
 	if err != nil || len(jobs) == 0 {
-		fmt.Fprint(w, `<p class="text-gray-500 italic">No backups found.</p>`)
+		fmt.Fprint(w, `<p class="text-gray-500 dark:text-gray-400 italic">No backups found.</p>`)
 		return
 	}
 
 	w.Header().Set("Content-Type", "text/html")
-	fmt.Fprint(w, `<table class="w-full text-sm"><thead><tr>`)
-	fmt.Fprint(w, `<th class="p-2">Backup ID</th><th class="p-2">Date</th><th class="p-2">Files</th><th class="p-2">Status</th>`)
-	fmt.Fprint(w, `</tr></thead><tbody>`)
+	fmt.Fprint(w, `<table class="w-full text-sm text-left">`)
+	fmt.Fprint(w, `<thead class="border-b border-gray-200 dark:border-gray-700 text-xs uppercase text-gray-500 dark:text-gray-400">`)
+	fmt.Fprint(w, `<tr>`)
+	fmt.Fprint(w, `<th class="px-4 py-3 font-medium text-left">Backup ID</th>`)
+	fmt.Fprint(w, `<th class="px-4 py-3 font-medium text-left">Date</th>`)
+	fmt.Fprint(w, `<th class="px-4 py-3 font-medium text-right">Files</th>`)
+	fmt.Fprint(w, `<th class="px-4 py-3 font-medium text-center">Status</th>`)
+	fmt.Fprint(w, `<th class="px-4 py-3 font-medium text-center">Actions</th>`)
+	fmt.Fprint(w, `</tr></thead>`)
+	fmt.Fprint(w, `<tbody>`)
 	for _, j := range jobs {
 		date := j.StartedAt.Format("2006-01-02 15:04")
-		fmt.Fprintf(w, `<tr class="hover:bg-gray-50">`)
-		fmt.Fprintf(w, `<td class="p-2 font-mono text-xs">%s</td>`, j.BackupID[:12])
-		fmt.Fprintf(w, `<td class="p-2">%s</td><td class="p-2">%d</td><td class="p-2">%s</td>`, date, j.FileCount, string(j.Status))
+		statusClass := "bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200"
+		switch j.Status {
+		case model.JobCompleted:
+			statusClass = "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300"
+		case model.JobFailed:
+			statusClass = "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300"
+		case model.JobRunning:
+			statusClass = "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300"
+		}
+
+		fmt.Fprintf(w, `<tr class="border-b border-gray-100 dark:border-gray-700/50 hover:bg-gray-50 dark:hover:bg-gray-750 transition-colors">`)
+		fmt.Fprintf(w, `<td class="px-4 py-3 font-mono text-xs text-gray-700 dark:text-gray-300 break-all">%s</td>`, j.BackupID)
+		fmt.Fprintf(w, `<td class="px-4 py-3 text-gray-700 dark:text-gray-300 whitespace-nowrap">%s</td>`, date)
+		fmt.Fprintf(w, `<td class="px-4 py-3 text-right text-gray-700 dark:text-gray-300">%d</td>`, j.FileCount)
+		fmt.Fprintf(w, `<td class="px-4 py-3 text-center"><span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium %s">%s</span></td>`, statusClass, string(j.Status))
+		fmt.Fprintf(w, `<td class="px-4 py-3 text-center">`)
+		fmt.Fprintf(w, `<button onclick="selectBackup('%s')" class="px-3 py-1 bg-blue-600 hover:bg-blue-700 dark:bg-blue-600 dark:hover:bg-blue-500 text-white text-xs font-semibold rounded transition-colors shadow-sm">Select</button>`, j.BackupID)
+		fmt.Fprintf(w, `</td>`)
 		fmt.Fprintf(w, `</tr>`)
 	}
 	fmt.Fprint(w, `</tbody></table>`)
@@ -867,25 +900,25 @@ func (s *Server) handleAPISystemMemory(w http.ResponseWriter, r *http.Request) {
 // handleAPIRestoreFiles handles GET /api/restore/files?backup_id=... — returns files in a backup as HTML table.
 func (s *Server) handleAPIRestoreFiles(w http.ResponseWriter, r *http.Request) {
 	if s.repo == nil {
-		fmt.Fprint(w, `<p style="color:#dc2626;">Database not available.</p>`)
+		fmt.Fprint(w, `<p class="text-red-500 dark:text-red-400">Database not available.</p>`)
 		return
 	}
 
 	backupID := strings.TrimSpace(r.URL.Query().Get("backup_id"))
 	if backupID == "" {
-		fmt.Fprint(w, `<p style="color:#dc2626;">backup_id is required.</p>`)
+		fmt.Fprint(w, `<p class="text-red-500 dark:text-red-400">Backup ID is required.</p>`)
 		return
 	}
 
 	entries, err := s.repo.GetManifest(r.Context(), backupID)
 	if err != nil {
 		s.logger.Error("get manifest failed", "error", err)
-		fmt.Fprint(w, `<p style="color:#dc2626;">Failed to load files.</p>`)
+		fmt.Fprint(w, `<p class="text-red-500 dark:text-red-400">Failed to load files.</p>`)
 		return
 	}
 
 	if len(entries) == 0 {
-		fmt.Fprint(w, `<p style="color:#9ca3af; font-style:italic;">No files in this backup.</p>`)
+		fmt.Fprint(w, `<p class="text-gray-500 dark:text-gray-400 italic">No files in this backup.</p>`)
 		return
 	}
 
@@ -901,30 +934,31 @@ func (s *Server) handleAPIRestoreFiles(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "text/html")
-	fmt.Fprintf(w, `<p style="font-size:12px; color:#6b7280; margin-bottom:12px;">%d file(s) in backup %s</p>`, len(files), backupID[:12])
-	fmt.Fprint(w, `<table style="width:100%; border-collapse:collapse; font-size:12px; font-family:monospace;">`)
-	fmt.Fprint(w, `<thead><tr style="border-bottom:2px solid #e5e7eb; text-transform:uppercase; font-size:10px; color:#6b7280;">`)
-	fmt.Fprint(w, `<th style="padding:6px 12px; text-align:left; width:10%;">Hash</th>`)
-	fmt.Fprint(w, `<th style="padding:6px 12px; text-align:left; width:55%;">Path</th>`)
-	fmt.Fprint(w, `<th style="padding:6px 12px; text-align:right; width:12%;">Size</th>`)
-	fmt.Fprint(w, `<th style="padding:6px 12px; text-align:center; width:23%;">Actions</th>`)
+	fmt.Fprintf(w, `<p class="text-xs text-gray-500 dark:text-gray-400 mb-3">%d file(s) in backup %s</p>`, len(files), backupID)
+	fmt.Fprint(w, `<table class="w-full text-sm text-left">`)
+	fmt.Fprint(w, `<thead class="border-b border-gray-200 dark:border-gray-700 text-xs uppercase text-gray-500 dark:text-gray-400">`)
+	fmt.Fprint(w, `<tr>`)
+	fmt.Fprint(w, `<th class="px-4 py-2 font-medium text-left">Hash</th>`)
+	fmt.Fprint(w, `<th class="px-4 py-2 font-medium text-left">Path</th>`)
+	fmt.Fprint(w, `<th class="px-4 py-2 font-medium text-right">Size</th>`)
+	fmt.Fprint(w, `<th class="px-4 py-2 font-medium text-center">Actions</th>`)
 	fmt.Fprint(w, `</tr></thead><tbody>`)
 
 	for _, f := range files {
-		fmt.Fprintf(w, `<tr style="border-bottom:1px solid #f3f4f6;">`)
-		fmt.Fprintf(w, `<td style="padding:4px 12px; color:#9ca3af;">%s</td>`, f.Hash[:12])
-		fmt.Fprintf(w, `<td style="padding:4px 12px; color:#374151;" title="%s">%s</td>`, f.Path, truncatePath(f.Path, 100))
-		fmt.Fprintf(w, `<td style="padding:4px 12px; text-align:right; color:#4b5563;">%s</td>`, formatSize(f.Size))
-		fmt.Fprintf(w, `<td style="padding:4px 12px; text-align:center;">`)
-		fmt.Fprintf(w, `<button onclick="restoreFile('%s','%s')" style="color:#059669; border:1px solid #6ee7b7; border-radius:4px; padding:2px 8px; font-size:10px; cursor:pointer; margin-right:4px;">Restore</button>`, f.Hash, escapeJS(f.Path))
+		fmt.Fprintf(w, `<tr class="border-b border-gray-100 dark:border-gray-700/50 hover:bg-gray-50 dark:hover:bg-gray-750 transition-colors">`)
+		fmt.Fprintf(w, `<td class="px-4 py-2 font-mono text-xs text-gray-400 dark:text-gray-400">%s</td>`, f.Hash[:12])
+		fmt.Fprintf(w, `<td class="px-4 py-2 font-mono text-xs text-gray-400 dark:text-gray-400 break-all" title="%s">%s</td>`, f.Path, truncatePath(f.Path, 100))
+		fmt.Fprintf(w, `<td class="px-4 py-2 text-right text-gray-700 dark:text-gray-300">%s</td>`, formatSize(f.Size))
+		fmt.Fprintf(w, `<td class="px-4 py-2 text-center">`)
+		fmt.Fprintf(w, `<button onclick="restoreFile('%s','%s')" class="px-2.5 py-1 text-green-600 dark:text-green-400 border border-green-300 dark:border-green-800 rounded text-xs font-semibold hover:bg-green-50 dark:hover:bg-green-900/20 transition-colors">Restore</button>`, f.Hash, escapeJS(f.Path))
 		fmt.Fprintf(w, `</td>`)
 		fmt.Fprintf(w, `</tr>`)
 	}
 	fmt.Fprint(w, `</tbody></table>`)
 
 	// Add "Restore All" button at the bottom.
-	fmt.Fprintf(w, `<div style="margin-top:16px; padding-top:12px; border-top:1px solid #e5e7eb;">`)
-	fmt.Fprintf(w, `<button onclick="restoreBackup('%s')" style="background:#059669; color:white; border:none; border-radius:4px; padding:8px 16px; font-size:12px; cursor:pointer;">Restore All %d Files</button>`, backupID, len(files))
+	fmt.Fprintf(w, `<div class="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700 flex justify-start">`)
+	fmt.Fprintf(w, `<button onclick="restoreBackup('%s')" class="px-4 py-2 bg-green-600 hover:bg-green-700 dark:bg-green-600 dark:hover:bg-green-500 text-white text-xs font-semibold rounded-lg transition-colors shadow-sm">Restore All %d Files</button>`, backupID, len(files))
 	fmt.Fprintf(w, `</div>`)
 }
 

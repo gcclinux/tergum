@@ -65,18 +65,12 @@
         </div>
         {{end}}
 
-        <!-- Version Card (static, no polling needed) -->
-        <div id="card-version" class="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-4">
-            <div class="flex items-center gap-3">
-                <div class="flex-shrink-0 w-10 h-10 flex items-center justify-center rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400">
-                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A2 2 0 013 12V7a4 4 0 014-4z"/>
-                    </svg>
-                </div>
-                <div class="flex-1 min-w-0">
-                    <p class="text-xl font-bold text-gray-900 dark:text-gray-100 truncate">{{.Version}}</p>
-                    <p class="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide">Version</p>
-                </div>
+        <!-- Network Speed Card (polls every 3s) -->
+        <div id="card-network" class="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-4"
+             hx-get="/api/system/network" hx-trigger="load, every 3s" hx-swap="innerHTML">
+            <div class="animate-pulse space-y-3">
+                <div class="h-3 w-20 bg-gray-200 dark:bg-gray-700 rounded"></div>
+                <div class="h-8 w-16 bg-gray-200 dark:bg-gray-700 rounded"></div>
             </div>
         </div>
     </div>

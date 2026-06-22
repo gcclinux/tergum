@@ -3,6 +3,8 @@ package crypto
 import (
 	"bytes"
 	"crypto/rand"
+	"encoding/hex"
+	"fmt"
 	"testing"
 )
 
@@ -343,3 +345,57 @@ func TestAESKeyUnwrap_WrongKey_Fails(t *testing.T) {
 		t.Error("expected error when unwrapping with wrong key")
 	}
 }
+
+func TestVerifyMasterKey(t *testing.T) {
+	enc := NewEncryptor()
+	masterKey := make([]byte, 32)
+	if _, err := rand.Read(masterKey); err != nil {
+		t.Fatal(err)
+	}
+
+	// Encrypt verification token
+	verificationPlaintext := []byte("tergum-key-verification")
+	ciphertext, wrappedDEK, nonce, err := enc.Encrypt(verificationPlaintext, masterKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// format: hex(ciphertext):hex(wrappedDEK):hex(nonce)
+	verifyData := fmt.Sprintf("%s:%s:%s",
+		hex.EncodeToString(ciphertext),
+		hex.EncodeToString(wrappedDEK),
+		hex.EncodeToString(nonce),
+	)
+
+	// Verify with correct master key
+	ok, err := enc.VerifyMasterKey(masterKey, verifyData)
+	if err != nil {
+		t.Errorf("VerifyMasterKey failed with correct key: %v", err)
+	}
+	if !ok {
+		t.Error("VerifyMasterKey returned false with correct key")
+	}
+
+	// Verify with wrong master key
+	wrongKey := make([]byte, 32)
+	if _, err := rand.Read(wrongKey); err != nil {
+		t.Fatal(err)
+	}
+	ok, err = enc.VerifyMasterKey(wrongKey, verifyData)
+	if err == nil {
+		t.Error("expected error with wrong master key")
+	}
+	if ok {
+		t.Error("VerifyMasterKey returned true with wrong master key")
+	}
+
+	// Verify with invalid token format
+	ok, err = enc.VerifyMasterKey(masterKey, "invalid:format")
+	if err == nil {
+		t.Error("expected error for invalid token format")
+	}
+	if ok {
+		t.Error("VerifyMasterKey returned true for invalid format")
+	}
+}
+

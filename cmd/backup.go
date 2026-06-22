@@ -214,6 +214,14 @@ func loadMasterKey(cfg *config.Config) ([]byte, error) {
 		return nil, fmt.Errorf("key derivation failed: %w", err)
 	}
 
+	// Verify derived master key against key_verify if it exists
+	verifyPath := filepath.Join(configDir, "key_verify")
+	if verifyData, err := os.ReadFile(verifyPath); err == nil {
+		if ok, err := enc.VerifyMasterKey(masterKey, string(verifyData)); err != nil || !ok {
+			return nil, fmt.Errorf("invalid passphrase: key verification failed")
+		}
+	}
+
 	return masterKey, nil
 }
 

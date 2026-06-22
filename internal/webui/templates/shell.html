@@ -13,6 +13,29 @@
         window.AlpineInitialized = true;
 
         Alpine.store('app', {
+            // Navigation state
+            currentPath: window.location.pathname,
+            pathTitles: {
+                '/': 'Dashboard',
+                '/dashboard': 'Dashboard',
+                '/backups': 'Backups',
+                '/restore': 'Restore',
+                '/config': 'Configuration',
+                '/paths': 'Paths',
+                '/retention': 'Retention Policies',
+                '/watchers': 'Watchers',
+                '/activity': 'Activity Log',
+                '/clients': 'Clients',
+                '/metrics': 'Metrics'
+            },
+            get pageTitle() {
+                return this.pathTitles[this.currentPath] || 'Tergum';
+            },
+            updatePath(path) {
+                this.currentPath = path;
+                document.title = this.pageTitle + ' - Tergum';
+            },
+
             // Sidebar state
             sidebarCollapsed: localStorage.getItem('sidebar_collapsed') === 'true',
             sidebarMobileOpen: false,
@@ -440,18 +463,18 @@
                     this.fetchHistory();
                 };
                 document.body.addEventListener('sse-reconnected', this._reconnectHandler);
+            },
 
-                this.$cleanup(() => {
-                    document.body.removeEventListener('sse-activity', this._sseHandler);
-                    document.body.removeEventListener('sse-connected', this._connectHandler);
-                    document.body.removeEventListener('sse-disconnected', this._disconnectHandler);
-                    document.body.removeEventListener('sse-reconnected', this._reconnectHandler);
-                    if (this._sseHandlers) {
-                        Object.keys(this._sseHandlers).forEach(type => {
-                            document.body.removeEventListener('sse-' + type, this._sseHandlers[type]);
-                        });
-                    }
-                });
+            destroy() {
+                document.body.removeEventListener('sse-activity', this._sseHandler);
+                document.body.removeEventListener('sse-connected', this._connectHandler);
+                document.body.removeEventListener('sse-disconnected', this._disconnectHandler);
+                document.body.removeEventListener('sse-reconnected', this._reconnectHandler);
+                if (this._sseHandlers) {
+                    Object.keys(this._sseHandlers).forEach(type => {
+                        document.body.removeEventListener('sse-' + type, this._sseHandlers[type]);
+                    });
+                }
             },
 
             async fetchHistory() {
@@ -590,7 +613,10 @@
             <ul class="space-y-1 px-2">
                 {{range .NavItems}}
                 <li>
-                    <a href="{{.Path}}" @click="$store.app.closeMobileSidebar()" class="flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-slate-300 hover:bg-slate-700 hover:text-white transition-colors duration-150">
+                    <a href="{{.Path}}" 
+                       @click="$store.app.closeMobileSidebar(); $store.app.updatePath('{{.Path}}')" 
+                       :class="$store.app.currentPath === '{{.Path}}' ? 'bg-slate-700 text-white font-semibold' : 'text-slate-300 hover:bg-slate-700 hover:text-white'"
+                       class="flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors duration-150">
                         <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="{{.Icon}}"/></svg>
                         <span x-show="!$store.app.sidebarCollapsed" x-transition class="whitespace-nowrap">{{.Label}}</span>
                     </a>
@@ -618,7 +644,7 @@
                 <button @click="$store.app.toggleMobileSidebar()" class="md:hidden p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700">
                     <svg class="w-6 h-6 text-gray-600 dark:text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
                 </button>
-                <h1 class="text-lg font-semibold text-gray-800 dark:text-gray-100">{{.Title}}</h1>
+                <h1 class="text-lg font-semibold text-gray-800 dark:text-gray-100" x-text="$store.app.pageTitle">{{.Title}}</h1>
             </div>
 
             <!-- Right: theme toggle -->
@@ -899,6 +925,19 @@
                 if (!hxTrigger || hxTrigger.indexOf('showToast') === -1) {
                     Alpine.store('app').addToast('error', 'Request failed: ' + (event.detail.error || 'Network error'));
                 }
+            }
+        });
+
+        // Listen to HTMX after swap and popstate events to update Alpine's navigation path
+        document.body.addEventListener('htmx:afterSwap', function() {
+            if (window.Alpine && Alpine.store('app')) {
+                Alpine.store('app').updatePath(window.location.pathname);
+            }
+        });
+
+        window.addEventListener('popstate', function() {
+            if (window.Alpine && Alpine.store('app')) {
+                Alpine.store('app').updatePath(window.location.pathname);
             }
         });
     });

@@ -17,9 +17,9 @@
         <h2 class="text-xs text-gray-500 uppercase">Storage Used</h2>
         <p class="text-2xl font-bold mt-1">{{.TotalSize}}</p>
     </div>
-    <div class="bg-white rounded shadow p-4">
-        <h2 class="text-xs text-gray-500 uppercase">Version</h2>
-        <p class="text-2xl font-bold mt-1">{{.Version}}</p>
+    <div class="bg-white rounded shadow p-4" hx-get="/api/system/network" hx-trigger="load, every 3s" hx-swap="innerHTML">
+        <h2 class="text-xs text-gray-500 uppercase">Network Speed</h2>
+        <p class="text-2xl font-bold mt-1">...</p>
     </div>
 </div>
 {{template "footer" .}}

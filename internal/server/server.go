@@ -729,7 +729,20 @@ func loadMasterKeyFromEnv(cfg *config.Config) ([]byte, error) {
 	}
 
 	enc := crypto.NewEncryptor()
-	return enc.DeriveKey(passphrase, salt)
+	masterKey, err := enc.DeriveKey(passphrase, salt)
+	if err != nil {
+		return nil, fmt.Errorf("key derivation failed: %w", err)
+	}
+
+	// Verify derived master key against key_verify if it exists
+	verifyPath := filepath.Join(configDir, "key_verify")
+	if verifyData, err := os.ReadFile(verifyPath); err == nil {
+		if ok, err := enc.VerifyMasterKey(masterKey, string(verifyData)); err != nil || !ok {
+			return nil, fmt.Errorf("invalid passphrase: key verification failed")
+		}
+	}
+
+	return masterKey, nil
 }
 
 // openRegistryDB opens a SQLite connection to the same database file for the
