@@ -1,4 +1,4 @@
-﻿package config
+package config
 
 import (
 	"fmt"
@@ -236,7 +236,7 @@ func TestProperty_InvalidConfigReturnsConfigError(t *testing.T) {
 			rt.Fatalf("failed to write config: %v", err)
 		}
 
-		// Load config (should succeed â€” parsing is valid TOML)
+		// Load config (should succeed — parsing is valid TOML)
 		cfg, err := Load(cfgPath)
 		if err != nil {
 			rt.Fatalf("Load failed unexpectedly: %v\nContent:\n%s", err, tomlContent)

@@ -1,4 +1,4 @@
-﻿package cmd
+package cmd
 
 import (
 	"bufio"
@@ -30,7 +30,7 @@ func newWatchCmd() *cobra.Command {
 Files that pass the stability gate (unchanged for the configured duration) are
 automatically backed up.
 
-Pipeline: filesystem event â†’ exclude filter â†’ debounce â†’ stability gate â†’ BLAKE3 hash â†’ encrypt â†’ upload
+Pipeline: filesystem event → exclude filter → debounce → stability gate → BLAKE3 hash → encrypt → upload
 
 The watcher batches stable files into backup jobs at a configurable interval
 (default: 5 minutes). It runs in the foreground until stopped with Ctrl+C or SIGTERM.`,

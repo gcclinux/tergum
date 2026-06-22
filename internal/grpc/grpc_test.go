@@ -1,4 +1,4 @@
-﻿package grpc
+package grpc
 
 import (
 	"bytes"
@@ -419,14 +419,14 @@ func (m *mockRepo) RecordRestore(ctx context.Context, entry db.RestoreRecord) er
 func (m *mockRepo) ListRestoreHistory(ctx context.Context, limit int) ([]db.RestoreRecord, error) {
 	return nil, nil
 }
-func (m *mockRepo) DeleteAllActivity(ctx context.Context) (int64, error) { return 0, nil }
-func (m *mockRepo) AddWatchExclude(ctx context.Context, path string) error          { return nil }
-func (m *mockRepo) RemoveWatchExclude(ctx context.Context, path string) error       { return nil }
-func (m *mockRepo) ListWatchExcludes(ctx context.Context) ([]string, error)         { return nil, nil }
-func (m *mockRepo) AddIncludePath(ctx context.Context, path string) error           { return nil }
-func (m *mockRepo) RemoveIncludePath(ctx context.Context, path string) error        { return nil }
-func (m *mockRepo) ListIncludePaths(ctx context.Context) ([]string, error)          { return nil, nil }
-func (m *mockRepo) AddExcludePattern(ctx context.Context, pattern string) error     { return nil }
-func (m *mockRepo) RemoveExcludePattern(ctx context.Context, pattern string) error  { return nil }
-func (m *mockRepo) ListExcludePatterns(ctx context.Context) ([]string, error)       { return nil, nil }
-func (m *mockRepo) Close() error                                                    { return nil }
+func (m *mockRepo) DeleteAllActivity(ctx context.Context) (int64, error)           { return 0, nil }
+func (m *mockRepo) AddWatchExclude(ctx context.Context, path string) error         { return nil }
+func (m *mockRepo) RemoveWatchExclude(ctx context.Context, path string) error      { return nil }
+func (m *mockRepo) ListWatchExcludes(ctx context.Context) ([]string, error)        { return nil, nil }
+func (m *mockRepo) AddIncludePath(ctx context.Context, path string) error          { return nil }
+func (m *mockRepo) RemoveIncludePath(ctx context.Context, path string) error       { return nil }
+func (m *mockRepo) ListIncludePaths(ctx context.Context) ([]string, error)         { return nil, nil }
+func (m *mockRepo) AddExcludePattern(ctx context.Context, pattern string) error    { return nil }
+func (m *mockRepo) RemoveExcludePattern(ctx context.Context, pattern string) error { return nil }
+func (m *mockRepo) ListExcludePatterns(ctx context.Context) ([]string, error)      { return nil, nil }
+func (m *mockRepo) Close() error                                                   { return nil }

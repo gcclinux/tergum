@@ -1,4 +1,4 @@
-﻿// Package cmd implements the Tergum CLI using cobra.
+// Package cmd implements the Tergum CLI using cobra.
 package cmd
 
 import (

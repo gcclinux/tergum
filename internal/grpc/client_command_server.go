@@ -1,4 +1,4 @@
-﻿package grpc
+package grpc
 
 import (
 	"context"
@@ -123,7 +123,7 @@ func (s *ClientCommandServer) TriggerBackup(ctx context.Context, req *proto.Back
 		InitiatedBy: initiatedBy,
 	}
 
-	// Start backup in a goroutine â€” return immediately to the server.
+	// Start backup in a goroutine — return immediately to the server.
 	go func() {
 		result, err := engine.RunBackup(context.Background(), backupReq)
 		if err != nil {

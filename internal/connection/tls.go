@@ -1,4 +1,4 @@
-﻿// Package connection provides helpers for establishing mTLS connections
+// Package connection provides helpers for establishing mTLS connections
 // between Tergum client and server nodes.
 package connection
 

@@ -1,4 +1,4 @@
-﻿package webui
+package webui
 
 import (
 	"fmt"
@@ -12,7 +12,7 @@ import (
 	"github.com/gcclinux/tergum/internal/config"
 )
 
-// handleWatchersAPI handles GET /api/watchers â€” returns the current watch excludes as an HTML table body.
+// handleWatchersAPI handles GET /api/watchers — returns the current watch excludes as an HTML table body.
 func (s *Server) handleWatchersAPI(w http.ResponseWriter, r *http.Request) {
 	if s.repo == nil {
 		http.Error(w, "database not available", http.StatusServiceUnavailable)
@@ -42,7 +42,7 @@ func (s *Server) handleWatchersAPI(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprint(w, `</tbody></table>`)
 }
 
-// handleWatchersAdd handles POST /api/watchers â€” adds a new watch exclusion.
+// handleWatchersAdd handles POST /api/watchers — adds a new watch exclusion.
 func (s *Server) handleWatchersAdd(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -80,7 +80,7 @@ func (s *Server) handleWatchersAdd(w http.ResponseWriter, r *http.Request) {
 	// Return fresh form so user can add another path.
 	setSuccessToast(w, "Watch path excluded")
 	w.Header().Set("Content-Type", "text/html")
-	
+
 	includes, _ := s.repo.ListIncludePaths(r.Context())
 	fmt.Fprint(w, `<form hx-post="/api/watchers" hx-swap="outerHTML">`)
 	fmt.Fprint(w, `<label class="p-4">Path to Exclude: `)
@@ -95,7 +95,7 @@ func (s *Server) handleWatchersAdd(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprint(w, `</div></form>`)
 }
 
-// handleWatchersDelete handles DELETE /api/watchers?path=... â€” removes a watch exclusion.
+// handleWatchersDelete handles DELETE /api/watchers?path=... — removes a watch exclusion.
 func (s *Server) handleWatchersDelete(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodDelete {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -124,7 +124,7 @@ func (s *Server) handleWatchersDelete(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
-// handleWatchersStatus handles GET /api/watchers/status â€” returns the watcher status indicator and control button.
+// handleWatchersStatus handles GET /api/watchers/status — returns the watcher status indicator and control button.
 func (s *Server) handleWatchersStatus(w http.ResponseWriter, r *http.Request) {
 	running := false
 	if s.watcherController != nil {
@@ -144,7 +144,7 @@ func (s *Server) handleWatchersStatus(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// handleWatchersSettings handles GET /api/watchers/settings â€” returns the watcher configuration summary.
+// handleWatchersSettings handles GET /api/watchers/settings — returns the watcher configuration summary.
 func (s *Server) handleWatchersSettings(w http.ResponseWriter, r *http.Request) {
 	debounceMs := 500
 	stabilitySec := 60
@@ -170,7 +170,7 @@ func (s *Server) handleWatchersSettings(w http.ResponseWriter, r *http.Request) 
 	fmt.Fprint(w, `</div>`)
 }
 
-// handleWatchersPaths handles GET /api/watchers/paths â€” returns the watch exclusions table for polling refresh.
+// handleWatchersPaths handles GET /api/watchers/paths — returns the watch exclusions table for polling refresh.
 func (s *Server) handleWatchersPaths(w http.ResponseWriter, r *http.Request) {
 	if s.repo == nil {
 		w.Header().Set("Content-Type", "text/html")
@@ -210,7 +210,7 @@ func (s *Server) handleWatchersPaths(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprint(w, `</tbody></table>`)
 }
 
-// handleWatchersPathsAdd handles POST /api/watchers/paths â€” adds a new watch exclusion (new endpoint for fragment form).
+// handleWatchersPathsAdd handles POST /api/watchers/paths — adds a new watch exclusion (new endpoint for fragment form).
 func (s *Server) handleWatchersPathsAdd(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -303,4 +303,3 @@ func (s *Server) handleAPIWatcherAutostart(w http.ResponseWriter, r *http.Reques
 	setSuccessToast(w, "Autostart on boot updated")
 	w.WriteHeader(http.StatusOK)
 }
-

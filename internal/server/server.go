@@ -1,4 +1,4 @@
-﻿// Package server provides the main Tergum server wiring that starts all subsystems
+// Package server provides the main Tergum server wiring that starts all subsystems
 // (gRPC, metrics, retention, scheduler) and orchestrates graceful shutdown.
 package server
 
@@ -489,7 +489,7 @@ func (s *Server) startClient(ctx context.Context) error {
 	// 5. Send RegisterClient RPC.
 	_, regErr := serverClient.RegisterClient(ctx, clientID, clientAddress)
 	if regErr != nil {
-		// Log but don't fail â€” the heartbeat loop will retry registration.
+		// Log but don't fail — the heartbeat loop will retry registration.
 		s.logger.Warn("initial client registration failed (will retry via heartbeat)",
 			"error", regErr,
 		)

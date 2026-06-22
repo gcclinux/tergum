@@ -1,4 +1,4 @@
-﻿package connection
+package connection
 
 import (
 	"path/filepath"

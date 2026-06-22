@@ -1,4 +1,4 @@
-﻿// Package internal_test contains integration tests that exercise the remote backup/restore
+// Package internal_test contains integration tests that exercise the remote backup/restore
 // pipeline over real gRPC with mTLS authentication.
 package internal_test
 
@@ -116,7 +116,7 @@ func TestIntegration_RemoteBackupRoundTrip(t *testing.T) {
 
 	go func() {
 		if err := grpcServer.Serve(listener); err != nil {
-			// Server stopped â€” expected during cleanup.
+			// Server stopped — expected during cleanup.
 		}
 	}()
 	t.Cleanup(func() { grpcServer.GracefulStop() })
@@ -135,9 +135,9 @@ func TestIntegration_RemoteBackupRoundTrip(t *testing.T) {
 
 	// --- Create test source files ---
 	testFiles := map[string]string{
-		"hello.txt":        "Hello, remote world!",
-		"data/report.md":   "# Report\nRemote backup test content.",
-		"config/settings":  "host=server\nport=7401",
+		"hello.txt":       "Hello, remote world!",
+		"data/report.md":  "# Report\nRemote backup test content.",
+		"config/settings": "host=server\nport=7401",
 	}
 	for name, content := range testFiles {
 		path := filepath.Join(sourceDir, name)
@@ -633,7 +633,7 @@ func TestIntegration_ServerTriggeredBackup(t *testing.T) {
 	}
 
 	// --- Verify AlreadyExists when triggering a second backup rapidly ---
-	// Trigger two backups rapidly â€” the second should fail with AlreadyExists.
+	// Trigger two backups rapidly — the second should fail with AlreadyExists.
 	// First, create new files so the backup has work to do and takes time.
 	largeContent := make([]byte, 256*1024)
 	for i := range largeContent {
@@ -659,7 +659,7 @@ func TestIntegration_ServerTriggeredBackup(t *testing.T) {
 		t.Fatalf("first trigger status = %q, want %q", resp1.Status, "started")
 	}
 
-	// Immediately trigger a second backup â€” should get AlreadyExists.
+	// Immediately trigger a second backup — should get AlreadyExists.
 	_, err = clientCmdClient.TriggerBackup(ctx, &proto.BackupRequest{
 		Level:       proto.BackupLevel_FULL,
 		ClientId:    "test-client",
@@ -748,9 +748,9 @@ func readAllAndClose(rc interface {
 //  7. Client requests restore from server
 //  8. Verify restored file matches original
 //  9. Server starts watcher on client via RPC
-//  10. Client detects file change, streams to server (abbreviated â€” see note)
+//  10. Client detects file change, streams to server (abbreviated — see note)
 //  11. Verify ongoing backup appears in server's job history
-//  12. Also: missed schedule when client offline â†’ triggered on reconnect
+//  12. Also: missed schedule when client offline → triggered on reconnect
 func TestIntegration_EndToEndFullWorkflow(t *testing.T) {
 	t.Parallel()
 
@@ -790,9 +790,9 @@ func TestIntegration_EndToEndFullWorkflow(t *testing.T) {
 
 	// --- Create test source files ---
 	testFiles := map[string]string{
-		"readme.txt":     "End-to-end test file content.",
+		"readme.txt":      "End-to-end test file content.",
 		"data/config.yml": "key: value\nport: 8080",
-		"logs/app.log":   "2024-01-01 INFO Application started",
+		"logs/app.log":    "2024-01-01 INFO Application started",
 	}
 	for name, content := range testFiles {
 		path := filepath.Join(sourceDir, name)
@@ -1118,7 +1118,7 @@ func TestIntegration_EndToEndFullWorkflow(t *testing.T) {
 
 		// NOTE: Testing actual file-change detection and ongoing backup streaming
 		// requires complex timing coordination that would make this test flaky.
-		// The watcherâ†’ongoing backup pipeline is tested via unit tests.
+		// The watcher→ongoing backup pipeline is tested via unit tests.
 		// Here we verify the RPC control path works end-to-end.
 
 		// Stop the watcher via RPC for cleanup.
@@ -1166,7 +1166,7 @@ func TestIntegration_EndToEndFullWorkflow(t *testing.T) {
 	})
 
 	// =======================================================================
-	// Phase 8: Missed schedule when client offline â†’ triggered on reconnect
+	// Phase 8: Missed schedule when client offline → triggered on reconnect
 	// =======================================================================
 	t.Run("Phase8_MissedScheduleOnReconnect", func(t *testing.T) {
 		// Determine the client ID in the registry (might be CN from cert).

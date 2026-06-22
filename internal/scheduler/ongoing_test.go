@@ -1,4 +1,4 @@
-﻿package scheduler
+package scheduler
 
 import (
 	"context"
@@ -22,10 +22,10 @@ func newMockWatcher() *mockWatcher {
 	return &mockWatcher{ch: make(chan watcher.StableFile, 64)}
 }
 
-func (m *mockWatcher) Start(ctx context.Context) error           { return nil }
-func (m *mockWatcher) Stop() error                               { return nil }
-func (m *mockWatcher) StableFiles() <-chan watcher.StableFile    { return m.ch }
-func (m *mockWatcher) Status() watcher.WatcherStatus             { return watcher.WatcherStatus{Running: true} }
+func (m *mockWatcher) Start(ctx context.Context) error        { return nil }
+func (m *mockWatcher) Stop() error                            { return nil }
+func (m *mockWatcher) StableFiles() <-chan watcher.StableFile { return m.ch }
+func (m *mockWatcher) Status() watcher.WatcherStatus          { return watcher.WatcherStatus{Running: true} }
 
 // mockServerConnection implements backup.ServerConnection for testing.
 type mockServerConnection struct {
@@ -156,17 +156,17 @@ func (m *mockRepository) RecordRestore(ctx context.Context, entry db.RestoreReco
 func (m *mockRepository) ListRestoreHistory(ctx context.Context, limit int) ([]db.RestoreRecord, error) {
 	return nil, nil
 }
-func (m *mockRepository) DeleteAllActivity(ctx context.Context) (int64, error) { return 0, nil }
-func (m *mockRepository) AddWatchExclude(ctx context.Context, path string) error { return nil }
-func (m *mockRepository) RemoveWatchExclude(ctx context.Context, path string) error { return nil }
-func (m *mockRepository) ListWatchExcludes(ctx context.Context) ([]string, error) { return nil, nil }
-func (m *mockRepository) AddIncludePath(ctx context.Context, path string) error           { return nil }
-func (m *mockRepository) RemoveIncludePath(ctx context.Context, path string) error        { return nil }
-func (m *mockRepository) ListIncludePaths(ctx context.Context) ([]string, error)          { return nil, nil }
-func (m *mockRepository) AddExcludePattern(ctx context.Context, pattern string) error     { return nil }
-func (m *mockRepository) RemoveExcludePattern(ctx context.Context, pattern string) error  { return nil }
-func (m *mockRepository) ListExcludePatterns(ctx context.Context) ([]string, error)       { return nil, nil }
-func (m *mockRepository) Close() error { return nil }
+func (m *mockRepository) DeleteAllActivity(ctx context.Context) (int64, error)           { return 0, nil }
+func (m *mockRepository) AddWatchExclude(ctx context.Context, path string) error         { return nil }
+func (m *mockRepository) RemoveWatchExclude(ctx context.Context, path string) error      { return nil }
+func (m *mockRepository) ListWatchExcludes(ctx context.Context) ([]string, error)        { return nil, nil }
+func (m *mockRepository) AddIncludePath(ctx context.Context, path string) error          { return nil }
+func (m *mockRepository) RemoveIncludePath(ctx context.Context, path string) error       { return nil }
+func (m *mockRepository) ListIncludePaths(ctx context.Context) ([]string, error)         { return nil, nil }
+func (m *mockRepository) AddExcludePattern(ctx context.Context, pattern string) error    { return nil }
+func (m *mockRepository) RemoveExcludePattern(ctx context.Context, pattern string) error { return nil }
+func (m *mockRepository) ListExcludePatterns(ctx context.Context) ([]string, error)      { return nil, nil }
+func (m *mockRepository) Close() error                                                   { return nil }
 
 func TestNewOngoingBackup_DefaultBatchInterval(t *testing.T) {
 	mw := newMockWatcher()

@@ -1,4 +1,4 @@
-﻿package webui
+package webui
 
 import (
 	"net/http"

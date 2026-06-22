@@ -1,4 +1,4 @@
-﻿package backup
+package backup
 
 import (
 	"context"
@@ -199,7 +199,7 @@ func TestRunBackup_WithEncryption(t *testing.T) {
 func TestRunBackup_Deduplication(t *testing.T) {
 	engine, _, storageDir, sourceDir := setupTestEngine(t, false)
 
-	// Create two files with the same content â€” one hash, two manifest entries.
+	// Create two files with the same content — one hash, two manifest entries.
 	sameContent := "duplicate content for dedup test"
 	createTestFile(t, sourceDir, "dup1.txt", sameContent)
 	createTestFile(t, sourceDir, "dup2.txt", sameContent)
@@ -400,7 +400,7 @@ func TestRunBackup_ContextCancellation(t *testing.T) {
 	})
 
 	// With a cancelled context, the backup may fail to create the job record.
-	// This is expected behavior â€” either an error or a failed/stopped result.
+	// This is expected behavior — either an error or a failed/stopped result.
 	if err != nil {
 		// Expected: DB operation fails with cancelled context.
 		return

@@ -1,4 +1,4 @@
-﻿package grpc
+package grpc
 
 import (
 	"context"
@@ -175,13 +175,13 @@ func TestStartHeartbeat_NoRegisterWhenPingAlwaysFails(t *testing.T) {
 type mockCommandForHeartbeat struct {
 	grpc.ClientConnInterface
 
-	pingCount      atomic.Int64
-	registerCount  atomic.Int64
-	failPingUntil  int64 // Ping fails until pingCount reaches this value.
+	pingCount     atomic.Int64
+	registerCount atomic.Int64
+	failPingUntil int64 // Ping fails until pingCount reaches this value.
 
-	mu                    sync.Mutex
-	lastRegisterClientID  string
-	lastRegisterAddress   string
+	mu                   sync.Mutex
+	lastRegisterClientID string
+	lastRegisterAddress  string
 }
 
 func (m *mockCommandForHeartbeat) Invoke(ctx context.Context, method string, args any, reply any, opts ...grpc.CallOption) error {

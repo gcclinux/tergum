@@ -1,4 +1,4 @@
-﻿// Package db provides the SQLite-backed repository for Tergum's metadata.
+// Package db provides the SQLite-backed repository for Tergum's metadata.
 package db
 
 import (
@@ -49,7 +49,6 @@ type RestoreRecord struct {
 	RestoredBy   string
 	Success      bool
 }
-
 
 // Repository defines the interface for all database operations.
 type Repository interface {
@@ -197,7 +196,6 @@ func (r *SQLiteRepository) createSchema() error {
 			restored_by     TEXT DEFAULT 'cli',
 			success         INTEGER DEFAULT 1
 		)`,
-
 
 		`CREATE TABLE IF NOT EXISTS config (
 			key             TEXT PRIMARY KEY,
@@ -658,7 +656,6 @@ func (r *SQLiteRepository) DeleteAllActivity(ctx context.Context) (int64, error)
 
 	return total, nil
 }
-
 
 // AddWatchExclude inserts a path into watch_excludes.
 func (r *SQLiteRepository) AddWatchExclude(ctx context.Context, path string) error {

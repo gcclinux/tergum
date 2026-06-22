@@ -1,4 +1,4 @@
-﻿package grpc
+package grpc
 
 import (
 	"bytes"
@@ -52,7 +52,7 @@ func NewDataServer(cfg DataServerConfig) *DataServer {
 	}
 }
 
-// Upload receives a stream of FileChunks (Header â†’ Data â†’ Trailer),
+// Upload receives a stream of FileChunks (Header → Data → Trailer),
 // reconstructs the file, stores it in the CAS, and inserts a DB entry.
 func (s *DataServer) Upload(stream proto.DataService_UploadServer) error {
 	var (

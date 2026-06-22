@@ -1,4 +1,4 @@
-﻿// Package config handles loading, defaulting, and validating Tergum TOML configuration.
+// Package config handles loading, defaulting, and validating Tergum TOML configuration.
 package config
 
 import (

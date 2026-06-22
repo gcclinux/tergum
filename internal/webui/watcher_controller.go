@@ -1,4 +1,4 @@
-﻿package webui
+package webui
 
 import (
 	"context"
@@ -16,22 +16,22 @@ import (
 
 // LocalWatcherController manages a file watcher lifecycle from the Web UI.
 type LocalWatcherController struct {
-	repo             db.Repository
-	storageDir       string
-	masterKey        []byte
-	encEnabled       bool
-	debounceMs       int
-	stabilitySec     int
-	batchMinutes     int
-	excludePatterns  []string
-	broker           *SSEBroker
+	repo            db.Repository
+	storageDir      string
+	masterKey       []byte
+	encEnabled      bool
+	debounceMs      int
+	stabilitySec    int
+	batchMinutes    int
+	excludePatterns []string
+	broker          *SSEBroker
 
-	mu       sync.Mutex
-	fw       *watcher.FileWatcher
-	ongoing  *scheduler.OngoingBackup
-	ctx      context.Context
-	cancel   context.CancelFunc
-	running  bool
+	mu      sync.Mutex
+	fw      *watcher.FileWatcher
+	ongoing *scheduler.OngoingBackup
+	ctx     context.Context
+	cancel  context.CancelFunc
+	running bool
 }
 
 // LocalWatcherConfig holds configuration for the watcher controller.

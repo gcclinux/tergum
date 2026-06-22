@@ -1,4 +1,4 @@
-﻿package migrate
+package migrate
 
 import (
 	"bytes"
@@ -91,7 +91,7 @@ func setupV2DB(t *testing.T, dir string, entries []v2Entry) string {
 }
 
 // setupStorageFiles creates storage files for the given entries with random content.
-// Returns a map of MD5 hash â†’ file content.
+// Returns a map of MD5 hash → file content.
 func setupStorageFiles(t *testing.T, storageDir string, entries []v2Entry, contents map[string][]byte) {
 	t.Helper()
 	for _, e := range entries {

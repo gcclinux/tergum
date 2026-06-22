@@ -1,4 +1,4 @@
-﻿// Package deletion implements granular delete operations for backup entries.
+// Package deletion implements granular delete operations for backup entries.
 package deletion
 
 import (

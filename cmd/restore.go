@@ -1,4 +1,4 @@
-﻿package cmd
+package cmd
 
 import (
 	"bufio"
@@ -266,7 +266,7 @@ func resolveDestination(dest, originalPath string) string {
 		return originalPath
 	}
 	// Place under dest directory, preserving the full path structure.
-	// e.g., dest=/tmp/restored, originalPath=/home/user/file.txt â†’ /tmp/restored/home/user/file.txt
+	// e.g., dest=/tmp/restored, originalPath=/home/user/file.txt → /tmp/restored/home/user/file.txt
 	return filepath.Join(dest, originalPath)
 }
 

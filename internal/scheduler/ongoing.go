@@ -1,4 +1,4 @@
-﻿// Package scheduler provides cron-based scheduling and ongoing backup orchestration.
+// Package scheduler provides cron-based scheduling and ongoing backup orchestration.
 package scheduler
 
 import (
@@ -10,12 +10,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/gcclinux/tergum/internal/backup"
 	"github.com/gcclinux/tergum/internal/crypto"
 	"github.com/gcclinux/tergum/internal/db"
 	"github.com/gcclinux/tergum/internal/model"
 	"github.com/gcclinux/tergum/internal/watcher"
+	"github.com/google/uuid"
 )
 
 // OngoingBackup wires the file watcher's StableFiles channel to the backup engine,

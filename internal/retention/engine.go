@@ -1,4 +1,4 @@
-﻿// Package retention implements the Retention Engine that evaluates and enforces
+// Package retention implements the Retention Engine that evaluates and enforces
 // retention policies, removing expired file versions while protecting the latest version.
 package retention
 
@@ -176,7 +176,7 @@ func (e *RetentionEngine) Evaluate(ctx context.Context, dryRun bool) (*Retention
 			// Find first matching policy for this entry's file path.
 			entryPolicy := findMatchingPolicy(enabledPolicies, entry.FilePath)
 			if entryPolicy == nil {
-				// No matching policy â€” entry is not expired.
+				// No matching policy — entry is not expired.
 				continue
 			}
 
@@ -224,7 +224,7 @@ func findMatchingPolicy(policies []model.RetentionPolicy, filePath string) *mode
 		}
 		matched, err := filepath.Match(policies[i].Pattern, filePath)
 		if err != nil {
-			// Invalid pattern â€” skip.
+			// Invalid pattern — skip.
 			continue
 		}
 		if matched {
@@ -237,7 +237,7 @@ func findMatchingPolicy(policies []model.RetentionPolicy, filePath string) *mode
 // shouldExpire determines if a version should be expired based on the policy.
 // Per design: expire if backup_date + keep_days < now AND exceeds keep_versions.
 // If keep_days is nil, the time condition is never met (keep forever).
-// If keep_versions == 0 (purge mode), the version count guard is skipped â€” only the
+// If keep_versions == 0 (purge mode), the version count guard is skipped — only the
 // time condition matters.
 func shouldExpire(entry model.BackupEntry, policy model.RetentionPolicy, now time.Time, totalVersions int) bool {
 	// Check keep_days: nil means keep forever (time condition never satisfied).
@@ -246,7 +246,7 @@ func shouldExpire(entry model.BackupEntry, policy model.RetentionPolicy, now tim
 	}
 
 	// Check keep_versions: when > 0, we must keep at least keep_versions versions.
-	// When == 0 (purge mode), skip this guard entirely â€” all versions are candidates.
+	// When == 0 (purge mode), skip this guard entirely — all versions are candidates.
 	if policy.KeepVersions > 0 && totalVersions <= policy.KeepVersions {
 		return false
 	}

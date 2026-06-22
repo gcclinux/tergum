@@ -1,4 +1,4 @@
-﻿package cmd
+package cmd
 
 import (
 	"bufio"
@@ -195,7 +195,7 @@ func runInteractiveSetup(wiz *setupWizard) error {
 	if existingConfigExists {
 		fmt.Fprintln(wiz.writer, "\nAn existing encryption configuration was found.")
 		fmt.Fprintln(wiz.writer, "WARNING: Overwriting it will make all past backups permanently undecryptable!")
-		
+
 		overwrite := wiz.promptYesNo("Do you want to overwrite the existing encryption configuration and start fresh?", false)
 		if !overwrite {
 			// Read existing salt
@@ -220,7 +220,7 @@ func runInteractiveSetup(wiz *setupWizard) error {
 				if passphrase == "" {
 					return fmt.Errorf("encryption passphrase is required")
 				}
-				
+
 				masterKey, err = enc.DeriveKey(passphrase, salt)
 				if err != nil {
 					return fmt.Errorf("failed to derive master key: %w", err)
@@ -230,7 +230,7 @@ func runInteractiveSetup(wiz *setupWizard) error {
 					fmt.Fprintln(wiz.writer, "Passphrase verified successfully. Existing encryption configuration kept.")
 					break
 				}
-				
+
 				fmt.Fprintln(wiz.writer, "Incorrect passphrase for the existing configuration.")
 				retry := wiz.promptYesNo("Do you want to try again?", true)
 				if !retry {
@@ -287,7 +287,7 @@ func runInteractiveSetup(wiz *setupWizard) error {
 		}
 	}
 
-	// 6. Backup paths â€” what to back up
+	// 6. Backup paths — what to back up
 	fmt.Fprintln(wiz.writer)
 	fmt.Fprintln(wiz.writer, "--- Backup Paths ---")
 	fmt.Fprintln(wiz.writer, "Which directories should be backed up?")
@@ -438,9 +438,9 @@ func runInteractiveSetup(wiz *setupWizard) error {
 	fmt.Fprintf(wiz.writer, "Configuration written to %s\n", configPath)
 	fmt.Fprintln(wiz.writer)
 	fmt.Fprintln(wiz.writer, "Setup complete! Next steps:")
-	fmt.Fprintln(wiz.writer, "  tergum server    â€” start the server (required for backups)")
-	fmt.Fprintln(wiz.writer, "  tergum backup    â€” run a manual backup")
-	fmt.Fprintln(wiz.writer, "  tergum paths list â€” view configured paths")
+	fmt.Fprintln(wiz.writer, "  tergum server    — start the server (required for backups)")
+	fmt.Fprintln(wiz.writer, "  tergum backup    — run a manual backup")
+	fmt.Fprintln(wiz.writer, "  tergum paths list — view configured paths")
 
 	printOutput(
 		map[string]interface{}{

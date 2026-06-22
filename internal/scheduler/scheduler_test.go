@@ -1,4 +1,4 @@
-﻿package scheduler
+package scheduler
 
 import (
 	"context"
@@ -173,7 +173,7 @@ func TestScheduler_PerClientTriggering(t *testing.T) {
 }
 
 func TestScheduler_EmptyConfig(t *testing.T) {
-	// No cron expressions configured â€” scheduler starts fine, just does nothing.
+	// No cron expressions configured — scheduler starts fine, just does nothing.
 	cfg := config.SchedulerConfig{}
 	trigger := &mockTrigger{}
 	s := New(cfg, trigger, nil, nil)

@@ -1,4 +1,4 @@
-﻿package cmd
+package cmd
 
 import (
 	"context"
@@ -84,25 +84,25 @@ func runStatus(cmd *cobra.Command, args []string) error {
 
 	// Build status output.
 	status := map[string]interface{}{
-		"role":            cfg.Node.Role,
-		"config_path":    config.DefaultConfigPath(),
-		"database_path":  cfg.Database.Path,
-		"storage_path":   storageDir,
-		"storage_size":   storageSize,
-		"database_size":  dbSize,
-		"include_paths":  len(includes),
+		"role":             cfg.Node.Role,
+		"config_path":      config.DefaultConfigPath(),
+		"database_path":    cfg.Database.Path,
+		"storage_path":     storageDir,
+		"storage_size":     storageSize,
+		"database_size":    dbSize,
+		"include_paths":    len(includes),
 		"exclude_patterns": len(excludes),
-		"backup_jobs":    len(allJobs),
-		"running":        running,
-		"completed":      completed,
-		"failed":         failed,
-		"stopped":        stopped,
-		"total_files":    totalFiles,
-		"total_bytes":    totalBytes,
-		"encryption":     cfg.Encryption.Enabled,
-		"watcher":        cfg.Watcher.Enabled,
-		"webui":          cfg.WebUI.Enabled,
-		"webui_port":     cfg.WebUI.Port,
+		"backup_jobs":      len(allJobs),
+		"running":          running,
+		"completed":        completed,
+		"failed":           failed,
+		"stopped":          stopped,
+		"total_files":      totalFiles,
+		"total_bytes":      totalBytes,
+		"encryption":       cfg.Encryption.Enabled,
+		"watcher":          cfg.Watcher.Enabled,
+		"webui":            cfg.WebUI.Enabled,
+		"webui_port":       cfg.WebUI.Port,
 	}
 
 	if lastBackup != nil {

@@ -1,4 +1,4 @@
-﻿// Package watcher monitors filesystem events with debouncing and stability gating.
+// Package watcher monitors filesystem events with debouncing and stability gating.
 package watcher
 
 import (
