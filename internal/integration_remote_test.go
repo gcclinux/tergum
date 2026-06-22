@@ -1,4 +1,4 @@
-// Package internal_test contains integration tests that exercise the remote backup/restore
+﻿// Package internal_test contains integration tests that exercise the remote backup/restore
 // pipeline over real gRPC with mTLS authentication.
 package internal_test
 
@@ -14,17 +14,17 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ricardopadilha/tergum/internal/backup"
-	"github.com/ricardopadilha/tergum/internal/config"
-	"github.com/ricardopadilha/tergum/internal/db"
-	tgrpc "github.com/ricardopadilha/tergum/internal/grpc"
-	"github.com/ricardopadilha/tergum/internal/grpc/proto"
-	"github.com/ricardopadilha/tergum/internal/model"
-	"github.com/ricardopadilha/tergum/internal/registry"
-	"github.com/ricardopadilha/tergum/internal/scheduler"
-	"github.com/ricardopadilha/tergum/internal/storage"
-	ttls "github.com/ricardopadilha/tergum/internal/tls"
-	"github.com/ricardopadilha/tergum/internal/watcher"
+	"github.com/gcclinux/tergum/internal/backup"
+	"github.com/gcclinux/tergum/internal/config"
+	"github.com/gcclinux/tergum/internal/db"
+	tgrpc "github.com/gcclinux/tergum/internal/grpc"
+	"github.com/gcclinux/tergum/internal/grpc/proto"
+	"github.com/gcclinux/tergum/internal/model"
+	"github.com/gcclinux/tergum/internal/registry"
+	"github.com/gcclinux/tergum/internal/scheduler"
+	"github.com/gcclinux/tergum/internal/storage"
+	ttls "github.com/gcclinux/tergum/internal/tls"
+	"github.com/gcclinux/tergum/internal/watcher"
 	"google.golang.org/grpc"
 	grpcCodes "google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
@@ -116,7 +116,7 @@ func TestIntegration_RemoteBackupRoundTrip(t *testing.T) {
 
 	go func() {
 		if err := grpcServer.Serve(listener); err != nil {
-			// Server stopped — expected during cleanup.
+			// Server stopped â€” expected during cleanup.
 		}
 	}()
 	t.Cleanup(func() { grpcServer.GracefulStop() })
@@ -633,7 +633,7 @@ func TestIntegration_ServerTriggeredBackup(t *testing.T) {
 	}
 
 	// --- Verify AlreadyExists when triggering a second backup rapidly ---
-	// Trigger two backups rapidly — the second should fail with AlreadyExists.
+	// Trigger two backups rapidly â€” the second should fail with AlreadyExists.
 	// First, create new files so the backup has work to do and takes time.
 	largeContent := make([]byte, 256*1024)
 	for i := range largeContent {
@@ -659,7 +659,7 @@ func TestIntegration_ServerTriggeredBackup(t *testing.T) {
 		t.Fatalf("first trigger status = %q, want %q", resp1.Status, "started")
 	}
 
-	// Immediately trigger a second backup — should get AlreadyExists.
+	// Immediately trigger a second backup â€” should get AlreadyExists.
 	_, err = clientCmdClient.TriggerBackup(ctx, &proto.BackupRequest{
 		Level:       proto.BackupLevel_FULL,
 		ClientId:    "test-client",
@@ -748,9 +748,9 @@ func readAllAndClose(rc interface {
 //  7. Client requests restore from server
 //  8. Verify restored file matches original
 //  9. Server starts watcher on client via RPC
-//  10. Client detects file change, streams to server (abbreviated — see note)
+//  10. Client detects file change, streams to server (abbreviated â€” see note)
 //  11. Verify ongoing backup appears in server's job history
-//  12. Also: missed schedule when client offline → triggered on reconnect
+//  12. Also: missed schedule when client offline â†’ triggered on reconnect
 func TestIntegration_EndToEndFullWorkflow(t *testing.T) {
 	t.Parallel()
 
@@ -1118,7 +1118,7 @@ func TestIntegration_EndToEndFullWorkflow(t *testing.T) {
 
 		// NOTE: Testing actual file-change detection and ongoing backup streaming
 		// requires complex timing coordination that would make this test flaky.
-		// The watcher→ongoing backup pipeline is tested via unit tests.
+		// The watcherâ†’ongoing backup pipeline is tested via unit tests.
 		// Here we verify the RPC control path works end-to-end.
 
 		// Stop the watcher via RPC for cleanup.
@@ -1166,7 +1166,7 @@ func TestIntegration_EndToEndFullWorkflow(t *testing.T) {
 	})
 
 	// =======================================================================
-	// Phase 8: Missed schedule when client offline → triggered on reconnect
+	// Phase 8: Missed schedule when client offline â†’ triggered on reconnect
 	// =======================================================================
 	t.Run("Phase8_MissedScheduleOnReconnect", func(t *testing.T) {
 		// Determine the client ID in the registry (might be CN from cert).

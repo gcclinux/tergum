@@ -1,4 +1,4 @@
-package migrate
+﻿package migrate
 
 import (
 	"context"
@@ -9,7 +9,7 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/ricardopadilha/tergum/internal/crypto"
+	"github.com/gcclinux/tergum/internal/crypto"
 
 	_ "modernc.org/sqlite"
 )

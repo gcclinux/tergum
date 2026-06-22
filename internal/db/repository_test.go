@@ -1,4 +1,4 @@
-package db
+﻿package db
 
 import (
 	"context"
@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ricardopadilha/tergum/internal/model"
+	"github.com/gcclinux/tergum/internal/model"
 )
 
 func newTestRepo(t *testing.T, isServer bool) *SQLiteRepository {

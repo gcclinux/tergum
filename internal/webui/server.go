@@ -12,10 +12,10 @@ import (
 	"os"
 	"time"
 
-	"github.com/ricardopadilha/tergum/internal/config"
-	"github.com/ricardopadilha/tergum/internal/db"
-	"github.com/ricardopadilha/tergum/internal/model"
-	registryPkg "github.com/ricardopadilha/tergum/internal/registry"
+	"github.com/gcclinux/tergum/internal/config"
+	"github.com/gcclinux/tergum/internal/db"
+	"github.com/gcclinux/tergum/internal/model"
+	registryPkg "github.com/gcclinux/tergum/internal/registry"
 )
 
 //go:embed assets
@@ -283,7 +283,6 @@ func (s *Server) routes() http.Handler {
 		}
 	})
 	authed.HandleFunc("/api/watchers/config/autostart", s.handleAPIWatcherAutostart)
-
 
 	// Backup API endpoints.
 	authed.HandleFunc("/api/backups/trigger", s.handleAPIBackupTrigger)
@@ -613,17 +612,17 @@ type metricsData struct {
 }
 
 type metricsView struct {
-	FilesBackedUp    int64
-	BytesTransferred string
-	DedupRatio       string
+	FilesBackedUp     int64
+	BytesTransferred  string
+	DedupRatio        string
 	DedupRatioPercent float64
-	StorageUsed      string
-	StoragePercent   float64
-	StorageColor     string
-	UniqueFiles      int64
-	GRPCRequests     int64
-	GRPCErrors       int64
-	ConnectedClients int
+	StorageUsed       string
+	StoragePercent    float64
+	StorageColor      string
+	UniqueFiles       int64
+	GRPCRequests      int64
+	GRPCErrors        int64
+	ConnectedClients  int
 }
 
 // Handlers — each renders the corresponding template with placeholder data.
@@ -682,7 +681,6 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	data.ActiveClients = len(onlineClients)
-
 
 	// System stats.
 	cpu, memUsed, memTotal, memPct := getSystemStats()
@@ -899,17 +897,17 @@ func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 		NodeRole: s.nodeRole(),
 		NavItems: FilterNavItems(s.nodeRole()),
 		Metrics: metricsView{
-			FilesBackedUp:    0,
-			BytesTransferred: "0 B",
-			DedupRatio:       "0%",
+			FilesBackedUp:     0,
+			BytesTransferred:  "0 B",
+			DedupRatio:        "0%",
 			DedupRatioPercent: 0,
-			StorageUsed:      "0 B",
-			StoragePercent:   0,
-			StorageColor:     "blue",
-			UniqueFiles:      0,
-			GRPCRequests:     0,
-			GRPCErrors:       0,
-			ConnectedClients: 0,
+			StorageUsed:       "0 B",
+			StoragePercent:    0,
+			StorageColor:      "blue",
+			UniqueFiles:       0,
+			GRPCRequests:      0,
+			GRPCErrors:        0,
+			ConnectedClients:  0,
 		},
 	}
 

@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ricardopadilha/tergum/internal/db"
-	"github.com/ricardopadilha/tergum/internal/model"
-	"github.com/ricardopadilha/tergum/internal/storage"
+	"github.com/gcclinux/tergum/internal/db"
+	"github.com/gcclinux/tergum/internal/model"
+	"github.com/gcclinux/tergum/internal/storage"
 )
 
 // testSetup creates an in-memory repo (server mode), a CAS store, and a retention engine.
@@ -709,8 +709,8 @@ func TestEvaluate_PurgeModeRecentVersionsKept(t *testing.T) {
 
 	// Three versions: some are newer than 7 days.
 	insertTestEntry(t, repo, "job1", "aaaa"+strings.Repeat("a", 60), "/tmp/cache/recent.bin", 100, now.Add(-30*24*time.Hour))
-	insertTestEntry(t, repo, "job2", "bbbb"+strings.Repeat("b", 60), "/tmp/cache/recent.bin", 200, now.Add(-3*24*time.Hour))  // within 7 days
-	insertTestEntry(t, repo, "job3", "cccc"+strings.Repeat("c", 60), "/tmp/cache/recent.bin", 300, now.Add(-1*24*time.Hour))  // within 7 days
+	insertTestEntry(t, repo, "job2", "bbbb"+strings.Repeat("b", 60), "/tmp/cache/recent.bin", 200, now.Add(-3*24*time.Hour)) // within 7 days
+	insertTestEntry(t, repo, "job3", "cccc"+strings.Repeat("c", 60), "/tmp/cache/recent.bin", 300, now.Add(-1*24*time.Hour)) // within 7 days
 
 	// Purge policy: keep_versions=0, keep_days=7.
 	keepDays := 7

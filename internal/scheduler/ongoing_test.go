@@ -1,4 +1,4 @@
-package scheduler
+﻿package scheduler
 
 import (
 	"context"
@@ -7,10 +7,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ricardopadilha/tergum/internal/backup"
-	"github.com/ricardopadilha/tergum/internal/db"
-	"github.com/ricardopadilha/tergum/internal/model"
-	"github.com/ricardopadilha/tergum/internal/watcher"
+	"github.com/gcclinux/tergum/internal/backup"
+	"github.com/gcclinux/tergum/internal/db"
+	"github.com/gcclinux/tergum/internal/model"
+	"github.com/gcclinux/tergum/internal/watcher"
 )
 
 // mockWatcher implements watcher.Watcher for testing.

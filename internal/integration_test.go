@@ -1,4 +1,4 @@
-// Package internal_test contains integration tests that exercise multiple packages together.
+﻿// Package internal_test contains integration tests that exercise multiple packages together.
 // These tests verify end-to-end flows using local implementations (no real network).
 package internal_test
 
@@ -13,14 +13,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ricardopadilha/tergum/internal/backup"
-	"github.com/ricardopadilha/tergum/internal/crypto"
-	"github.com/ricardopadilha/tergum/internal/db"
-	"github.com/ricardopadilha/tergum/internal/model"
-	"github.com/ricardopadilha/tergum/internal/restore"
-	"github.com/ricardopadilha/tergum/internal/retention"
-	"github.com/ricardopadilha/tergum/internal/storage"
-	ttls "github.com/ricardopadilha/tergum/internal/tls"
+	"github.com/gcclinux/tergum/internal/backup"
+	"github.com/gcclinux/tergum/internal/crypto"
+	"github.com/gcclinux/tergum/internal/db"
+	"github.com/gcclinux/tergum/internal/model"
+	"github.com/gcclinux/tergum/internal/restore"
+	"github.com/gcclinux/tergum/internal/retention"
+	"github.com/gcclinux/tergum/internal/storage"
+	ttls "github.com/gcclinux/tergum/internal/tls"
 )
 
 // --- helpers ---
@@ -108,8 +108,8 @@ func (env *integrationEnv) createFile(t *testing.T, name, content string) string
 
 // --- integration tests ---
 
-// TestIntegration_BackupAndRestore exercises the full backup → restore pipeline without encryption.
-// Flow: create files → backup (scan → manifest → upload → DB sync) → restore → verify.
+// TestIntegration_BackupAndRestore exercises the full backup â†’ restore pipeline without encryption.
+// Flow: create files â†’ backup (scan â†’ manifest â†’ upload â†’ DB sync) â†’ restore â†’ verify.
 func TestIntegration_BackupAndRestore(t *testing.T) {
 	env := setupIntegrationEnv(t, false)
 	ctx := context.Background()
@@ -177,7 +177,7 @@ func TestIntegration_BackupAndRestore(t *testing.T) {
 }
 
 // TestIntegration_BackupWithEncryptionAndRestore tests the full encrypted pipeline:
-// encrypt content → store in CAS → populate DB with encryption metadata → restore → decrypt → verify.
+// encrypt content â†’ store in CAS â†’ populate DB with encryption metadata â†’ restore â†’ decrypt â†’ verify.
 // This exercises the encryption module, CAS storage, DB, and restore engine together.
 func TestIntegration_BackupWithEncryptionAndRestore(t *testing.T) {
 	storageDir := t.TempDir()
@@ -372,7 +372,7 @@ func TestIntegration_RetentionProtectsLatestVersion(t *testing.T) {
 		t.Fatalf("Evaluate: %v", err)
 	}
 
-	// Versions 1, 2, 3 are older than 7 days and exceed keep_versions(1) → expired.
+	// Versions 1, 2, 3 are older than 7 days and exceed keep_versions(1) â†’ expired.
 	if result.EntriesExpired != 3 {
 		t.Errorf("expected 3 expired, got %d", result.EntriesExpired)
 	}
@@ -403,7 +403,7 @@ func TestIntegration_RetentionProtectsLatestVersion(t *testing.T) {
 }
 
 // TestIntegration_MutualTLSHandshake proves the full mTLS flow:
-// generate certs → load configs → server/client handshake → data exchange.
+// generate certs â†’ load configs â†’ server/client handshake â†’ data exchange.
 // Also verifies that an invalid client (no cert) is rejected.
 func TestIntegration_MutualTLSHandshake(t *testing.T) {
 	certDir := t.TempDir()
@@ -535,12 +535,12 @@ func TestIntegration_MutualTLSHandshake(t *testing.T) {
 		RootCAs:    caPool,
 		ServerName: "localhost",
 		MinVersion: tls.VersionTLS13,
-		// No Certificates — should be rejected by mTLS server.
+		// No Certificates â€” should be rejected by mTLS server.
 	}
 
 	invalidConn, err := tls.Dial("tcp", addr2, invalidCfg)
 	if err != nil {
-		// Connection rejected at dial — expected for mTLS.
+		// Connection rejected at dial â€” expected for mTLS.
 		return
 	}
 	defer invalidConn.Close()
@@ -588,7 +588,7 @@ func TestIntegration_DedupAcrossBackups(t *testing.T) {
 	// Count physical files after first backup.
 	physFiles1 := countPhysicalFiles(t, env.StorageDir)
 
-	// Second backup — same files, same content.
+	// Second backup â€” same files, same content.
 	result2, err := env.BackupEngine.RunBackup(ctx, backup.BackupRequest{
 		Level:       model.BackupLevelFull,
 		ClientID:    "dedup-client",
@@ -612,7 +612,7 @@ func TestIntegration_DedupAcrossBackups(t *testing.T) {
 	// Physical file count should not have changed.
 	physFiles2 := countPhysicalFiles(t, env.StorageDir)
 	if physFiles2 != physFiles1 {
-		t.Errorf("physical file count changed: %d → %d (expected dedup)", physFiles1, physFiles2)
+		t.Errorf("physical file count changed: %d â†’ %d (expected dedup)", physFiles1, physFiles2)
 	}
 	if physFiles1 != 2 {
 		t.Errorf("expected 2 physical files (one per unique hash), got %d", physFiles1)

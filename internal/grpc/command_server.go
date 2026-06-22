@@ -1,4 +1,4 @@
-package grpc
+﻿package grpc
 
 import (
 	"context"
@@ -6,11 +6,11 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/ricardopadilha/tergum/internal/backup"
-	"github.com/ricardopadilha/tergum/internal/db"
-	"github.com/ricardopadilha/tergum/internal/grpc/proto"
-	"github.com/ricardopadilha/tergum/internal/model"
-	"github.com/ricardopadilha/tergum/internal/registry"
+	"github.com/gcclinux/tergum/internal/backup"
+	"github.com/gcclinux/tergum/internal/db"
+	"github.com/gcclinux/tergum/internal/grpc/proto"
+	"github.com/gcclinux/tergum/internal/model"
+	"github.com/gcclinux/tergum/internal/registry"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/peer"
 )

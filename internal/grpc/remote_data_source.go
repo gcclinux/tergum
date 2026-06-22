@@ -1,12 +1,12 @@
-package grpc
+﻿package grpc
 
 import (
 	"context"
 	"fmt"
 	"io"
 
-	"github.com/ricardopadilha/tergum/internal/grpc/proto"
-	"github.com/ricardopadilha/tergum/internal/restore"
+	"github.com/gcclinux/tergum/internal/grpc/proto"
+	"github.com/gcclinux/tergum/internal/restore"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -28,7 +28,7 @@ func NewRemoteDataSource(client proto.DataServiceClient, clientID string) *Remot
 
 // DownloadFile retrieves the encrypted file content from the remote server by BLAKE3 hash.
 // It calls the DataService.Download RPC and reassembles the streaming FileChunk messages
-// (Header → Data → Trailer) into a single byte slice.
+// (Header â†’ Data â†’ Trailer) into a single byte slice.
 // Decryption is handled by the restore engine after this method returns.
 func (r *RemoteDataSource) DownloadFile(ctx context.Context, hash string) ([]byte, error) {
 	stream, err := r.client.Download(ctx, &proto.RestoreRequest{
@@ -57,11 +57,11 @@ func (r *RemoteDataSource) DownloadFile(ctx context.Context, hash string) ([]byt
 
 		switch {
 		case chunk.GetHeader() != nil:
-			// Header chunk — nothing to accumulate, metadata only.
+			// Header chunk â€” nothing to accumulate, metadata only.
 		case chunk.GetData() != nil:
 			data = append(data, chunk.GetData()...)
 		case chunk.GetTrailer() != nil:
-			// Trailer chunk — stream should end after this.
+			// Trailer chunk â€” stream should end after this.
 		}
 	}
 

@@ -1,4 +1,4 @@
-package grpc
+﻿package grpc
 
 import (
 	"bytes"
@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/ricardopadilha/tergum/internal/backup"
-	"github.com/ricardopadilha/tergum/internal/grpc/proto"
-	"github.com/ricardopadilha/tergum/internal/model"
+	"github.com/gcclinux/tergum/internal/backup"
+	"github.com/gcclinux/tergum/internal/grpc/proto"
+	"github.com/gcclinux/tergum/internal/model"
 )
 
 // RemoteServerConnection implements backup.ServerConnection using gRPC calls

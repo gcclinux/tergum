@@ -1,4 +1,4 @@
-package storage
+﻿package storage
 
 import (
 	"bytes"
@@ -6,7 +6,7 @@ import (
 	"io"
 	"testing"
 
-	"github.com/ricardopadilha/tergum/internal/crypto"
+	"github.com/gcclinux/tergum/internal/crypto"
 	"pgregory.net/rapid"
 )
 

@@ -1,4 +1,4 @@
-package cmd
+﻿package cmd
 
 import (
 	"context"
@@ -6,8 +6,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/ricardopadilha/tergum/internal/config"
-	"github.com/ricardopadilha/tergum/internal/server"
+	"github.com/gcclinux/tergum/internal/config"
+	"github.com/gcclinux/tergum/internal/server"
 )
 
 func newServerCmd() *cobra.Command {

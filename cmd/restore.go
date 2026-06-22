@@ -1,4 +1,4 @@
-package cmd
+﻿package cmd
 
 import (
 	"bufio"
@@ -9,11 +9,11 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/ricardopadilha/tergum/internal/config"
-	"github.com/ricardopadilha/tergum/internal/connection"
-	"github.com/ricardopadilha/tergum/internal/crypto"
-	"github.com/ricardopadilha/tergum/internal/db"
-	"github.com/ricardopadilha/tergum/internal/restore"
+	"github.com/gcclinux/tergum/internal/config"
+	"github.com/gcclinux/tergum/internal/connection"
+	"github.com/gcclinux/tergum/internal/crypto"
+	"github.com/gcclinux/tergum/internal/db"
+	"github.com/gcclinux/tergum/internal/restore"
 	"github.com/spf13/cobra"
 )
 
@@ -266,7 +266,7 @@ func resolveDestination(dest, originalPath string) string {
 		return originalPath
 	}
 	// Place under dest directory, preserving the full path structure.
-	// e.g., dest=/tmp/restored, originalPath=/home/user/file.txt → /tmp/restored/home/user/file.txt
+	// e.g., dest=/tmp/restored, originalPath=/home/user/file.txt â†’ /tmp/restored/home/user/file.txt
 	return filepath.Join(dest, originalPath)
 }
 

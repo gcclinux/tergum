@@ -1,4 +1,4 @@
-package deletion
+﻿package deletion
 
 import (
 	"context"
@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ricardopadilha/tergum/internal/model"
+	"github.com/gcclinux/tergum/internal/model"
 	"pgregory.net/rapid"
 )
 

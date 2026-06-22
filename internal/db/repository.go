@@ -1,4 +1,4 @@
-// Package db provides the SQLite-backed repository for Tergum's metadata.
+﻿// Package db provides the SQLite-backed repository for Tergum's metadata.
 package db
 
 import (
@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ricardopadilha/tergum/internal/model"
+	"github.com/gcclinux/tergum/internal/model"
 
 	_ "modernc.org/sqlite"
 )

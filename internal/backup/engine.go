@@ -1,4 +1,4 @@
-package backup
+﻿package backup
 
 import (
 	"context"
@@ -10,9 +10,9 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/ricardopadilha/tergum/internal/crypto"
-	"github.com/ricardopadilha/tergum/internal/db"
-	"github.com/ricardopadilha/tergum/internal/model"
+	"github.com/gcclinux/tergum/internal/crypto"
+	"github.com/gcclinux/tergum/internal/db"
+	"github.com/gcclinux/tergum/internal/model"
 )
 
 // Engine defines the backup engine interface.
@@ -176,7 +176,7 @@ func (e *BackupEngine) RunBackup(ctx context.Context, req BackupRequest) (*Backu
 		"dedup_count", diff.DedupCount,
 	)
 
-	// Build a path→scannedFile map for reading content and metadata.
+	// Build a pathâ†’scannedFile map for reading content and metadata.
 	pathToScanned := make(map[string]*ScannedFile, len(files))
 	for i := range files {
 		pathToScanned[files[i].Path] = &files[i]
@@ -258,7 +258,7 @@ func (e *BackupEngine) RunBackup(ctx context.Context, req BackupRequest) (*Backu
 	// 7. Insert backup entries for all manifest files.
 	// Files whose hash was uploaded are "new"; files whose hash already existed on server are "deduped".
 	// Within-backup dedup: if multiple files share the same hash and we uploaded it,
-	// only the first counts as "new bytes" — the rest are intra-backup dedup.
+	// only the first counts as "new bytes" â€” the rest are intra-backup dedup.
 	seenUploaded := make(map[string]bool, len(diff.NeededHashes))
 	for _, mEntry := range manifest {
 		if e.stopped.Load() {
@@ -285,10 +285,10 @@ func (e *BackupEngine) RunBackup(ctx context.Context, req BackupRequest) (*Backu
 
 		result.FilesProcessed++
 		if !neededSet[mEntry.Blake3Hash] {
-			// Hash already on server — server-side dedup.
+			// Hash already on server â€” server-side dedup.
 			result.FilesDeduped++
 		} else if seenUploaded[mEntry.Blake3Hash] {
-			// Hash was needed but we already counted one file for this hash — intra-backup dedup.
+			// Hash was needed but we already counted one file for this hash â€” intra-backup dedup.
 			result.FilesDeduped++
 		} else {
 			seenUploaded[mEntry.Blake3Hash] = true
@@ -430,7 +430,7 @@ func (l *LocalServerConnection) UploadFile(ctx context.Context, hash string, dat
 
 // SyncDatabase is a no-op for local connections (DB is already local).
 func (l *LocalServerConnection) SyncDatabase(ctx context.Context, dbPath string) error {
-	// In local mode, client and server share the same database — nothing to sync.
+	// In local mode, client and server share the same database â€” nothing to sync.
 	return nil
 }
 

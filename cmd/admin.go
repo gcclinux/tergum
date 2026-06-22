@@ -1,4 +1,4 @@
-package cmd
+﻿package cmd
 
 import (
 	"context"
@@ -10,11 +10,11 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/ricardopadilha/tergum/internal/config"
-	"github.com/ricardopadilha/tergum/internal/crypto"
-	"github.com/ricardopadilha/tergum/internal/db"
-	"github.com/ricardopadilha/tergum/internal/observe"
-	"github.com/ricardopadilha/tergum/internal/webui"
+	"github.com/gcclinux/tergum/internal/config"
+	"github.com/gcclinux/tergum/internal/crypto"
+	"github.com/gcclinux/tergum/internal/db"
+	"github.com/gcclinux/tergum/internal/observe"
+	"github.com/gcclinux/tergum/internal/webui"
 	"github.com/spf13/cobra"
 )
 

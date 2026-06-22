@@ -1,4 +1,4 @@
-package deletion
+﻿package deletion
 
 import (
 	"context"
@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ricardopadilha/tergum/internal/model"
+	"github.com/gcclinux/tergum/internal/model"
 )
 
 // --- Mock Repository ---
@@ -360,7 +360,7 @@ func TestPhysicalFileDeletedOnlyWhenRefcountZero(t *testing.T) {
 		t.Error("shared hash should still exist in store")
 	}
 
-	// Now delete from backup-2 → refcount goes to 0.
+	// Now delete from backup-2 â†’ refcount goes to 0.
 	result, err = engine.DeleteByBackupID(ctx, "backup-2", false)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)

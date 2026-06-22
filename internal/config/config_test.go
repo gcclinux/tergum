@@ -1,4 +1,4 @@
-package config
+﻿package config
 
 import (
 	"os"
@@ -6,7 +6,7 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/ricardopadilha/tergum/internal/model"
+	"github.com/gcclinux/tergum/internal/model"
 )
 
 func TestApplyDefaults(t *testing.T) {

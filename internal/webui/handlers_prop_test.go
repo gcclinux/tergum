@@ -1,4 +1,4 @@
-package webui
+﻿package webui
 
 import (
 	"net/http"
@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ricardopadilha/tergum/internal/config"
+	"github.com/gcclinux/tergum/internal/config"
 	"pgregory.net/rapid"
 )
 

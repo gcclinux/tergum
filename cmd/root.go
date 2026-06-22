@@ -1,4 +1,4 @@
-// Package cmd implements the Tergum CLI using cobra.
+﻿// Package cmd implements the Tergum CLI using cobra.
 package cmd
 
 import (
@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/ricardopadilha/tergum/internal/model"
+	"github.com/gcclinux/tergum/internal/model"
 	"github.com/spf13/cobra"
 )
 

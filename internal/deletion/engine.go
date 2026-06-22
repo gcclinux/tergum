@@ -1,4 +1,4 @@
-// Package deletion implements granular delete operations for backup entries.
+﻿// Package deletion implements granular delete operations for backup entries.
 package deletion
 
 import (
@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/ricardopadilha/tergum/internal/model"
-	"github.com/ricardopadilha/tergum/internal/storage"
+	"github.com/gcclinux/tergum/internal/model"
+	"github.com/gcclinux/tergum/internal/storage"
 )
 
 // DeleteResult summarizes what a deletion operation affected.

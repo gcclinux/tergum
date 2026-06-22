@@ -26,9 +26,9 @@ COMMIT="${COMMIT:-$(git rev-parse --short HEAD 2>/dev/null || echo "none")}"
 BUILD_DATE="${BUILD_DATE:-$(date -u +"%Y-%m-%dT%H:%M:%SZ")}"
 
 LDFLAGS="-s -w \
-  -X 'github.com/ricardopadilha/tergum/cmd.Version=${VERSION}' \
-  -X 'github.com/ricardopadilha/tergum/cmd.Commit=${COMMIT}' \
-  -X 'github.com/ricardopadilha/tergum/cmd.BuildDate=${BUILD_DATE}'"
+  -X 'github.com/gcclinux/tergum/cmd.Version=${VERSION}' \
+  -X 'github.com/gcclinux/tergum/cmd.Commit=${COMMIT}' \
+  -X 'github.com/gcclinux/tergum/cmd.BuildDate=${BUILD_DATE}'"
 
 OUTPUT_DIR="${OUTPUT_DIR:-./dist}"
 mkdir -p "$OUTPUT_DIR"

@@ -1,4 +1,4 @@
-// Package migrate implements v2.0 to v3.0 database and storage migration.
+﻿// Package migrate implements v2.0 to v3.0 database and storage migration.
 package migrate
 
 import (
@@ -13,12 +13,12 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/ricardopadilha/tergum/internal/crypto"
+	"github.com/gcclinux/tergum/internal/crypto"
 
 	_ "modernc.org/sqlite"
 )
 
-// Migrator defines the interface for v2.0 → v3.0 migration.
+// Migrator defines the interface for v2.0 â†’ v3.0 migration.
 type Migrator interface {
 	// Migrate transforms v2.0 database to v3.0 format.
 	Migrate(ctx context.Context, opts MigrateOptions) (*MigrateResult, error)
@@ -78,7 +78,7 @@ func NewMigrator() *DefaultMigrator {
 }
 
 // Migrate reads the v2.0 database and creates a new v3.0 database alongside it.
-// It optionally rehashes files (MD5→BLAKE3), encrypts them, and verifies integrity.
+// It optionally rehashes files (MD5â†’BLAKE3), encrypts them, and verifies integrity.
 func (m *DefaultMigrator) Migrate(ctx context.Context, opts MigrateOptions) (*MigrateResult, error) {
 	if opts.FromDB == "" {
 		return nil, fmt.Errorf("migrate: FromDB path is required")
@@ -152,7 +152,7 @@ func (m *DefaultMigrator) Migrate(ctx context.Context, opts MigrateOptions) (*Mi
 					}
 					if err := os.Rename(oldStoragePath, newStoragePath); err != nil {
 						if !os.IsNotExist(err) {
-							return nil, fmt.Errorf("migrate: rename %s → %s: %w", oldStoragePath, newStoragePath, err)
+							return nil, fmt.Errorf("migrate: rename %s â†’ %s: %w", oldStoragePath, newStoragePath, err)
 						}
 					} else {
 						rollbackEntries = append(rollbackEntries, rollbackEntry{
@@ -245,7 +245,7 @@ func (m *DefaultMigrator) Verify(ctx context.Context, dbPath string) (*VerifyRes
 	}
 	defer rows.Close()
 
-	dbHashes := make(map[string]int64) // hash → count of entries referencing it
+	dbHashes := make(map[string]int64) // hash â†’ count of entries referencing it
 	for rows.Next() {
 		var hash string
 		if err := rows.Scan(&hash); err != nil {
@@ -258,7 +258,7 @@ func (m *DefaultMigrator) Verify(ctx context.Context, dbPath string) (*VerifyRes
 		return nil, fmt.Errorf("verify: iterate rows: %w", err)
 	}
 
-	// Check DB→disk: every unique hash should have a file.
+	// Check DBâ†’disk: every unique hash should have a file.
 	for hash := range dbHashes {
 		select {
 		case <-ctx.Done():
@@ -282,7 +282,7 @@ func (m *DefaultMigrator) Verify(ctx context.Context, dbPath string) (*VerifyRes
 		}
 	}
 
-	// Check disk→DB: walk storage directory and find orphans.
+	// Check diskâ†’DB: walk storage directory and find orphans.
 	diskHashes := make(map[string]bool)
 	err = filepath.WalkDir(storageDir, func(path string, d os.DirEntry, err error) error {
 		if err != nil {

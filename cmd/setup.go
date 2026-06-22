@@ -1,4 +1,4 @@
-package cmd
+﻿package cmd
 
 import (
 	"bufio"
@@ -12,10 +12,10 @@ import (
 	"strings"
 
 	"github.com/BurntSushi/toml"
-	"github.com/ricardopadilha/tergum/internal/config"
-	"github.com/ricardopadilha/tergum/internal/crypto"
-	"github.com/ricardopadilha/tergum/internal/db"
-	"github.com/ricardopadilha/tergum/internal/tls"
+	"github.com/gcclinux/tergum/internal/config"
+	"github.com/gcclinux/tergum/internal/crypto"
+	"github.com/gcclinux/tergum/internal/db"
+	"github.com/gcclinux/tergum/internal/tls"
 	"github.com/spf13/cobra"
 )
 
@@ -287,7 +287,7 @@ func runInteractiveSetup(wiz *setupWizard) error {
 		}
 	}
 
-	// 6. Backup paths — what to back up
+	// 6. Backup paths â€” what to back up
 	fmt.Fprintln(wiz.writer)
 	fmt.Fprintln(wiz.writer, "--- Backup Paths ---")
 	fmt.Fprintln(wiz.writer, "Which directories should be backed up?")
@@ -438,9 +438,9 @@ func runInteractiveSetup(wiz *setupWizard) error {
 	fmt.Fprintf(wiz.writer, "Configuration written to %s\n", configPath)
 	fmt.Fprintln(wiz.writer)
 	fmt.Fprintln(wiz.writer, "Setup complete! Next steps:")
-	fmt.Fprintln(wiz.writer, "  tergum server    — start the server (required for backups)")
-	fmt.Fprintln(wiz.writer, "  tergum backup    — run a manual backup")
-	fmt.Fprintln(wiz.writer, "  tergum paths list — view configured paths")
+	fmt.Fprintln(wiz.writer, "  tergum server    â€” start the server (required for backups)")
+	fmt.Fprintln(wiz.writer, "  tergum backup    â€” run a manual backup")
+	fmt.Fprintln(wiz.writer, "  tergum paths list â€” view configured paths")
 
 	printOutput(
 		map[string]interface{}{

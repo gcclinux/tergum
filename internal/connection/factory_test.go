@@ -1,11 +1,11 @@
-package connection
+﻿package connection
 
 import (
 	"testing"
 
-	"github.com/ricardopadilha/tergum/internal/backup"
-	"github.com/ricardopadilha/tergum/internal/config"
-	"github.com/ricardopadilha/tergum/internal/restore"
+	"github.com/gcclinux/tergum/internal/backup"
+	"github.com/gcclinux/tergum/internal/config"
+	"github.com/gcclinux/tergum/internal/restore"
 )
 
 func TestNewServerConnection_RoleBoth(t *testing.T) {
@@ -61,7 +61,7 @@ func TestNewServerConnection_RoleClientMissingTLS(t *testing.T) {
 	cfg.Server.Address = "192.168.1.5"
 	cfg.Server.CommandPort = 7400
 	cfg.Server.DataPort = 7401
-	// TLS fields left empty — should fail at TLS loading
+	// TLS fields left empty â€” should fail at TLS loading
 
 	_, err := NewServerConnection(cfg)
 	if err == nil {
@@ -139,7 +139,7 @@ func TestNewDataSource_RoleClientMissingTLS(t *testing.T) {
 	cfg.Server.Address = "192.168.1.5"
 	cfg.Server.CommandPort = 7400
 	cfg.Server.DataPort = 7401
-	// TLS fields left empty — should fail at TLS loading
+	// TLS fields left empty â€” should fail at TLS loading
 
 	_, err := NewDataSource(cfg)
 	if err == nil {

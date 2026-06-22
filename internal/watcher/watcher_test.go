@@ -1,4 +1,4 @@
-package watcher
+﻿package watcher
 
 import (
 	"context"
@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ricardopadilha/tergum/internal/db"
+	"github.com/gcclinux/tergum/internal/db"
 )
 
 // shortDebounce and shortStability for fast tests.

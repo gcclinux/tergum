@@ -1,4 +1,4 @@
-package cmd
+﻿package cmd
 
 import (
 	"context"
@@ -7,9 +7,9 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/ricardopadilha/tergum/internal/config"
-	"github.com/ricardopadilha/tergum/internal/db"
-	"github.com/ricardopadilha/tergum/internal/model"
+	"github.com/gcclinux/tergum/internal/config"
+	"github.com/gcclinux/tergum/internal/db"
+	"github.com/gcclinux/tergum/internal/model"
 	"github.com/spf13/cobra"
 )
 

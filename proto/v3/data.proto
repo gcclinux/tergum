@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package tergum.v3;
 
-option go_package = "github.com/ricardopadilha/tergum/internal/grpc/proto";
+option go_package = "github.com/gcclinux/tergum/internal/grpc/proto";
 
 // DataService handles data-plane operations on port 7401.
 service DataService {

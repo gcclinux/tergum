@@ -1,4 +1,4 @@
-// Package config handles loading, defaulting, and validating Tergum TOML configuration.
+﻿// Package config handles loading, defaulting, and validating Tergum TOML configuration.
 package config
 
 import (
@@ -10,7 +10,7 @@ import (
 	"strings"
 
 	"github.com/BurntSushi/toml"
-	"github.com/ricardopadilha/tergum/internal/model"
+	"github.com/gcclinux/tergum/internal/model"
 )
 
 // Config is the top-level configuration structure for Tergum.

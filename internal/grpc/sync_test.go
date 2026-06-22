@@ -1,4 +1,4 @@
-package grpc
+﻿package grpc
 
 import (
 	"context"
@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/ricardopadilha/tergum/internal/grpc/proto"
+	"github.com/gcclinux/tergum/internal/grpc/proto"
 	"google.golang.org/grpc"
 )
 
@@ -237,7 +237,7 @@ func TestSyncDatabaseToServer_LargeFile(t *testing.T) {
 	dbDir := t.TempDir()
 	dbPath := filepath.Join(dbDir, "large.db")
 
-	// 150KB of data — should result in multiple chunks.
+	// 150KB of data â€” should result in multiple chunks.
 	largeData := make([]byte, 150*1024)
 	for i := range largeData {
 		largeData[i] = byte(i % 256)

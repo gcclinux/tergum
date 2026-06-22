@@ -1,4 +1,4 @@
-package cmd
+﻿package cmd
 
 import (
 	"bufio"
@@ -13,12 +13,12 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/ricardopadilha/tergum/internal/config"
-	"github.com/ricardopadilha/tergum/internal/connection"
-	"github.com/ricardopadilha/tergum/internal/crypto"
-	"github.com/ricardopadilha/tergum/internal/db"
-	"github.com/ricardopadilha/tergum/internal/scheduler"
-	"github.com/ricardopadilha/tergum/internal/watcher"
+	"github.com/gcclinux/tergum/internal/config"
+	"github.com/gcclinux/tergum/internal/connection"
+	"github.com/gcclinux/tergum/internal/crypto"
+	"github.com/gcclinux/tergum/internal/db"
+	"github.com/gcclinux/tergum/internal/scheduler"
+	"github.com/gcclinux/tergum/internal/watcher"
 	"github.com/spf13/cobra"
 )
 
@@ -30,7 +30,7 @@ func newWatchCmd() *cobra.Command {
 Files that pass the stability gate (unchanged for the configured duration) are
 automatically backed up.
 
-Pipeline: filesystem event → exclude filter → debounce → stability gate → BLAKE3 hash → encrypt → upload
+Pipeline: filesystem event â†’ exclude filter â†’ debounce â†’ stability gate â†’ BLAKE3 hash â†’ encrypt â†’ upload
 
 The watcher batches stable files into backup jobs at a configurable interval
 (default: 5 minutes). It runs in the foreground until stopped with Ctrl+C or SIGTERM.`,

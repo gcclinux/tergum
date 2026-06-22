@@ -1,4 +1,4 @@
-// Package restore implements the Restore Engine for Tergum.
+﻿// Package restore implements the Restore Engine for Tergum.
 // It locates, downloads, decrypts, and restores files with original metadata.
 package restore
 
@@ -13,9 +13,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ricardopadilha/tergum/internal/crypto"
-	"github.com/ricardopadilha/tergum/internal/db"
-	"github.com/ricardopadilha/tergum/internal/model"
+	"github.com/gcclinux/tergum/internal/crypto"
+	"github.com/gcclinux/tergum/internal/db"
+	"github.com/gcclinux/tergum/internal/model"
 )
 
 // Engine defines the restore engine interface.
@@ -134,7 +134,7 @@ func (e *RestoreEngine) Search(ctx context.Context, query SearchQuery) ([]model.
 	return deduped, nil
 }
 
-// RestoreFile restores a single file: download → decrypt (if encrypted) → verify BLAKE3 → write → apply metadata.
+// RestoreFile restores a single file: download â†’ decrypt (if encrypted) â†’ verify BLAKE3 â†’ write â†’ apply metadata.
 func (e *RestoreEngine) RestoreFile(ctx context.Context, hash string, dest string) error {
 	// Download file data.
 	data, err := e.source.DownloadFile(ctx, hash)

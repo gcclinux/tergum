@@ -1,10 +1,10 @@
-package backup
+﻿package backup
 
 import (
 	"log/slog"
 
-	"github.com/ricardopadilha/tergum/internal/crypto"
-	"github.com/ricardopadilha/tergum/internal/model"
+	"github.com/gcclinux/tergum/internal/crypto"
+	"github.com/gcclinux/tergum/internal/model"
 )
 
 // ManifestDiff contains the results of comparing a client manifest with server-stored hashes.

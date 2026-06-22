@@ -21,7 +21,7 @@ $Commit = git rev-parse --short HEAD 2>$null
 if (-not $Commit) { $Commit = "none" }
 
 $BuildDate = (Get-Date -Format "yyyy-MM-ddTHH:mm:ssZ")
-$LdFlags = "-s -w -X `"github.com/ricardopadilha/tergum/cmd.Version=$Version`" -X `"github.com/ricardopadilha/tergum/cmd.Commit=$Commit`" -X `"github.com/ricardopadilha/tergum/cmd.BuildDate=$BuildDate`""
+$LdFlags = "-s -w -X `"github.com/gcclinux/tergum/cmd.Version=$Version`" -X `"github.com/gcclinux/tergum/cmd.Commit=$Commit`" -X `"github.com/gcclinux/tergum/cmd.BuildDate=$BuildDate`""
 
 $OutputDir = "dist"
 if (-not (Test-Path $OutputDir)) {

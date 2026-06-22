@@ -1,11 +1,11 @@
-package grpc
+﻿package grpc
 
 import (
 	"context"
 	"log/slog"
 	"time"
 
-	"github.com/ricardopadilha/tergum/internal/observe"
+	"github.com/gcclinux/tergum/internal/observe"
 )
 
 // StartHeartbeat runs a blocking loop that periodically pings the server and,

@@ -1,4 +1,4 @@
-package grpc
+﻿package grpc
 
 import (
 	"context"
@@ -7,7 +7,7 @@ import (
 	"math/rand/v2"
 	"time"
 
-	"github.com/ricardopadilha/tergum/internal/grpc/proto"
+	"github.com/gcclinux/tergum/internal/grpc/proto"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
@@ -248,13 +248,13 @@ func (c *TergumClient) RegisterClient(ctx context.Context, clientID, address str
 // --- DataService Methods ---
 
 // Upload returns a streaming client for uploading file chunks.
-// Streaming RPCs are not retried — the caller manages the stream lifecycle.
+// Streaming RPCs are not retried â€” the caller manages the stream lifecycle.
 func (c *TergumClient) Upload(ctx context.Context) (proto.DataService_UploadClient, error) {
 	return c.data.Upload(ctx)
 }
 
 // Download returns a streaming client for downloading file chunks.
-// Streaming RPCs are not retried — the caller manages the stream lifecycle.
+// Streaming RPCs are not retried â€” the caller manages the stream lifecycle.
 func (c *TergumClient) Download(ctx context.Context, hash, clientID string) (proto.DataService_DownloadClient, error) {
 	return c.data.Download(ctx, &proto.RestoreRequest{
 		Blake3Hash: hash,
@@ -263,7 +263,7 @@ func (c *TergumClient) Download(ctx context.Context, hash, clientID string) (pro
 }
 
 // SyncDatabase returns a streaming client for database sync.
-// Streaming RPCs are not retried — the caller manages the stream lifecycle.
+// Streaming RPCs are not retried â€” the caller manages the stream lifecycle.
 func (c *TergumClient) SyncDatabase(ctx context.Context) (proto.DataService_SyncDatabaseClient, error) {
 	return c.data.SyncDatabase(ctx)
 }
@@ -296,7 +296,7 @@ func (c *TergumClient) withRetry(ctx context.Context, operation func() error) er
 		if attempt == c.config.MaxRetries {
 			return err // exhausted retries
 		}
-		// Add jitter: ±25% of backoff duration
+		// Add jitter: Â±25% of backoff duration
 		jitter := time.Duration(float64(backoff) * (0.75 + rand.Float64()*0.5))
 
 		select {

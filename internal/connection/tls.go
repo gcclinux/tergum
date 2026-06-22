@@ -1,4 +1,4 @@
-// Package connection provides helpers for establishing mTLS connections
+﻿// Package connection provides helpers for establishing mTLS connections
 // between Tergum client and server nodes.
 package connection
 
@@ -7,8 +7,8 @@ import (
 	"crypto/x509"
 	"fmt"
 
-	"github.com/ricardopadilha/tergum/internal/config"
-	tlspkg "github.com/ricardopadilha/tergum/internal/tls"
+	"github.com/gcclinux/tergum/internal/config"
+	tlspkg "github.com/gcclinux/tergum/internal/tls"
 )
 
 // LoadClientTLS builds a *tls.Config for client-mode mTLS connections and

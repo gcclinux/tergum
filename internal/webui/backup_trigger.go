@@ -1,4 +1,4 @@
-package webui
+﻿package webui
 
 import (
 	"context"
@@ -8,10 +8,10 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/ricardopadilha/tergum/internal/backup"
-	"github.com/ricardopadilha/tergum/internal/crypto"
-	"github.com/ricardopadilha/tergum/internal/db"
-	"github.com/ricardopadilha/tergum/internal/model"
+	"github.com/gcclinux/tergum/internal/backup"
+	"github.com/gcclinux/tergum/internal/crypto"
+	"github.com/gcclinux/tergum/internal/db"
+	"github.com/gcclinux/tergum/internal/model"
 )
 
 // LocalBackupTrigger triggers backups directly using the backup engine.

@@ -1,4 +1,4 @@
-package grpc
+﻿package grpc
 
 import (
 	"context"
@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ricardopadilha/tergum/internal/grpc/proto"
+	"github.com/gcclinux/tergum/internal/grpc/proto"
 	"google.golang.org/grpc"
 )
 

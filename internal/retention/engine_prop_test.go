@@ -1,4 +1,4 @@
-package retention
+﻿package retention
 
 import (
 	"context"
@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ricardopadilha/tergum/internal/db"
-	"github.com/ricardopadilha/tergum/internal/model"
-	"github.com/ricardopadilha/tergum/internal/storage"
+	"github.com/gcclinux/tergum/internal/db"
+	"github.com/gcclinux/tergum/internal/model"
+	"github.com/gcclinux/tergum/internal/storage"
 	"pgregory.net/rapid"
 )
 

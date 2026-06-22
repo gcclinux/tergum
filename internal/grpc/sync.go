@@ -1,4 +1,4 @@
-package grpc
+﻿package grpc
 
 import (
 	"context"
@@ -6,7 +6,7 @@ import (
 	"io"
 	"os"
 
-	"github.com/ricardopadilha/tergum/internal/grpc/proto"
+	"github.com/gcclinux/tergum/internal/grpc/proto"
 )
 
 const (

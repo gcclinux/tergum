@@ -1,11 +1,11 @@
-package connection
+﻿package connection
 
 import (
 	"path/filepath"
 	"testing"
 
-	"github.com/ricardopadilha/tergum/internal/config"
-	tlspkg "github.com/ricardopadilha/tergum/internal/tls"
+	"github.com/gcclinux/tergum/internal/config"
+	tlspkg "github.com/gcclinux/tergum/internal/tls"
 )
 
 func TestLoadClientTLS_Success(t *testing.T) {

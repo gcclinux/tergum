@@ -1,4 +1,4 @@
-package backup
+﻿package backup
 
 import (
 	"os"
@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ricardopadilha/tergum/internal/crypto"
-	"github.com/ricardopadilha/tergum/internal/model"
+	"github.com/gcclinux/tergum/internal/crypto"
+	"github.com/gcclinux/tergum/internal/model"
 )
 
 func TestBuildManifest_WithTempFiles(t *testing.T) {

@@ -1,10 +1,10 @@
-package cmd
+﻿package cmd
 
 import (
 	"path/filepath"
 	"testing"
 
-	"github.com/ricardopadilha/tergum/internal/config"
+	"github.com/gcclinux/tergum/internal/config"
 )
 
 func TestWatchSubcommands(t *testing.T) {

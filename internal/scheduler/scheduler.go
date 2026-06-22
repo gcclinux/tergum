@@ -1,4 +1,4 @@
-// Package scheduler implements cron-based backup scheduling for Tergum.
+﻿// Package scheduler implements cron-based backup scheduling for Tergum.
 package scheduler
 
 import (
@@ -10,9 +10,9 @@ import (
 
 	"github.com/robfig/cron/v3"
 
-	"github.com/ricardopadilha/tergum/internal/config"
-	"github.com/ricardopadilha/tergum/internal/model"
-	"github.com/ricardopadilha/tergum/internal/registry"
+	"github.com/gcclinux/tergum/internal/config"
+	"github.com/gcclinux/tergum/internal/model"
+	"github.com/gcclinux/tergum/internal/registry"
 )
 
 // BackupTrigger is an interface for triggering backup operations,
@@ -144,7 +144,7 @@ func (s *cronScheduler) triggerForClients(ctx context.Context, level model.Backu
 }
 
 // ---------------------------------------------------------------------------
-// ClientScheduler — per-client cron scheduling for server-side management.
+// ClientScheduler â€” per-client cron scheduling for server-side management.
 // ---------------------------------------------------------------------------
 
 // clientCronEntry tracks cron entry IDs for a client's schedules.
@@ -392,7 +392,7 @@ func (cs *ClientScheduler) makeJob(clientID string, level model.BackupLevel) fun
 					"client_id", clientID, "level", level.String(), "error", err)
 			}
 		} else {
-			// Client is offline — record missed backup.
+			// Client is offline â€” record missed backup.
 			cs.logger.Warn("client offline, recording missed backup",
 				"client_id", clientID, "level", level.String())
 			if err := cs.registry.RecordMissedBackup(clientID, level.String(), time.Now()); err != nil {

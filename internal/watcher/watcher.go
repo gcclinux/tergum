@@ -1,4 +1,4 @@
-// Package watcher monitors filesystem events with debouncing and stability gating.
+﻿// Package watcher monitors filesystem events with debouncing and stability gating.
 package watcher
 
 import (
@@ -11,8 +11,8 @@ import (
 	"time"
 
 	"github.com/fsnotify/fsnotify"
-	"github.com/ricardopadilha/tergum/internal/crypto"
-	"github.com/ricardopadilha/tergum/internal/db"
+	"github.com/gcclinux/tergum/internal/crypto"
+	"github.com/gcclinux/tergum/internal/db"
 )
 
 // StableFile represents a file that has passed the stability gate.

@@ -1,4 +1,4 @@
-package grpc
+﻿package grpc
 
 import (
 	"bytes"
@@ -8,10 +8,10 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/ricardopadilha/tergum/internal/db"
-	"github.com/ricardopadilha/tergum/internal/grpc/proto"
-	"github.com/ricardopadilha/tergum/internal/model"
-	"github.com/ricardopadilha/tergum/internal/storage"
+	"github.com/gcclinux/tergum/internal/db"
+	"github.com/gcclinux/tergum/internal/grpc/proto"
+	"github.com/gcclinux/tergum/internal/model"
+	"github.com/gcclinux/tergum/internal/storage"
 )
 
 const (
@@ -52,7 +52,7 @@ func NewDataServer(cfg DataServerConfig) *DataServer {
 	}
 }
 
-// Upload receives a stream of FileChunks (Header → Data → Trailer),
+// Upload receives a stream of FileChunks (Header â†’ Data â†’ Trailer),
 // reconstructs the file, stores it in the CAS, and inserts a DB entry.
 func (s *DataServer) Upload(stream proto.DataService_UploadServer) error {
 	var (

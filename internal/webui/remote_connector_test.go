@@ -1,4 +1,4 @@
-package webui
+﻿package webui
 
 import (
 	"context"
@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ricardopadilha/tergum/internal/registry"
+	"github.com/gcclinux/tergum/internal/registry"
 	_ "modernc.org/sqlite"
 )
 

@@ -1,25 +1,25 @@
-// Package grpc implements the gRPC server handlers for CommandService and DataService.
+﻿// Package grpc implements the gRPC server handlers for CommandService and DataService.
 package grpc
 
 import (
 	"errors"
 
-	"github.com/ricardopadilha/tergum/internal/model"
-	"github.com/ricardopadilha/tergum/internal/storage"
+	"github.com/gcclinux/tergum/internal/model"
+	"github.com/gcclinux/tergum/internal/storage"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
 
 // MapError converts internal Tergum error types to appropriate gRPC status errors.
 // The mapping follows the convention:
-//   - ConfigError      → codes.InvalidArgument
-//   - ConnectionError  → codes.Unavailable
-//   - AuthError        → codes.Unauthenticated
-//   - StorageError     → codes.ResourceExhausted
-//   - StoppedError     → codes.Canceled
-//   - BackupFailedError→ codes.Internal
-//   - storage.ErrNotFound → codes.NotFound
-//   - General errors   → codes.Internal
+//   - ConfigError      â†’ codes.InvalidArgument
+//   - ConnectionError  â†’ codes.Unavailable
+//   - AuthError        â†’ codes.Unauthenticated
+//   - StorageError     â†’ codes.ResourceExhausted
+//   - StoppedError     â†’ codes.Canceled
+//   - BackupFailedErrorâ†’ codes.Internal
+//   - storage.ErrNotFound â†’ codes.NotFound
+//   - General errors   â†’ codes.Internal
 func MapError(err error) error {
 	if err == nil {
 		return nil

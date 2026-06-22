@@ -1,4 +1,4 @@
-package cmd
+﻿package cmd
 
 import (
 	"context"
@@ -8,8 +8,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/ricardopadilha/tergum/internal/config"
-	"github.com/ricardopadilha/tergum/internal/db"
+	"github.com/gcclinux/tergum/internal/config"
+	"github.com/gcclinux/tergum/internal/db"
 	"github.com/spf13/cobra"
 )
 

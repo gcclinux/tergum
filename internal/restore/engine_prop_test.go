@@ -1,4 +1,4 @@
-package restore
+﻿package restore
 
 import (
 	"context"
@@ -9,16 +9,16 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ricardopadilha/tergum/internal/crypto"
-	"github.com/ricardopadilha/tergum/internal/db"
-	"github.com/ricardopadilha/tergum/internal/model"
+	"github.com/gcclinux/tergum/internal/crypto"
+	"github.com/gcclinux/tergum/internal/db"
+	"github.com/gcclinux/tergum/internal/model"
 	"pgregory.net/rapid"
 )
 
 // **Validates: Requirements 7.8, 8.4, 20.1, 20.2, 20.4, 20.5**
 
 // TestProperty_FileMetadataRoundTrip_Permissions verifies that for any valid Unix
-// permission value (0o000–0o777), backing up and restoring a file preserves the
+// permission value (0o000â€“0o777), backing up and restoring a file preserves the
 // permission bits exactly.
 func TestProperty_FileMetadataRoundTrip_Permissions(t *testing.T) {
 	if runtime.GOOS == "windows" {
@@ -41,7 +41,7 @@ func TestProperty_FileMetadataRoundTrip_Permissions(t *testing.T) {
 		size := rapid.IntRange(1, 4096).Draw(rt, "fileSize")
 		content := rapid.SliceOfN(rapid.Byte(), size, size).Draw(rt, "content")
 
-		// Generate random Unix permissions (0o000–0o777).
+		// Generate random Unix permissions (0o000â€“0o777).
 		permValue := rapid.Uint32Range(0o000, 0o777).Draw(rt, "permissions")
 
 		hash := crypto.HashBytes(content)

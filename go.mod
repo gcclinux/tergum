@@ -1,4 +1,4 @@
-module github.com/ricardopadilha/tergum
+module github.com/gcclinux/tergum
 
 go 1.25.0
 
@@ -11,6 +11,7 @@ require (
 	github.com/spf13/cobra v1.10.2
 	github.com/zeebo/blake3 v0.2.4
 	golang.org/x/crypto v0.53.0
+	golang.org/x/sys v0.46.0
 	google.golang.org/grpc v1.81.1
 	modernc.org/sqlite v1.52.0
 	pgregory.net/rapid v1.3.0
@@ -33,7 +34,6 @@ require (
 	github.com/spf13/pflag v1.0.9 // indirect
 	go.yaml.in/yaml/v2 v2.4.2 // indirect
 	golang.org/x/net v0.55.0 // indirect
-	golang.org/x/sys v0.46.0 // indirect
 	golang.org/x/text v0.38.0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260226221140-a57be14db171 // indirect
 	google.golang.org/protobuf v1.36.11 // indirect

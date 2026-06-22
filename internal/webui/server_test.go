@@ -1,4 +1,4 @@
-package webui
+﻿package webui
 
 import (
 	"context"
@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ricardopadilha/tergum/internal/config"
+	"github.com/gcclinux/tergum/internal/config"
 )
 
 func testConfig() config.WebUIConfig {

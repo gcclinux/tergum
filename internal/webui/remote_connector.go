@@ -1,4 +1,4 @@
-package webui
+﻿package webui
 
 import (
 	"context"
@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"log/slog"
 
-	grpcpkg "github.com/ricardopadilha/tergum/internal/grpc"
-	"github.com/ricardopadilha/tergum/internal/grpc/proto"
-	"github.com/ricardopadilha/tergum/internal/registry"
+	grpcpkg "github.com/gcclinux/tergum/internal/grpc"
+	"github.com/gcclinux/tergum/internal/grpc/proto"
+	"github.com/gcclinux/tergum/internal/registry"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 )

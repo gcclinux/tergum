@@ -1,4 +1,4 @@
-package webui
+﻿package webui
 
 import (
 	"context"
@@ -10,7 +10,7 @@ import (
 	"strings"
 
 	"github.com/BurntSushi/toml"
-	"github.com/ricardopadilha/tergum/internal/config"
+	"github.com/gcclinux/tergum/internal/config"
 )
 
 // handlePathsIncludes returns the current list of include paths as JSON.

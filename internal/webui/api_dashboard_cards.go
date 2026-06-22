@@ -5,8 +5,8 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/ricardopadilha/tergum/internal/db"
-	"github.com/ricardopadilha/tergum/internal/model"
+	"github.com/gcclinux/tergum/internal/db"
+	"github.com/gcclinux/tergum/internal/model"
 )
 
 // handleAPIDashboardFiles handles GET /api/dashboard/files — returns total files Data_Card content.

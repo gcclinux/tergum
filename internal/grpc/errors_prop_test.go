@@ -1,10 +1,10 @@
-package grpc
+﻿package grpc
 
 import (
 	"errors"
 	"testing"
 
-	"github.com/ricardopadilha/tergum/internal/model"
+	"github.com/gcclinux/tergum/internal/model"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"pgregory.net/rapid"

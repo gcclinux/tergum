@@ -44,9 +44,9 @@ go build -o tergum ./
 
 # Production build with version info
 CGO_ENABLED=0 go build -ldflags="-s -w \
-  -X 'github.com/ricardopadilha/tergum/cmd.Version=$(git describe --tags --always)' \
-  -X 'github.com/ricardopadilha/tergum/cmd.Commit=$(git rev-parse --short HEAD)' \
-  -X 'github.com/ricardopadilha/tergum/cmd.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ)'" \
+  -X 'github.com/gcclinux/tergum/cmd.Version=$(git describe --tags --always)' \
+  -X 'github.com/gcclinux/tergum/cmd.Commit=$(git rev-parse --short HEAD)' \
+  -X 'github.com/gcclinux/tergum/cmd.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ)'" \
   -o tergum ./
 
 # Using Makefile

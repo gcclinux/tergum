@@ -9,7 +9,7 @@ package main
 import (
 	"os"
 
-	"github.com/ricardopadilha/tergum/cmd"
+	"github.com/gcclinux/tergum/cmd"
 )
 
 func main() {

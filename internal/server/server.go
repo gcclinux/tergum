@@ -1,4 +1,4 @@
-// Package server provides the main Tergum server wiring that starts all subsystems
+﻿// Package server provides the main Tergum server wiring that starts all subsystems
 // (gRPC, metrics, retention, scheduler) and orchestrates graceful shutdown.
 package server
 
@@ -21,22 +21,22 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 
-	"github.com/ricardopadilha/tergum/internal/backup"
-	"github.com/ricardopadilha/tergum/internal/config"
-	"github.com/ricardopadilha/tergum/internal/connection"
-	"github.com/ricardopadilha/tergum/internal/crypto"
-	"github.com/ricardopadilha/tergum/internal/db"
-	grpcpkg "github.com/ricardopadilha/tergum/internal/grpc"
-	"github.com/ricardopadilha/tergum/internal/grpc/proto"
-	"github.com/ricardopadilha/tergum/internal/model"
-	"github.com/ricardopadilha/tergum/internal/observe"
-	"github.com/ricardopadilha/tergum/internal/registry"
-	"github.com/ricardopadilha/tergum/internal/retention"
-	"github.com/ricardopadilha/tergum/internal/scheduler"
-	"github.com/ricardopadilha/tergum/internal/storage"
-	tlspkg "github.com/ricardopadilha/tergum/internal/tls"
-	"github.com/ricardopadilha/tergum/internal/watcher"
-	"github.com/ricardopadilha/tergum/internal/webui"
+	"github.com/gcclinux/tergum/internal/backup"
+	"github.com/gcclinux/tergum/internal/config"
+	"github.com/gcclinux/tergum/internal/connection"
+	"github.com/gcclinux/tergum/internal/crypto"
+	"github.com/gcclinux/tergum/internal/db"
+	grpcpkg "github.com/gcclinux/tergum/internal/grpc"
+	"github.com/gcclinux/tergum/internal/grpc/proto"
+	"github.com/gcclinux/tergum/internal/model"
+	"github.com/gcclinux/tergum/internal/observe"
+	"github.com/gcclinux/tergum/internal/registry"
+	"github.com/gcclinux/tergum/internal/retention"
+	"github.com/gcclinux/tergum/internal/scheduler"
+	"github.com/gcclinux/tergum/internal/storage"
+	tlspkg "github.com/gcclinux/tergum/internal/tls"
+	"github.com/gcclinux/tergum/internal/watcher"
+	"github.com/gcclinux/tergum/internal/webui"
 
 	_ "modernc.org/sqlite"
 )
@@ -489,7 +489,7 @@ func (s *Server) startClient(ctx context.Context) error {
 	// 5. Send RegisterClient RPC.
 	_, regErr := serverClient.RegisterClient(ctx, clientID, clientAddress)
 	if regErr != nil {
-		// Log but don't fail — the heartbeat loop will retry registration.
+		// Log but don't fail â€” the heartbeat loop will retry registration.
 		s.logger.Warn("initial client registration failed (will retry via heartbeat)",
 			"error", regErr,
 		)

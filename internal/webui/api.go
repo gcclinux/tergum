@@ -1,4 +1,4 @@
-package webui
+﻿package webui
 
 import (
 	"context"
@@ -13,15 +13,15 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ricardopadilha/tergum/internal/config"
-	cryptoPkg "github.com/ricardopadilha/tergum/internal/crypto"
-	"github.com/ricardopadilha/tergum/internal/db"
-	"github.com/ricardopadilha/tergum/internal/model"
-	registryPkg "github.com/ricardopadilha/tergum/internal/registry"
-	"github.com/ricardopadilha/tergum/internal/restore"
+	"github.com/gcclinux/tergum/internal/config"
+	cryptoPkg "github.com/gcclinux/tergum/internal/crypto"
+	"github.com/gcclinux/tergum/internal/db"
+	"github.com/gcclinux/tergum/internal/model"
+	registryPkg "github.com/gcclinux/tergum/internal/registry"
+	"github.com/gcclinux/tergum/internal/restore"
 )
 
-// handleAPIBackupTrigger handles POST /api/backups/trigger — triggers a backup.
+// handleAPIBackupTrigger handles POST /api/backups/trigger â€” triggers a backup.
 func (s *Server) handleAPIBackupTrigger(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -59,7 +59,7 @@ func (s *Server) handleAPIBackupTrigger(w http.ResponseWriter, r *http.Request) 
 	fmt.Fprintf(w, `<div class="p-3 bg-green-100 text-green-800 rounded text-sm">%s backup started! Check the Active Jobs section above.</div>`, level)
 }
 
-// handleAPIBackupsProgress handles GET /api/backups/progress — returns a progress
+// handleAPIBackupsProgress handles GET /api/backups/progress â€” returns a progress
 // fragment showing files count and bytes transferred for running backup jobs.
 // This endpoint is designed to be called when SSE backup_progress events trigger a refresh.
 func (s *Server) handleAPIBackupsProgress(w http.ResponseWriter, r *http.Request) {
@@ -73,7 +73,7 @@ func (s *Server) handleAPIBackupsProgress(w http.ResponseWriter, r *http.Request
 	running := model.JobRunning
 	jobs, err := s.repo.ListJobs(r.Context(), db.JobFilter{Status: &running})
 	if err != nil || len(jobs) == 0 {
-		// No running jobs — return empty hidden div.
+		// No running jobs â€” return empty hidden div.
 		fmt.Fprint(w, `<div id="backup-progress" class="hidden"></div>`)
 		return
 	}
@@ -93,7 +93,7 @@ func (s *Server) handleAPIBackupsProgress(w http.ResponseWriter, r *http.Request
 	fmt.Fprint(w, `</div>`)
 }
 
-// handleAPIBackupsActive handles GET /api/backups/active — returns running jobs as HTML.
+// handleAPIBackupsActive handles GET /api/backups/active â€” returns running jobs as HTML.
 func (s *Server) handleAPIBackupsActive(w http.ResponseWriter, r *http.Request) {
 	if s.repo == nil {
 		fmt.Fprint(w, `<p class="text-gray-500 italic">Database not available.</p>`)
@@ -111,13 +111,13 @@ func (s *Server) handleAPIBackupsActive(w http.ResponseWriter, r *http.Request) 
 	for _, j := range jobs {
 		elapsed := time.Since(j.StartedAt).Round(time.Second)
 		fmt.Fprintf(w, `<div class="p-3 bg-blue-50 rounded mb-2">`)
-		fmt.Fprintf(w, `<span class="font-mono text-sm">%s</span> — `, j.BackupID[:12])
+		fmt.Fprintf(w, `<span class="font-mono text-sm">%s</span> â€” `, j.BackupID[:12])
 		fmt.Fprintf(w, `<span class="text-blue-700">%s</span> running for %s`, j.Level, elapsed)
 		fmt.Fprintf(w, `</div>`)
 	}
 }
 
-// handleAPIBackupsStatus handles GET /api/backups/status — returns a running job banner or empty div.
+// handleAPIBackupsStatus handles GET /api/backups/status â€” returns a running job banner or empty div.
 func (s *Server) handleAPIBackupsStatus(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html")
 
@@ -128,7 +128,7 @@ func (s *Server) handleAPIBackupsStatus(w http.ResponseWriter, r *http.Request) 
 	running := model.JobRunning
 	jobs, err := s.repo.ListJobs(r.Context(), db.JobFilter{Status: &running})
 	if err != nil || len(jobs) == 0 {
-		// No running jobs — return empty so the banner hides.
+		// No running jobs â€” return empty so the banner hides.
 		fmt.Fprint(w, `<div id="backup-running-banner" class="hidden"></div>`)
 		return
 	}
@@ -146,12 +146,12 @@ func (s *Server) handleAPIBackupsStatus(w http.ResponseWriter, r *http.Request) 
 	fmt.Fprint(w, `<svg class="animate-spin h-5 w-5 text-blue-600 dark:text-blue-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>`)
 	fmt.Fprint(w, `<div class="flex-1">`)
 	fmt.Fprintf(w, `<p class="text-sm font-medium text-blue-800 dark:text-blue-200">Backup Running</p>`)
-	fmt.Fprintf(w, `<p class="text-xs text-blue-600 dark:text-blue-300">ID: <span class="font-mono">%s</span> · Client: %s · Level: %s · Elapsed: %s</p>`, shortID, j.ClientID, j.Level, elapsed)
+	fmt.Fprintf(w, `<p class="text-xs text-blue-600 dark:text-blue-300">ID: <span class="font-mono">%s</span> Â· Client: %s Â· Level: %s Â· Elapsed: %s</p>`, shortID, j.ClientID, j.Level, elapsed)
 	fmt.Fprint(w, `</div>`)
 	fmt.Fprint(w, `</div>`)
 }
 
-// handleAPIBackupsHistory handles GET /api/backups/history — returns backup history as an HTML table.
+// handleAPIBackupsHistory handles GET /api/backups/history â€” returns backup history as an HTML table.
 func (s *Server) handleAPIBackupsHistory(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html")
 
@@ -286,7 +286,7 @@ func (s *Server) handleAPIBackupsHistory(w http.ResponseWriter, r *http.Request)
 	fmt.Fprint(w, `</div>`) // close x-data
 }
 
-// handleAPIBackupDelete handles DELETE /api/backups/{id} — deletes a backup set.
+// handleAPIBackupDelete handles DELETE /api/backups/{id} â€” deletes a backup set.
 func (s *Server) handleAPIBackupDelete(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodDelete {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -324,7 +324,7 @@ func (s *Server) handleAPIBackupDelete(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, `<tr><td colspan="7" class="p-4 text-green-600">Deleted %d entries from backup %s</td></tr>`, deleted, backupID[:12])
 }
 
-// handleAPIRetention handles /api/retention — POST to add, DELETE to remove.
+// handleAPIRetention handles /api/retention â€” POST to add, DELETE to remove.
 func (s *Server) handleAPIRetention(w http.ResponseWriter, r *http.Request) {
 	if s.repo == nil {
 		http.Error(w, "database not available", http.StatusServiceUnavailable)
@@ -423,7 +423,7 @@ func (s *Server) handleAPIRetentionRemove(w http.ResponseWriter, r *http.Request
 	w.WriteHeader(http.StatusOK)
 }
 
-// handleAPIRetentionList handles GET /api/retention/policies — returns policies table HTML fragment for htmx polling.
+// handleAPIRetentionList handles GET /api/retention/policies â€” returns policies table HTML fragment for htmx polling.
 func (s *Server) handleAPIRetentionList(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html")
 
@@ -482,7 +482,7 @@ func (s *Server) handleAPIRetentionList(w http.ResponseWriter, r *http.Request) 
 	fmt.Fprint(w, `</tbody></table>`)
 }
 
-// handleAPIRestoreSearch handles GET /api/restore/search?query=... — search files in backup.
+// handleAPIRestoreSearch handles GET /api/restore/search?query=... â€” search files in backup.
 func (s *Server) handleAPIRestoreSearch(w http.ResponseWriter, r *http.Request) {
 	if s.repo == nil {
 		fmt.Fprint(w, `<p class="text-gray-500">Database not available.</p>`)
@@ -543,7 +543,7 @@ func (s *Server) handleAPIRestoreSearch(w http.ResponseWriter, r *http.Request) 
 	fmt.Fprint(w, `</tbody></table>`)
 }
 
-// handleAPIRestoreBackups handles GET /api/restore/backups — lists backups for browsing.
+// handleAPIRestoreBackups handles GET /api/restore/backups â€” lists backups for browsing.
 func (s *Server) handleAPIRestoreBackups(w http.ResponseWriter, r *http.Request) {
 	if s.repo == nil {
 		fmt.Fprint(w, `<p class="text-gray-500 dark:text-gray-400 italic">Database not available.</p>`)
@@ -592,7 +592,7 @@ func (s *Server) handleAPIRestoreBackups(w http.ResponseWriter, r *http.Request)
 	fmt.Fprint(w, `</tbody></table>`)
 }
 
-// handleAPIDashboard handles GET /api/dashboard — returns dashboard stats as JSON for HTMX.
+// handleAPIDashboard handles GET /api/dashboard â€” returns dashboard stats as JSON for HTMX.
 func (s *Server) handleAPIDashboard(w http.ResponseWriter, r *http.Request) {
 	if s.repo == nil {
 		w.Header().Set("Content-Type", "application/json")
@@ -638,7 +638,7 @@ func formatSize(b int64) string {
 	}
 }
 
-// handleAPIActivityRecent handles GET /api/activity/recent — returns recent activity as HTML or JSON.
+// handleAPIActivityRecent handles GET /api/activity/recent â€” returns recent activity as HTML or JSON.
 func (s *Server) handleAPIActivityRecent(w http.ResponseWriter, r *http.Request) {
 	format := r.URL.Query().Get("format")
 
@@ -686,16 +686,16 @@ func (s *Server) handleAPIActivityRecent(w http.ResponseWriter, r *http.Request)
 	var rows []activityRow
 
 	for _, j := range jobs {
-		icon := "🔵"
+		icon := "ðŸ”µ"
 		switch j.Status {
 		case model.JobCompleted:
-			icon = "✅"
+			icon = "âœ…"
 		case model.JobFailed:
-			icon = "❌"
+			icon = "âŒ"
 		case model.JobStopped:
-			icon = "⏹️"
+			icon = "â¹ï¸"
 		case model.JobRunning:
-			icon = "🔄"
+			icon = "ðŸ”„"
 		}
 
 		duration := "-"
@@ -720,11 +720,11 @@ func (s *Server) handleAPIActivityRecent(w http.ResponseWriter, r *http.Request)
 	}
 
 	for _, rec := range restores {
-		icon := "📥"
+		icon := "ðŸ“¥"
 		status := "success"
 		statusClr := "#059669"
 		if !rec.Success {
-			icon = "❌"
+			icon = "âŒ"
 			status = "failed"
 			statusClr = "#dc2626"
 		}
@@ -867,7 +867,7 @@ func (s *Server) handleAPIWatcherControl(w http.ResponseWriter, r *http.Request)
 	}
 }
 
-// handleAPISystemCPU handles GET /api/system/cpu — returns CPU usage as an HTML Data_Card fragment.
+// handleAPISystemCPU handles GET /api/system/cpu â€” returns CPU usage as an HTML Data_Card fragment.
 func (s *Server) handleAPISystemCPU(w http.ResponseWriter, r *http.Request) {
 	cpu := getCPULoad()
 	w.Header().Set("Content-Type", "text/html")
@@ -882,7 +882,7 @@ func (s *Server) handleAPISystemCPU(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprint(w, `</div></div>`)
 }
 
-// handleAPISystemMemory handles GET /api/system/memory — returns memory usage as an HTML Data_Card fragment.
+// handleAPISystemMemory handles GET /api/system/memory â€” returns memory usage as an HTML Data_Card fragment.
 func (s *Server) handleAPISystemMemory(w http.ResponseWriter, r *http.Request) {
 	used, total, pct := getMemoryStats()
 	w.Header().Set("Content-Type", "text/html")
@@ -893,11 +893,11 @@ func (s *Server) handleAPISystemMemory(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprint(w, `</svg></div>`)
 	fmt.Fprint(w, `<div class="flex-1 min-w-0">`)
 	fmt.Fprintf(w, `<p class="text-xl font-bold text-gray-900 dark:text-gray-100 truncate">%s</p>`, pct)
-	fmt.Fprintf(w, `<p class="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide">Memory — %s / %s</p>`, used, total)
+	fmt.Fprintf(w, `<p class="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide">Memory â€” %s / %s</p>`, used, total)
 	fmt.Fprint(w, `</div></div>`)
 }
 
-// handleAPIRestoreFiles handles GET /api/restore/files?backup_id=... — returns files in a backup as HTML table.
+// handleAPIRestoreFiles handles GET /api/restore/files?backup_id=... â€” returns files in a backup as HTML table.
 func (s *Server) handleAPIRestoreFiles(w http.ResponseWriter, r *http.Request) {
 	if s.repo == nil {
 		fmt.Fprint(w, `<p class="text-red-500 dark:text-red-400">Database not available.</p>`)
@@ -979,7 +979,7 @@ func truncatePath(path string, maxLen int) string {
 	return "..." + suffix
 }
 
-// handleAPIRestoreFile handles POST /api/restore/run — restores file(s).
+// handleAPIRestoreFile handles POST /api/restore/run â€” restores file(s).
 func (s *Server) handleAPIRestoreFile(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -1126,7 +1126,7 @@ func (s *Server) runWebRestore(hash, filePath, backupID, dest string) {
 	}
 }
 
-// handleAPIRestoreJobs handles GET /api/restore/jobs — returns recent restore jobs.
+// handleAPIRestoreJobs handles GET /api/restore/jobs â€” returns recent restore jobs.
 func (s *Server) handleAPIRestoreJobs(w http.ResponseWriter, r *http.Request) {
 	if s.repo == nil {
 		fmt.Fprint(w, `<p class="text-gray-500 dark:text-gray-400 italic text-sm">Database not available.</p>`)
@@ -1193,7 +1193,7 @@ func (l *localDataSource) DownloadFile(ctx context.Context, hash string) ([]byte
 	return data, nil
 }
 
-// handleAPIClients handles GET /api/clients — returns registered clients as JSON.
+// handleAPIClients handles GET /api/clients â€” returns registered clients as JSON.
 func (s *Server) handleAPIClients(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -1283,7 +1283,7 @@ func (s *Server) handleAPIClientAction(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// handleAPIClientBackup handles POST /api/clients/{id}/backup — triggers backup on client via RPC.
+// handleAPIClientBackup handles POST /api/clients/{id}/backup â€” triggers backup on client via RPC.
 func (s *Server) handleAPIClientBackup(w http.ResponseWriter, r *http.Request, clientID string) {
 	if s.clientConnector == nil {
 		setErrorToast(w, "Client connector not available")
@@ -1403,7 +1403,7 @@ func (s *Server) handleAPIClientWatcherStop(w http.ResponseWriter, r *http.Reque
 	})
 }
 
-// handleAPIClientStatus handles GET /api/clients/{id}/status — queries client status via RPC.
+// handleAPIClientStatus handles GET /api/clients/{id}/status â€” queries client status via RPC.
 func (s *Server) handleAPIClientStatus(w http.ResponseWriter, r *http.Request, clientID string) {
 	if s.clientConnector == nil {
 		writeJSONError(w, "client connector not available", http.StatusServiceUnavailable)
@@ -1441,7 +1441,7 @@ func (s *Server) handleAPIClientStatus(w http.ResponseWriter, r *http.Request, c
 	json.NewEncoder(w).Encode(status)
 }
 
-// handleAPIClientSchedule handles PUT /api/clients/{id}/schedule — updates client schedule.
+// handleAPIClientSchedule handles PUT /api/clients/{id}/schedule â€” updates client schedule.
 func (s *Server) handleAPIClientSchedule(w http.ResponseWriter, r *http.Request, clientID string) {
 	if s.clientRegistry == nil {
 		writeJSONError(w, "registry not available", http.StatusServiceUnavailable)
@@ -1480,7 +1480,7 @@ func (s *Server) handleAPIClientSchedule(w http.ResponseWriter, r *http.Request,
 	})
 }
 
-// handleAPIClientHistory handles GET /api/clients/{id}/history — returns backup job history for a client.
+// handleAPIClientHistory handles GET /api/clients/{id}/history â€” returns backup job history for a client.
 func (s *Server) handleAPIClientHistory(w http.ResponseWriter, r *http.Request, clientID string) {
 	if s.repo == nil {
 		writeJSONError(w, "database not available", http.StatusServiceUnavailable)
@@ -1533,7 +1533,7 @@ func (s *Server) handleAPIClientHistory(w http.ResponseWriter, r *http.Request, 
 	json.NewEncoder(w).Encode(result)
 }
 
-// handleAPIClientsList handles GET /api/clients/list — returns client cards as HTML fragment for htmx polling.
+// handleAPIClientsList handles GET /api/clients/list â€” returns client cards as HTML fragment for htmx polling.
 func (s *Server) handleAPIClientsList(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -1618,7 +1618,7 @@ func (s *Server) handleAPIClientsList(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprint(w, `</div>`)
 }
 
-// handleAPIMetricsCards handles GET /api/metrics/cards — returns all metric Data_Cards as HTML fragment for bulk polling.
+// handleAPIMetricsCards handles GET /api/metrics/cards â€” returns all metric Data_Cards as HTML fragment for bulk polling.
 func (s *Server) handleAPIMetricsCards(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)

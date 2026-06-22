@@ -1,19 +1,19 @@
-package connection
+﻿package connection
 
 import (
 	"context"
 	"fmt"
 
-	"github.com/ricardopadilha/tergum/internal/backup"
-	"github.com/ricardopadilha/tergum/internal/config"
-	tergumgrpc "github.com/ricardopadilha/tergum/internal/grpc"
-	"github.com/ricardopadilha/tergum/internal/restore"
+	"github.com/gcclinux/tergum/internal/backup"
+	"github.com/gcclinux/tergum/internal/config"
+	tergumgrpc "github.com/gcclinux/tergum/internal/grpc"
+	"github.com/gcclinux/tergum/internal/restore"
 )
 
 // NewServerConnection creates the appropriate ServerConnection based on the node role.
-//   - role "client" → connects to the remote server via gRPC and returns a RemoteServerConnection
-//   - role "both"   → returns a LocalServerConnection using the local CAS storage directory
-//   - role "server" → returns an error (server nodes do not initiate backups)
+//   - role "client" â†’ connects to the remote server via gRPC and returns a RemoteServerConnection
+//   - role "both"   â†’ returns a LocalServerConnection using the local CAS storage directory
+//   - role "server" â†’ returns an error (server nodes do not initiate backups)
 func NewServerConnection(cfg *config.Config) (backup.ServerConnection, error) {
 	switch cfg.Node.Role {
 	case "client":
@@ -53,9 +53,9 @@ func NewServerConnection(cfg *config.Config) (backup.ServerConnection, error) {
 }
 
 // NewDataSource creates the appropriate DataSource for restore operations based on the node role.
-//   - role "client" → connects to the remote server via gRPC and returns a RemoteDataSource
-//   - role "both"   → returns a LocalDataSource using the local CAS storage directory
-//   - role "server" → returns an error (server nodes do not initiate restores)
+//   - role "client" â†’ connects to the remote server via gRPC and returns a RemoteDataSource
+//   - role "both"   â†’ returns a LocalDataSource using the local CAS storage directory
+//   - role "server" â†’ returns an error (server nodes do not initiate restores)
 func NewDataSource(cfg *config.Config) (restore.DataSource, error) {
 	switch cfg.Node.Role {
 	case "client":

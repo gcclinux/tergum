@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package tergum.v3;
 
-option go_package = "github.com/ricardopadilha/tergum/internal/grpc/proto";
+option go_package = "github.com/gcclinux/tergum/internal/grpc/proto";
 
 // CommandService handles control-plane operations on port 7400.
 service CommandService {
