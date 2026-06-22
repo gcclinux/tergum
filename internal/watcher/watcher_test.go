@@ -31,6 +31,7 @@ func newTestConfig(repo db.Repository, excludes []string) Config {
 func TestExcludeFiltering(t *testing.T) {
 	tmpDir := t.TempDir()
 	cfg := newTestConfig(nil, []string{"*.tmp", "*.log"})
+	cfg.IncludePaths = []string{tmpDir}
 
 	fw, err := NewFileWatcher(cfg)
 	if err != nil {
@@ -44,10 +45,6 @@ func TestExcludeFiltering(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer fw.Stop()
-
-	if err := fw.AddPath(tmpDir, false); err != nil {
-		t.Fatal(err)
-	}
 
 	// Give watcher time to register.
 	time.Sleep(50 * time.Millisecond)
@@ -103,6 +100,7 @@ done:
 func TestDebouncingCollapsesRapidEvents(t *testing.T) {
 	tmpDir := t.TempDir()
 	cfg := newTestConfig(nil, nil)
+	cfg.IncludePaths = []string{tmpDir}
 
 	fw, err := NewFileWatcher(cfg)
 	if err != nil {
@@ -116,10 +114,6 @@ func TestDebouncingCollapsesRapidEvents(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer fw.Stop()
-
-	if err := fw.AddPath(tmpDir, false); err != nil {
-		t.Fatal(err)
-	}
 
 	time.Sleep(50 * time.Millisecond)
 
@@ -162,6 +156,7 @@ done:
 func TestStabilityGatePassesAfterTimeout(t *testing.T) {
 	tmpDir := t.TempDir()
 	cfg := newTestConfig(nil, nil)
+	cfg.IncludePaths = []string{tmpDir}
 
 	fw, err := NewFileWatcher(cfg)
 	if err != nil {
@@ -175,10 +170,6 @@ func TestStabilityGatePassesAfterTimeout(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer fw.Stop()
-
-	if err := fw.AddPath(tmpDir, false); err != nil {
-		t.Fatal(err)
-	}
 
 	time.Sleep(50 * time.Millisecond)
 
@@ -210,6 +201,7 @@ func TestStabilityGatePassesAfterTimeout(t *testing.T) {
 func TestStabilityGateResetsOnModification(t *testing.T) {
 	tmpDir := t.TempDir()
 	cfg := newTestConfig(nil, nil)
+	cfg.IncludePaths = []string{tmpDir}
 
 	fw, err := NewFileWatcher(cfg)
 	if err != nil {
@@ -223,10 +215,6 @@ func TestStabilityGateResetsOnModification(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer fw.Stop()
-
-	if err := fw.AddPath(tmpDir, false); err != nil {
-		t.Fatal(err)
-	}
 
 	time.Sleep(50 * time.Millisecond)
 
@@ -275,6 +263,7 @@ func TestStabilityGateResetsOnModification(t *testing.T) {
 func TestStabilityGateDiscardsDeletedFiles(t *testing.T) {
 	tmpDir := t.TempDir()
 	cfg := newTestConfig(nil, nil)
+	cfg.IncludePaths = []string{tmpDir}
 
 	fw, err := NewFileWatcher(cfg)
 	if err != nil {
@@ -288,10 +277,6 @@ func TestStabilityGateDiscardsDeletedFiles(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer fw.Stop()
-
-	if err := fw.AddPath(tmpDir, false); err != nil {
-		t.Fatal(err)
-	}
 
 	time.Sleep(50 * time.Millisecond)
 
@@ -319,74 +304,66 @@ func TestStabilityGateDiscardsDeletedFiles(t *testing.T) {
 	}
 }
 
-func TestAddPathRemovePathPersistence(t *testing.T) {
+func TestWatchExclusionsWalking(t *testing.T) {
 	repo, err := db.NewRepository(":memory:", false)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer repo.Close()
 
+	ctx := context.Background()
 	tmpDir := t.TempDir()
-	cfg := newTestConfig(repo, nil)
+	excDir := filepath.Join(tmpDir, "excluded_subdir")
+	if err := os.Mkdir(excDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	incDir := filepath.Join(tmpDir, "included_subdir")
+	if err := os.Mkdir(incDir, 0755); err != nil {
+		t.Fatal(err)
+	}
 
+	if err := repo.AddIncludePath(ctx, tmpDir); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.AddWatchExclude(ctx, excDir); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := newTestConfig(repo, nil)
 	fw, err := NewFileWatcher(cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
+	watchCtx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	if err := fw.Start(ctx); err != nil {
+	if err := fw.Start(watchCtx); err != nil {
 		t.Fatal(err)
 	}
+	defer fw.Stop()
 
-	// Add a path.
-	if err := fw.AddPath(tmpDir, true); err != nil {
-		t.Fatal(err)
-	}
+	// Give watcher time to register.
+	time.Sleep(50 * time.Millisecond)
 
-	// Verify persisted.
-	paths, err := repo.LoadWatchPaths(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(paths) != 1 {
-		t.Fatalf("expected 1 persisted path, got %d", len(paths))
-	}
-	if paths[0].Path != tmpDir {
-		t.Errorf("expected path %s, got %s", tmpDir, paths[0].Path)
-	}
-	if !paths[0].Recursive {
-		t.Error("expected recursive=true")
-	}
-	if !paths[0].Enabled {
-		t.Error("expected enabled=true")
-	}
+	// Check that incDir was added to watched paths, but excDir was not.
+	fw.mu.Lock()
+	_, incWatched := fw.watchedPaths[incDir]
+	_, excWatched := fw.watchedPaths[excDir]
+	fw.mu.Unlock()
 
-	// Remove the path.
-	if err := fw.RemovePath(tmpDir); err != nil {
-		t.Fatal(err)
+	if !incWatched {
+		t.Error("expected included_subdir to be watched")
 	}
-
-	// Verify marked as disabled.
-	paths, err = repo.LoadWatchPaths(ctx)
-	if err != nil {
-		t.Fatal(err)
+	if excWatched {
+		t.Error("expected excluded_subdir to not be watched")
 	}
-	if len(paths) != 1 {
-		t.Fatalf("expected 1 persisted path, got %d", len(paths))
-	}
-	if paths[0].Enabled {
-		t.Error("expected enabled=false after removal")
-	}
-
-	fw.Stop()
 }
 
 func TestStableFilesChannelReceivesStableFiles(t *testing.T) {
 	tmpDir := t.TempDir()
 	cfg := newTestConfig(nil, nil)
+	cfg.IncludePaths = []string{tmpDir}
 
 	fw, err := NewFileWatcher(cfg)
 	if err != nil {
@@ -400,10 +377,6 @@ func TestStableFilesChannelReceivesStableFiles(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer fw.Stop()
-
-	if err := fw.AddPath(tmpDir, false); err != nil {
-		t.Fatal(err)
-	}
 
 	time.Sleep(50 * time.Millisecond)
 

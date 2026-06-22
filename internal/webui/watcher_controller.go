@@ -130,18 +130,6 @@ func (c *LocalWatcherController) StartWatcher() error {
 			return
 		}
 
-		// Add paths after start so the internal context is available.
-		for _, p := range includePaths {
-			if bgCtx.Err() != nil {
-				fw.Stop()
-				c.failStartup(bgCtx.Err())
-				return
-			}
-			if err := fw.AddPath(p, true); err != nil {
-				slog.Warn("watcher: cannot watch path", "path", p, "error", err)
-			}
-		}
-
 		// Create ongoing backup.
 		serverConn := &backup.LocalServerConnection{
 			StorageDir: c.storageDir,

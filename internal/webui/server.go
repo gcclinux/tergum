@@ -280,7 +280,6 @@ func (s *Server) routes() http.Handler {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		}
 	})
-	authed.HandleFunc("/api/watchers/import", s.handleWatchersImport)
 	authed.HandleFunc("/api/watchers/config/autostart", s.handleAPIWatcherAutostart)
 
 
@@ -563,7 +562,8 @@ type watchersData struct {
 	Title          string
 	NodeRole       string
 	NavItems       []NavItem
-	WatchPaths     []watchPathView
+	WatchExcludes  []string
+	IncludePaths   []string
 	WatcherEnabled bool
 	WatcherRunning bool
 	DebounceMs     int
@@ -781,10 +781,11 @@ func (s *Server) handleRetention(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleWatchers(w http.ResponseWriter, r *http.Request) {
 	data := watchersData{
-		Title:      "Watchers",
-		NodeRole:   s.nodeRole(),
-		NavItems:   FilterNavItems(s.nodeRole()),
-		WatchPaths: []watchPathView{},
+		Title:         "Watchers",
+		NodeRole:      s.nodeRole(),
+		NavItems:      FilterNavItems(s.nodeRole()),
+		WatchExcludes: []string{},
+		IncludePaths:  []string{},
 	}
 
 	// Fill watcher config status.
@@ -806,6 +807,17 @@ func (s *Server) handleWatchers(w http.ResponseWriter, r *http.Request) {
 	// Check if watcher is actually running via the controller.
 	if s.watcherController != nil {
 		data.WatcherRunning = s.watcherController.IsRunning()
+	}
+
+	if s.repo != nil {
+		excludes, err := s.repo.ListWatchExcludes(r.Context())
+		if err == nil {
+			data.WatchExcludes = excludes
+		}
+		includes, err := s.repo.ListIncludePaths(r.Context())
+		if err == nil {
+			data.IncludePaths = includes
+		}
 	}
 
 	s.renderFragment(w, r, "watchers", data)

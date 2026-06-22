@@ -1296,14 +1296,6 @@ func (m *mockFileWatcher) Stop() error {
 	return nil
 }
 
-func (m *mockFileWatcher) AddPath(path string, recursive bool) error {
-	return nil
-}
-
-func (m *mockFileWatcher) RemovePath(path string) error {
-	return nil
-}
-
 func (m *mockFileWatcher) StableFiles() <-chan watcher.StableFile {
 	return make(chan watcher.StableFile)
 }

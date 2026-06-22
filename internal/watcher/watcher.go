@@ -35,8 +35,6 @@ type WatcherStatus struct {
 type Watcher interface {
 	Start(ctx context.Context) error
 	Stop() error
-	AddPath(path string, recursive bool) error
-	RemovePath(path string) error
 	StableFiles() <-chan StableFile
 	Status() WatcherStatus
 }
@@ -47,6 +45,7 @@ type Config struct {
 	StabilitySeconds int
 	ExcludePatterns  []string
 	Repository       db.Repository
+	IncludePaths     []string
 }
 
 // stabilityEntry tracks a file going through the stability gate.
@@ -67,7 +66,8 @@ type FileWatcher struct {
 	stableCount atomic.Int64
 
 	mu             sync.Mutex
-	watchedPaths   map[string]bool // path -> recursive
+	watchedPaths   map[string]bool // path -> true (directories currently added)
+	watchExcludes  []string
 	debounceTimers map[string]*time.Timer
 	stabilityMap   map[string]*stabilityEntry
 }
@@ -101,29 +101,38 @@ func (fw *FileWatcher) Start(ctx context.Context) error {
 	fw.ctx, fw.cancel = context.WithCancel(ctx)
 	fw.running.Store(true)
 
-	// Load persisted watch paths from watched_paths table.
+	// Start processing events early so fsWatcher.Add calls don't deadlock on Windows.
+	go fw.processEvents()
+
+	var includes []string
+	var excludes []string
+	var err error
+
 	if fw.cfg.Repository != nil {
-		paths, err := fw.cfg.Repository.LoadWatchPaths(ctx)
+		includes, err = fw.cfg.Repository.ListIncludePaths(ctx)
 		if err != nil {
+			fw.cancel()
 			return err
 		}
-		for _, wp := range paths {
-			if wp.Enabled {
-				_ = fw.addPathInternal(wp.Path, wp.Recursive)
-			}
-		}
-
-		// Also load include paths as watch paths (recursive by default).
-		// These are the same paths used for backup scanning.
-		includes, err := fw.cfg.Repository.ListIncludePaths(ctx)
-		if err == nil {
-			for _, p := range includes {
-				_ = fw.addPathInternal(p, true)
-			}
+		excludes, err = fw.cfg.Repository.ListWatchExcludes(ctx)
+		if err != nil {
+			fw.cancel()
+			return err
 		}
 	}
 
-	go fw.processEvents()
+	if len(includes) == 0 {
+		includes = fw.cfg.IncludePaths
+	}
+
+	fw.mu.Lock()
+	fw.watchExcludes = excludes
+	fw.mu.Unlock()
+
+	for _, inc := range includes {
+		_ = fw.addIncludePathInternal(inc, excludes)
+	}
+
 	return nil
 }
 
@@ -148,74 +157,49 @@ func (fw *FileWatcher) Stop() error {
 	return fw.fsWatcher.Close()
 }
 
-// AddPath adds a path to the watcher. If recursive is true, all subdirectories are also watched.
-func (fw *FileWatcher) AddPath(path string, recursive bool) error {
-	if err := fw.addPathInternal(path, recursive); err != nil {
+// addIncludePathInternal adds paths to the underlying fsnotify watcher, skipping excluded directories.
+func (fw *FileWatcher) addIncludePathInternal(path string, excludes []string) error {
+	for _, exc := range excludes {
+		if isPathUnderOrEqual(path, exc) {
+			return nil
+		}
+	}
+
+	fi, err := os.Stat(path)
+	if err != nil {
 		return err
 	}
 
-	fw.mu.Lock()
-	fw.watchedPaths[path] = recursive
-	fw.mu.Unlock()
-
-	// Persist to database.
-	if fw.cfg.Repository != nil {
-		return fw.cfg.Repository.SaveWatchPath(fw.ctx, db.WatchPath{
-			Path:      path,
-			Recursive: recursive,
-			Enabled:   true,
-		})
-	}
-	return nil
-}
-
-// addPathInternal adds paths to the underlying fsnotify watcher.
-func (fw *FileWatcher) addPathInternal(path string, recursive bool) error {
-	if recursive {
-		return filepath.WalkDir(path, func(p string, d os.DirEntry, err error) error {
-			if err != nil {
-				return err
-			}
-			if d.IsDir() {
-				return fw.fsWatcher.Add(p)
-			}
-			return nil
-		})
-	}
-	return fw.fsWatcher.Add(path)
-}
-
-// RemovePath stops watching the given path and removes it from persistence.
-func (fw *FileWatcher) RemovePath(path string) error {
-	fw.mu.Lock()
-	recursive := fw.watchedPaths[path]
-	delete(fw.watchedPaths, path)
-	fw.mu.Unlock()
-
-	if recursive {
-		_ = filepath.WalkDir(path, func(p string, d os.DirEntry, err error) error {
-			if err != nil {
-				return nil
-			}
-			if d.IsDir() {
-				_ = fw.fsWatcher.Remove(p)
-			}
-			return nil
-		})
-	} else {
-		_ = fw.fsWatcher.Remove(path)
+	if !fi.IsDir() {
+		err = fw.fsWatcher.Add(path)
+		if err == nil {
+			fw.mu.Lock()
+			fw.watchedPaths[path] = true
+			fw.mu.Unlock()
+		}
+		return err
 	}
 
-	// Remove from database.
-	if fw.cfg.Repository != nil {
-		// Save with Enabled=false to mark as removed.
-		return fw.cfg.Repository.SaveWatchPath(fw.ctx, db.WatchPath{
-			Path:      path,
-			Recursive: recursive,
-			Enabled:   false,
-		})
-	}
-	return nil
+	return filepath.WalkDir(path, func(p string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			for _, exc := range excludes {
+				if isPathUnderOrEqual(p, exc) {
+					return filepath.SkipDir
+				}
+			}
+			err = fw.fsWatcher.Add(p)
+			if err == nil {
+				fw.mu.Lock()
+				fw.watchedPaths[p] = true
+				fw.mu.Unlock()
+			}
+			return err
+		}
+		return nil
+	})
 }
 
 // StableFiles returns a channel that emits files that have passed the stability gate.
@@ -280,8 +264,18 @@ func (fw *FileWatcher) handleEvent(event fsnotify.Event) {
 	fw.mu.Unlock()
 }
 
-// isExcluded checks if a path matches any exclude pattern.
+// isExcluded checks if a path matches any exclude pattern or watch exclusion.
 func (fw *FileWatcher) isExcluded(path string) bool {
+	fw.mu.Lock()
+	excludes := fw.watchExcludes
+	fw.mu.Unlock()
+
+	for _, exc := range excludes {
+		if isPathUnderOrEqual(path, exc) {
+			return true
+		}
+	}
+
 	name := filepath.Base(path)
 	for _, pattern := range fw.cfg.ExcludePatterns {
 		// Try matching against the base filename.
@@ -299,6 +293,21 @@ func (fw *FileWatcher) isExcluded(path string) bool {
 		}
 	}
 	return false
+}
+
+func isPathUnderOrEqual(p, exc string) bool {
+	p = filepath.Clean(p)
+	exc = filepath.Clean(exc)
+	isWindows := filepath.Separator == '\\'
+	if isWindows {
+		p = strings.ToLower(p)
+		exc = strings.ToLower(exc)
+	}
+	if p == exc {
+		return true
+	}
+	prefix := exc + string(filepath.Separator)
+	return strings.HasPrefix(p, prefix)
 }
 
 // onDebounceExpired is called when the debounce timer fires for a path.
@@ -394,55 +403,9 @@ func (fw *FileWatcher) onStabilityExpired(path string) {
 
 	fw.stableCount.Add(1)
 
-	// Update the watched_path record in DB with last event time and increment count.
-	if fw.cfg.Repository != nil {
-		fw.updateWatchPathEvent(path, info.ModTime())
-	}
-
 	// Send to channel (non-blocking if buffer is full, drop).
 	select {
 	case fw.stableCh <- sf:
 	case <-fw.ctx.Done():
 	}
-}
-
-// updateWatchPathEvent finds the parent watched path for a file and updates its DB record.
-func (fw *FileWatcher) updateWatchPathEvent(filePath string, eventTime time.Time) {
-	fw.mu.Lock()
-	var matchedPath string
-	for wp := range fw.watchedPaths {
-		if strings.HasPrefix(filePath, wp) {
-			if len(wp) > len(matchedPath) {
-				matchedPath = wp
-			}
-		}
-	}
-	recursive := fw.watchedPaths[matchedPath]
-	fw.mu.Unlock()
-
-	if matchedPath == "" {
-		return
-	}
-
-	// Load current watch path to increment count.
-	paths, err := fw.cfg.Repository.LoadWatchPaths(fw.ctx)
-	if err != nil {
-		return
-	}
-
-	var currentCount int64
-	for _, wp := range paths {
-		if wp.Path == matchedPath {
-			currentCount = wp.EventCount
-			break
-		}
-	}
-
-	_ = fw.cfg.Repository.SaveWatchPath(fw.ctx, db.WatchPath{
-		Path:       matchedPath,
-		Recursive:  recursive,
-		Enabled:    true,
-		LastEvent:  &eventTime,
-		EventCount: currentCount + 1,
-	})
 }

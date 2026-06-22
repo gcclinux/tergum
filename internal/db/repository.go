@@ -50,16 +50,6 @@ type RestoreRecord struct {
 	Success      bool
 }
 
-// WatchPath represents a registered watched directory.
-type WatchPath struct {
-	ID         int64
-	Path       string
-	Recursive  bool
-	Enabled    bool
-	LastEvent  *time.Time
-	EventCount int64
-	AddedAt    time.Time
-}
 
 // Repository defines the interface for all database operations.
 type Repository interface {
@@ -96,10 +86,10 @@ type Repository interface {
 	ListRestoreHistory(ctx context.Context, limit int) ([]RestoreRecord, error)
 	DeleteAllActivity(ctx context.Context) (int64, error)
 
-	// Watcher operations
-	SaveWatchPath(ctx context.Context, wp WatchPath) error
-	LoadWatchPaths(ctx context.Context) ([]WatchPath, error)
-	DeleteWatchPath(ctx context.Context, path string) error
+	// Watcher operations (exclusions)
+	AddWatchExclude(ctx context.Context, path string) error
+	RemoveWatchExclude(ctx context.Context, path string) error
+	ListWatchExcludes(ctx context.Context) ([]string, error)
 
 	// Include/exclude path operations
 	AddIncludePath(ctx context.Context, path string) error
@@ -208,15 +198,6 @@ func (r *SQLiteRepository) createSchema() error {
 			success         INTEGER DEFAULT 1
 		)`,
 
-		`CREATE TABLE IF NOT EXISTS watched_paths (
-			id              INTEGER PRIMARY KEY AUTOINCREMENT,
-			path            TEXT NOT NULL UNIQUE,
-			recursive       INTEGER DEFAULT 1,
-			enabled         INTEGER DEFAULT 1,
-			last_event      TEXT,
-			event_count     INTEGER DEFAULT 0,
-			added_at        TEXT NOT NULL DEFAULT (datetime('now'))
-		)`,
 
 		`CREATE TABLE IF NOT EXISTS config (
 			key             TEXT PRIMARY KEY,
@@ -233,6 +214,11 @@ func (r *SQLiteRepository) createSchema() error {
 		`CREATE TABLE IF NOT EXISTS exclude_patterns (
 			id              INTEGER PRIMARY KEY AUTOINCREMENT,
 			pattern         TEXT NOT NULL UNIQUE,
+			added_at        TEXT NOT NULL DEFAULT (datetime('now'))
+		)`,
+		`CREATE TABLE IF NOT EXISTS watch_excludes (
+			id              INTEGER PRIMARY KEY AUTOINCREMENT,
+			path            TEXT NOT NULL UNIQUE,
 			added_at        TEXT NOT NULL DEFAULT (datetime('now'))
 		)`,
 	}
@@ -673,79 +659,39 @@ func (r *SQLiteRepository) DeleteAllActivity(ctx context.Context) (int64, error)
 	return total, nil
 }
 
-// SaveWatchPath inserts or updates a watch path (upsert on path).
-func (r *SQLiteRepository) SaveWatchPath(ctx context.Context, wp WatchPath) error {
-	var recursive, enabled int
-	if wp.Recursive {
-		recursive = 1
-	}
-	if wp.Enabled {
-		enabled = 1
-	}
 
-	var lastEvent *string
-	if wp.LastEvent != nil {
-		v := wp.LastEvent.Format(time.DateTime)
-		lastEvent = &v
-	}
-
+// AddWatchExclude inserts a path into watch_excludes.
+func (r *SQLiteRepository) AddWatchExclude(ctx context.Context, path string) error {
 	_, err := r.db.ExecContext(ctx,
-		`INSERT INTO watched_paths (path, recursive, enabled, last_event, event_count)
-		 VALUES (?, ?, ?, ?, ?)
-		 ON CONFLICT(path) DO UPDATE SET
-		   recursive = excluded.recursive,
-		   enabled = excluded.enabled,
-		   last_event = excluded.last_event,
-		   event_count = excluded.event_count`,
-		wp.Path, recursive, enabled, lastEvent, wp.EventCount,
-	)
+		`INSERT OR IGNORE INTO watch_excludes (path) VALUES (?)`, path)
 	return err
 }
 
-// LoadWatchPaths returns all registered watch paths.
-func (r *SQLiteRepository) LoadWatchPaths(ctx context.Context) ([]WatchPath, error) {
+// RemoveWatchExclude deletes a path from watch_excludes.
+func (r *SQLiteRepository) RemoveWatchExclude(ctx context.Context, path string) error {
+	_, err := r.db.ExecContext(ctx,
+		`DELETE FROM watch_excludes WHERE path = ?`, path)
+	return err
+}
+
+// ListWatchExcludes returns all watch excludes, ordered by addition time.
+func (r *SQLiteRepository) ListWatchExcludes(ctx context.Context) ([]string, error) {
 	rows, err := r.db.QueryContext(ctx,
-		`SELECT id, path, recursive, enabled, last_event, event_count, added_at FROM watched_paths`,
-	)
+		`SELECT path FROM watch_excludes ORDER BY added_at`)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
-	var paths []WatchPath
+	var paths []string
 	for rows.Next() {
-		var wp WatchPath
-		var recursive, enabled int
-		var lastEvent *string
-		var addedAt string
-
-		if err := rows.Scan(&wp.ID, &wp.Path, &recursive, &enabled, &lastEvent, &wp.EventCount, &addedAt); err != nil {
+		var p string
+		if err := rows.Scan(&p); err != nil {
 			return nil, err
 		}
-
-		wp.Recursive = recursive == 1
-		wp.Enabled = enabled == 1
-		if lastEvent != nil {
-			t, err := time.Parse(time.DateTime, *lastEvent)
-			if err == nil {
-				wp.LastEvent = &t
-			}
-		}
-		t, err := time.Parse(time.DateTime, addedAt)
-		if err == nil {
-			wp.AddedAt = t
-		}
-
-		paths = append(paths, wp)
+		paths = append(paths, p)
 	}
 	return paths, rows.Err()
-}
-
-// DeleteWatchPath removes a watched path by its path string.
-func (r *SQLiteRepository) DeleteWatchPath(ctx context.Context, path string) error {
-	_, err := r.db.ExecContext(ctx,
-		`DELETE FROM watched_paths WHERE path = ?`, path)
-	return err
 }
 
 // AddIncludePath adds a path to the include_paths table.

@@ -10,60 +10,39 @@ import (
 
 	"github.com/BurntSushi/toml"
 	"github.com/ricardopadilha/tergum/internal/config"
-	"github.com/ricardopadilha/tergum/internal/db"
 )
 
-// handleWatchersAPI handles GET /api/watchers — returns the current watch paths as an HTML table body.
+// handleWatchersAPI handles GET /api/watchers — returns the current watch excludes as an HTML table body.
 func (s *Server) handleWatchersAPI(w http.ResponseWriter, r *http.Request) {
 	if s.repo == nil {
 		http.Error(w, "database not available", http.StatusServiceUnavailable)
 		return
 	}
 
-	paths, err := s.repo.LoadWatchPaths(r.Context())
+	excludes, err := s.repo.ListWatchExcludes(r.Context())
 	if err != nil {
-		s.logger.Error("load watch paths failed", "error", err)
+		s.logger.Error("list watch excludes failed", "error", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
 
 	w.Header().Set("Content-Type", "text/html")
 	fmt.Fprint(w, `<table><thead><tr>`)
-	fmt.Fprint(w, `<th class="p-4">Path</th>`)
-	fmt.Fprint(w, `<th class="p-4">Recursive</th>`)
-	fmt.Fprint(w, `<th class="p-4">Enabled</th>`)
-	fmt.Fprint(w, `<th class="p-4">Last Event</th>`)
-	fmt.Fprint(w, `<th class="p-4">Event Count</th>`)
+	fmt.Fprint(w, `<th class="p-4">Excluded Path</th>`)
 	fmt.Fprint(w, `<th class="p-4">Actions</th>`)
 	fmt.Fprint(w, `</tr></thead><tbody>`)
 
-	for _, wp := range paths {
-		recursive := "No"
-		if wp.Recursive {
-			recursive = "Yes"
-		}
-		enabled := "No"
-		if wp.Enabled {
-			enabled = "Yes"
-		}
-		lastEvent := "-"
-		if wp.LastEvent != nil {
-			lastEvent = wp.LastEvent.Format("2006-01-02 15:04:05")
-		}
+	for _, p := range excludes {
 		fmt.Fprintf(w, `<tr>`)
-		fmt.Fprintf(w, `<td class="p-4">%s</td>`, wp.Path)
-		fmt.Fprintf(w, `<td class="p-4">%s</td>`, recursive)
-		fmt.Fprintf(w, `<td class="p-4">%s</td>`, enabled)
-		fmt.Fprintf(w, `<td class="p-4">%s</td>`, lastEvent)
-		fmt.Fprintf(w, `<td class="p-4">%d</td>`, wp.EventCount)
-		fmt.Fprintf(w, `<td class="p-4"><button @click="$store.app.openModal('Remove Watch Path', '%s', '/api/watchers?path=%s', 'DELETE')" class="text-red-600 dark:text-red-400 border border-red-300 dark:border-red-600 rounded px-2 py-0.5 text-xs hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors duration-150">Remove</button></td>`, wp.Path, wp.Path)
+		fmt.Fprintf(w, `<td class="p-4">%s</td>`, html.EscapeString(p))
+		fmt.Fprintf(w, `<td class="p-4"><button @click="$store.app.openModal('Remove Watch Exclusion', '%s', '/api/watchers?path=%s', 'DELETE')" class="text-red-600 dark:text-red-400 border border-red-300 dark:border-red-600 rounded px-2 py-0.5 text-xs hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors duration-150">Remove</button></td>`, html.EscapeString(p), html.EscapeString(p))
 		fmt.Fprintf(w, `</tr>`)
 	}
 
 	fmt.Fprint(w, `</tbody></table>`)
 }
 
-// handleWatchersAdd handles POST /api/watchers — adds a new watch path.
+// handleWatchersAdd handles POST /api/watchers — adds a new watch exclusion.
 func (s *Server) handleWatchersAdd(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -91,33 +70,32 @@ func (s *Server) handleWatchersAdd(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	recursive := r.FormValue("recursive") == "on"
-
-	wp := db.WatchPath{
-		Path:      absPath,
-		Recursive: recursive,
-		Enabled:   true,
-	}
-
-	if err := s.repo.SaveWatchPath(r.Context(), wp); err != nil {
-		s.logger.Error("save watch path failed", "path", absPath, "error", err)
-		setErrorToast(w, "Failed to add watch path: "+err.Error())
+	if err := s.repo.AddWatchExclude(r.Context(), absPath); err != nil {
+		s.logger.Error("add watch exclude failed", "path", absPath, "error", err)
+		setErrorToast(w, "Failed to exclude watch path: "+err.Error())
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
 
 	// Return fresh form so user can add another path.
-	setSuccessToast(w, "Watch path added")
+	setSuccessToast(w, "Watch path excluded")
 	w.Header().Set("Content-Type", "text/html")
+	
+	includes, _ := s.repo.ListIncludePaths(r.Context())
 	fmt.Fprint(w, `<form hx-post="/api/watchers" hx-swap="outerHTML">`)
-	fmt.Fprint(w, `<label class="p-4">Path: <input type="text" name="path" required></label>`)
-	fmt.Fprint(w, `<label class="p-4"><input type="checkbox" name="recursive" checked> Recursive</label>`)
-	fmt.Fprint(w, `<div class="p-4"><button type="submit" class="bg-gray-100 rounded p-4">Add Path</button>`)
-	fmt.Fprintf(w, `<span class="ml-4 text-green-600 text-sm">Added: %s</span>`, absPath)
+	fmt.Fprint(w, `<label class="p-4">Path to Exclude: `)
+	fmt.Fprint(w, `<select name="path" required>`)
+	fmt.Fprint(w, `<option value="">-- Select a path to exclude --</option>`)
+	for _, inc := range includes {
+		fmt.Fprintf(w, `<option value="%s">%s</option>`, html.EscapeString(inc), html.EscapeString(inc))
+	}
+	fmt.Fprint(w, `</select></label>`)
+	fmt.Fprint(w, `<div class="p-4"><button type="submit" class="bg-gray-100 rounded p-4">Exclude Path</button>`)
+	fmt.Fprintf(w, `<span class="ml-4 text-green-600 text-sm">Excluded: %s</span>`, html.EscapeString(absPath))
 	fmt.Fprint(w, `</div></form>`)
 }
 
-// handleWatchersDelete handles DELETE /api/watchers?path=... — removes a watch path.
+// handleWatchersDelete handles DELETE /api/watchers?path=... — removes a watch exclusion.
 func (s *Server) handleWatchersDelete(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodDelete {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -134,15 +112,14 @@ func (s *Server) handleWatchersDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := s.repo.DeleteWatchPath(r.Context(), path); err != nil {
-		s.logger.Error("delete watch path failed", "path", path, "error", err)
-		setErrorToast(w, "Failed to remove watch path: "+err.Error())
+	if err := s.repo.RemoveWatchExclude(r.Context(), path); err != nil {
+		s.logger.Error("remove watch exclude failed", "path", path, "error", err)
+		setErrorToast(w, "Failed to remove watch exclusion: "+err.Error())
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
 
-	// Return empty string to remove the row from the table.
-	setSuccessToast(w, "Watch path removed")
+	setSuccessToast(w, "Watch exclusion removed")
 	w.Header().Set("Content-Type", "text/html")
 	w.WriteHeader(http.StatusOK)
 }
@@ -193,7 +170,7 @@ func (s *Server) handleWatchersSettings(w http.ResponseWriter, r *http.Request) 
 	fmt.Fprint(w, `</div>`)
 }
 
-// handleWatchersPaths handles GET /api/watchers/paths — returns the watch paths table for polling refresh.
+// handleWatchersPaths handles GET /api/watchers/paths — returns the watch exclusions table for polling refresh.
 func (s *Server) handleWatchersPaths(w http.ResponseWriter, r *http.Request) {
 	if s.repo == nil {
 		w.Header().Set("Content-Type", "text/html")
@@ -201,61 +178,39 @@ func (s *Server) handleWatchersPaths(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	paths, err := s.repo.LoadWatchPaths(r.Context())
+	excludes, err := s.repo.ListWatchExcludes(r.Context())
 	if err != nil {
-		s.logger.Error("load watch paths failed", "error", err)
+		s.logger.Error("list watch excludes failed", "error", err)
 		w.Header().Set("Content-Type", "text/html")
-		fmt.Fprint(w, `<p class="text-red-500">Failed to load watch paths.</p>`)
+		fmt.Fprint(w, `<p class="text-red-500">Failed to load watch exclusions.</p>`)
 		return
 	}
 
 	w.Header().Set("Content-Type", "text/html")
 
-	if len(paths) == 0 {
-		fmt.Fprint(w, `<p class="text-gray-500 dark:text-gray-400 italic">No watch paths configured. Add a path above to start monitoring for changes.</p>`)
+	if len(excludes) == 0 {
+		fmt.Fprint(w, `<p class="text-gray-500 dark:text-gray-400 italic">No watch exclusions configured.</p>`)
 		return
 	}
 
 	fmt.Fprint(w, `<table class="w-full text-sm">`)
 	fmt.Fprint(w, `<thead><tr class="border-b border-gray-200 dark:border-gray-700 text-xs uppercase text-gray-500 dark:text-gray-400">`)
-	fmt.Fprint(w, `<th class="px-4 py-3 text-left">Path</th>`)
-	fmt.Fprint(w, `<th class="px-4 py-3 text-center">Recursive</th>`)
-	fmt.Fprint(w, `<th class="px-4 py-3 text-center">Enabled</th>`)
-	fmt.Fprint(w, `<th class="px-4 py-3 text-left">Last Event</th>`)
-	fmt.Fprint(w, `<th class="px-4 py-3 text-right">Event Count</th>`)
+	fmt.Fprint(w, `<th class="px-4 py-3 text-left">Excluded Path</th>`)
 	fmt.Fprint(w, `<th class="px-4 py-3 text-center">Actions</th>`)
 	fmt.Fprint(w, `</tr></thead><tbody>`)
 
-	for _, wp := range paths {
-		recursive := "No"
-		if wp.Recursive {
-			recursive = "Yes"
-		}
-		enabledHTML := `<span class="text-gray-400">No</span>`
-		if wp.Enabled {
-			enabledHTML = `<span class="text-green-600 dark:text-green-400">Yes</span>`
-		}
-		lastEvent := "-"
-		if wp.LastEvent != nil {
-			lastEvent = wp.LastEvent.Format("2006-01-02 15:04:05")
-		}
-		escapedPath := html.EscapeString(wp.Path)
+	for _, p := range excludes {
+		escapedPath := html.EscapeString(p)
 		fmt.Fprintf(w, `<tr class="border-b border-gray-100 dark:border-gray-700/50">`)
 		fmt.Fprintf(w, `<td class="px-4 py-3 font-mono text-gray-900 dark:text-gray-100 break-all">%s</td>`, escapedPath)
-		fmt.Fprintf(w, `<td class="px-4 py-3 text-center text-gray-600 dark:text-gray-300">%s</td>`, recursive)
-		fmt.Fprintf(w, `<td class="px-4 py-3 text-center">%s</td>`, enabledHTML)
-		fmt.Fprintf(w, `<td class="px-4 py-3 text-gray-600 dark:text-gray-300 whitespace-nowrap">%s</td>`, lastEvent)
-		fmt.Fprintf(w, `<td class="px-4 py-3 text-right text-gray-600 dark:text-gray-300">%d</td>`, wp.EventCount)
 		fmt.Fprintf(w, `<td class="px-4 py-3 text-center"><button @click="confirmRemove($el.dataset.path)" data-path="%s" class="text-red-600 dark:text-red-400 border border-red-300 dark:border-red-600 rounded px-2 py-0.5 text-xs hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors duration-150">Remove</button></td>`, escapedPath)
 		fmt.Fprint(w, `</tr>`)
-
-
 	}
 
 	fmt.Fprint(w, `</tbody></table>`)
 }
 
-// handleWatchersPathsAdd handles POST /api/watchers/paths — adds a new watch path (new endpoint for fragment form).
+// handleWatchersPathsAdd handles POST /api/watchers/paths — adds a new watch exclusion (new endpoint for fragment form).
 func (s *Server) handleWatchersPathsAdd(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -285,89 +240,14 @@ func (s *Server) handleWatchersPathsAdd(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	recursive := r.FormValue("recursive") == "true" || r.FormValue("recursive") == "on"
-
-	wp := db.WatchPath{
-		Path:      absPath,
-		Recursive: recursive,
-		Enabled:   true,
-	}
-
-	if err := s.repo.SaveWatchPath(r.Context(), wp); err != nil {
-		s.logger.Error("save watch path failed", "path", absPath, "error", err)
-		setErrorToast(w, "Failed to add watch path: "+err.Error())
+	if err := s.repo.AddWatchExclude(r.Context(), absPath); err != nil {
+		s.logger.Error("add watch exclude failed", "path", absPath, "error", err)
+		setErrorToast(w, "Failed to exclude watch path: "+err.Error())
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
 
-	setSuccessToast(w, fmt.Sprintf("Watch path added: %s", absPath))
-	w.WriteHeader(http.StatusOK)
-}
-
-// handleWatchersImport handles POST /api/watchers/import — imports all backup include paths as watcher paths.
-func (s *Server) handleWatchersImport(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-	if s.repo == nil {
-		http.Error(w, "database not available", http.StatusServiceUnavailable)
-		return
-	}
-
-	includePaths, err := s.repo.ListIncludePaths(r.Context())
-	if err != nil {
-		s.logger.Error("list include paths failed", "error", err)
-		setErrorToast(w, "Failed to load backup paths: "+err.Error())
-		w.WriteHeader(http.StatusInternalServerError)
-		return
-	}
-
-	if len(includePaths) == 0 {
-		setErrorToast(w, "No backup include paths found to import")
-		w.WriteHeader(http.StatusOK)
-		return
-	}
-
-	// Load existing watch paths to report how many are new vs already present.
-	existing, err := s.repo.LoadWatchPaths(r.Context())
-	if err != nil {
-		s.logger.Error("load watch paths failed", "error", err)
-		setErrorToast(w, "Failed to load current watch paths: "+err.Error())
-		w.WriteHeader(http.StatusInternalServerError)
-		return
-	}
-	existingSet := make(map[string]struct{}, len(existing))
-	for _, wp := range existing {
-		existingSet[wp.Path] = struct{}{}
-	}
-
-	added := 0
-	skipped := 0
-	for _, p := range includePaths {
-		wp := db.WatchPath{
-			Path:      p,
-			Recursive: true,
-			Enabled:   true,
-		}
-		if err := s.repo.SaveWatchPath(r.Context(), wp); err != nil {
-			s.logger.Error("import watch path failed", "path", p, "error", err)
-			continue
-		}
-		if _, exists := existingSet[p]; exists {
-			skipped++
-		} else {
-			added++
-		}
-	}
-
-	if added == 0 && skipped > 0 {
-		setSuccessToast(w, fmt.Sprintf("All %d path(s) already present in watcher", skipped))
-	} else if added > 0 && skipped > 0 {
-		setSuccessToast(w, fmt.Sprintf("Imported %d path(s) (%d already present)", added, skipped))
-	} else {
-		setSuccessToast(w, fmt.Sprintf("Imported %d path(s) from backup path list", added))
-	}
+	setSuccessToast(w, fmt.Sprintf("Watch path excluded: %s", absPath))
 	w.WriteHeader(http.StatusOK)
 }
 

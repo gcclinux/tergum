@@ -125,6 +125,7 @@ func TestProperty_DebounceCollapsesMultipleEvents(t *testing.T) {
 			DebounceMs:       10,
 			StabilitySeconds: 1,
 			ExcludePatterns:  nil,
+			IncludePaths:     []string{tmpDir},
 		}
 
 		fw, err := NewFileWatcher(cfg)
@@ -139,10 +140,6 @@ func TestProperty_DebounceCollapsesMultipleEvents(t *testing.T) {
 			rt.Fatalf("Start: %v", err)
 		}
 		defer fw.Stop()
-
-		if err := fw.AddPath(tmpDir, false); err != nil {
-			rt.Fatalf("AddPath: %v", err)
-		}
 
 		time.Sleep(50 * time.Millisecond)
 
@@ -203,6 +200,7 @@ func TestProperty_StabilityGateDiscardsDeletedFiles(t *testing.T) {
 			DebounceMs:       10,
 			StabilitySeconds: 1,
 			ExcludePatterns:  nil,
+			IncludePaths:     []string{tmpDir},
 		}
 
 		fw, err := NewFileWatcher(cfg)
@@ -217,10 +215,6 @@ func TestProperty_StabilityGateDiscardsDeletedFiles(t *testing.T) {
 			rt.Fatalf("Start: %v", err)
 		}
 		defer fw.Stop()
-
-		if err := fw.AddPath(tmpDir, false); err != nil {
-			rt.Fatalf("AddPath: %v", err)
-		}
 
 		time.Sleep(50 * time.Millisecond)
 

@@ -26,9 +26,9 @@ func TestNewRepository_ClientSchema(t *testing.T) {
 
 	// Verify tables exist by querying them.
 	ctx := context.Background()
-	_, err := repo.LoadWatchPaths(ctx)
+	_, err := repo.ListWatchExcludes(ctx)
 	if err != nil {
-		t.Fatalf("LoadWatchPaths on empty table: %v", err)
+		t.Fatalf("ListWatchExcludes on empty table: %v", err)
 	}
 
 	// retention_policies should NOT exist for client.
@@ -423,59 +423,51 @@ func TestRecordRestore(t *testing.T) {
 	}
 }
 
-func TestSaveAndLoadWatchPaths(t *testing.T) {
+func TestWatchExcludes(t *testing.T) {
 	repo := newTestRepo(t, false)
 	ctx := context.Background()
 
-	now := time.Now().UTC().Truncate(time.Second)
-	err := repo.SaveWatchPath(ctx, WatchPath{
-		Path:       "/home/user/docs",
-		Recursive:  true,
-		Enabled:    true,
-		LastEvent:  &now,
-		EventCount: 5,
-	})
+	err := repo.AddWatchExclude(ctx, "/home/user/docs")
 	if err != nil {
-		t.Fatalf("SaveWatchPath: %v", err)
+		t.Fatalf("AddWatchExclude: %v", err)
 	}
 
-	err = repo.SaveWatchPath(ctx, WatchPath{
-		Path:      "/var/log",
-		Recursive: false,
-		Enabled:   true,
-	})
+	err = repo.AddWatchExclude(ctx, "/var/log")
 	if err != nil {
-		t.Fatalf("SaveWatchPath: %v", err)
+		t.Fatalf("AddWatchExclude: %v", err)
 	}
 
-	paths, err := repo.LoadWatchPaths(ctx)
+	// Test duplicate insert (should be ignored due to INSERT OR IGNORE)
+	err = repo.AddWatchExclude(ctx, "/var/log")
 	if err != nil {
-		t.Fatalf("LoadWatchPaths: %v", err)
-	}
-	if len(paths) != 2 {
-		t.Fatalf("expected 2 watch paths, got %d", len(paths))
+		t.Fatalf("AddWatchExclude duplicate: %v", err)
 	}
 
-	// Upsert: update event count.
-	err = repo.SaveWatchPath(ctx, WatchPath{
-		Path:       "/home/user/docs",
-		Recursive:  true,
-		Enabled:    true,
-		LastEvent:  &now,
-		EventCount: 10,
-	})
+	excludes, err := repo.ListWatchExcludes(ctx)
 	if err != nil {
-		t.Fatalf("SaveWatchPath upsert: %v", err)
+		t.Fatalf("ListWatchExcludes: %v", err)
+	}
+	if len(excludes) != 2 {
+		t.Fatalf("expected 2 excludes, got %d", len(excludes))
+	}
+	if excludes[0] != "/home/user/docs" || excludes[1] != "/var/log" {
+		t.Errorf("unexpected excludes order or content: %v", excludes)
 	}
 
-	paths, _ = repo.LoadWatchPaths(ctx)
-	if len(paths) != 2 {
-		t.Fatalf("expected 2 paths after upsert, got %d", len(paths))
+	err = repo.RemoveWatchExclude(ctx, "/home/user/docs")
+	if err != nil {
+		t.Fatalf("RemoveWatchExclude: %v", err)
 	}
-	for _, p := range paths {
-		if p.Path == "/home/user/docs" && p.EventCount != 10 {
-			t.Errorf("expected event_count 10 after upsert, got %d", p.EventCount)
-		}
+
+	excludes, err = repo.ListWatchExcludes(ctx)
+	if err != nil {
+		t.Fatalf("ListWatchExcludes: %v", err)
+	}
+	if len(excludes) != 1 {
+		t.Fatalf("expected 1 exclude, got %d", len(excludes))
+	}
+	if excludes[0] != "/var/log" {
+		t.Errorf("unexpected remaining exclude: %q", excludes[0])
 	}
 }
 

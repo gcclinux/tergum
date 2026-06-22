@@ -87,54 +87,42 @@
         </div>
     </div>
 
-    <!-- Add Watch Path -->
+    <!-- Exclude Watch Path -->
     <div class="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6">
-        <h2 class="text-base font-semibold text-gray-800 dark:text-gray-100 mb-4">Add Watch Path</h2>
-        <form @submit.prevent="addPath()" class="flex items-end gap-4">
+        <h2 class="text-base font-semibold text-gray-800 dark:text-gray-100 mb-4">Exclude Watch Path</h2>
+        <div class="flex items-end gap-4">
             <div class="flex-1">
-                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Path</label>
-                <input type="text" x-model="newPath" @input="pathError = ''" placeholder="/path/to/watch"
-                       :class="pathError ? 'border-red-500 focus:ring-red-500' : 'border-gray-300 dark:border-gray-600 focus:ring-blue-500'"
-                       class="w-full px-3 py-2 rounded-lg border bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:border-transparent text-sm">
+                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Path to Exclude</label>
+                <select x-model="newPath" @change="pathError = ''"
+                        :class="pathError ? 'border-red-500 focus:ring-red-500' : 'border-gray-300 dark:border-gray-600 focus:ring-blue-500'"
+                        class="w-full px-3 py-2 rounded-lg border bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:border-transparent text-sm">
+                    <option value="">-- Select a path to exclude --</option>
+                    {{range .IncludePaths}}
+                    <option value="{{.}}">{{.}}</option>
+                    {{end}}
+                </select>
                 <p x-show="pathError" x-text="pathError" class="mt-1 text-xs text-red-500"></p>
             </div>
-            <div class="flex items-center gap-2">
-                <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
-                    <input type="checkbox" x-model="newRecursive" class="rounded border-gray-300 dark:border-gray-600 text-blue-600 focus:ring-blue-500">
-                    Recursive
-                </label>
-            </div>
-            <button type="submit" :disabled="addingPath"
+            <button type="button" @click="addPath()" :disabled="addingPath || !newPath"
                     class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed">
-                Add Path
+                Exclude Path
             </button>
-        </form>
+        </div>
     </div>
 
-    <!-- Watched Paths List -->
+    <!-- Watch Exclusions List -->
     <div class="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6">
         <div class="flex items-center justify-between mb-4">
             <div>
-                <h2 class="text-base font-semibold text-gray-800 dark:text-gray-100">Watched Paths</h2>
-                <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Removing a path only removes it from the watcher — it does not affect your backup path list.</p>
+                <h2 class="text-base font-semibold text-gray-800 dark:text-gray-100">Watch Exclusions</h2>
+                <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Paths listed below are excluded from file watching, but will still be included in scheduled or manual backups.</p>
             </div>
-            <button @click="importPaths()" :disabled="importing"
-                    class="flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-lg border border-blue-300 dark:border-blue-600 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed">
-                <svg x-show="!importing" class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/>
-                </svg>
-                <svg x-show="importing" class="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
-                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path>
-                </svg>
-                <span x-text="importing ? 'Importing…' : 'Import from Paths'"></span>
-            </button>
         </div>
         <!-- Inline confirmation bar — shown when a remove is pending -->
         <div x-show="pendingRemove !== null" x-cloak
              class="flex items-center justify-between gap-4 px-4 py-3 mb-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
             <span class="text-sm text-red-700 dark:text-red-300 font-medium">
-                Remove <span class="font-mono break-all" x-text="pendingRemove"></span> from watcher?
+                Remove exclusion for <span class="font-mono break-all" x-text="pendingRemove"></span>?
             </span>
             <div class="flex gap-2 flex-shrink-0">
                 <button @click="doRemove(pendingRemove)"
@@ -148,28 +136,20 @@
             </div>
         </div>
         <div id="watch-paths" class="overflow-x-auto" hx-get="/api/watchers/paths" hx-trigger="load, every 10s, refreshPaths" hx-swap="innerHTML">
-            {{if .WatchPaths}}
+            {{if .WatchExcludes}}
             <table class="w-full text-sm">
                 <thead>
                     <tr class="border-b border-gray-200 dark:border-gray-700 text-xs uppercase text-gray-500 dark:text-gray-400">
-                        <th class="px-4 py-3 text-left">Path</th>
-                        <th class="px-4 py-3 text-center">Recursive</th>
-                        <th class="px-4 py-3 text-center">Enabled</th>
-                        <th class="px-4 py-3 text-left">Last Event</th>
-                        <th class="px-4 py-3 text-right">Event Count</th>
+                        <th class="px-4 py-3 text-left">Excluded Path</th>
                         <th class="px-4 py-3 text-center">Actions</th>
                     </tr>
                 </thead>
                 <tbody>
-                    {{range .WatchPaths}}
+                    {{range .WatchExcludes}}
                     <tr class="border-b border-gray-100 dark:border-gray-700/50">
-                        <td class="px-4 py-3 font-mono text-gray-900 dark:text-gray-100 break-all">{{.Path}}</td>
-                        <td class="px-4 py-3 text-center text-gray-600 dark:text-gray-300">{{if .Recursive}}Yes{{else}}No{{end}}</td>
-                        <td class="px-4 py-3 text-center">{{if .Enabled}}<span class="text-green-600 dark:text-green-400">Yes</span>{{else}}<span class="text-gray-400">No</span>{{end}}</td>
-                        <td class="px-4 py-3 text-gray-600 dark:text-gray-300 whitespace-nowrap">{{if .LastEvent}}{{.LastEvent}}{{else}}-{{end}}</td>
-                        <td class="px-4 py-3 text-right text-gray-600 dark:text-gray-300">{{.EventCount}}</td>
+                        <td class="px-4 py-3 font-mono text-gray-900 dark:text-gray-100 break-all">{{.}}</td>
                         <td class="px-4 py-3 text-center">
-                            <button @click="confirmRemove($el.dataset.path)" data-path="{{.Path}}"
+                            <button @click="confirmRemove($el.dataset.path)" data-path="{{.}}"
                                     class="text-red-600 dark:text-red-400 border border-red-300 dark:border-red-600 rounded px-2 py-0.5 text-xs hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors duration-150">
                                 Remove
                             </button>
@@ -179,7 +159,7 @@
                 </tbody>
             </table>
             {{else}}
-            <p class="text-gray-500 dark:text-gray-400 italic">No watch paths configured. Add a path above to start monitoring for changes.</p>
+            <p class="text-gray-500 dark:text-gray-400 italic">No watch exclusions configured.</p>
             {{end}}
         </div>
     </div>
@@ -192,10 +172,8 @@ function watcherPage() {
         running: document.querySelector('[data-running]')?.dataset.running === 'true',
         pending: false,
         newPath: '',
-        newRecursive: true,
         pathError: '',
         addingPath: false,
-        importing: false,
         pendingRemove: null,
 
 
@@ -257,18 +235,15 @@ function watcherPage() {
         addPath() {
             this.pathError = '';
             if (!this.newPath || !this.newPath.trim()) {
-                this.pathError = 'Path must not be blank';
+                this.pathError = 'Please select a path';
                 return;
             }
             this.addingPath = true;
 
-            var formData = new FormData();
-            formData.append('path', this.newPath.trim());
-            if (this.newRecursive) {
-                formData.append('recursive', 'true');
-            }
+            var params = new URLSearchParams();
+            params.append('path', this.newPath.trim());
 
-            fetch('/api/watchers/paths', { method: 'POST', body: formData, headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+            fetch('/api/watchers/paths', { method: 'POST', body: params, headers: { 'X-Requested-With': 'XMLHttpRequest' } })
                 .then(response => {
                     // Parse HX-Trigger for toast
                     var trigger = response.headers.get('HX-Trigger');
@@ -287,38 +262,13 @@ function watcherPage() {
                     }
                 })
                 .catch(() => {
-                    Alpine.store('app').addToast('error', 'Failed to add path: Network error');
+                    Alpine.store('app').addToast('error', 'Failed to exclude path: Network error');
                 })
                 .finally(() => {
                     this.addingPath = false;
                 });
         },
 
-        importPaths() {
-            if (this.importing) return;
-            this.importing = true;
-            fetch('/api/watchers/import', { method: 'POST', headers: { 'X-Requested-With': 'XMLHttpRequest' } })
-                .then(response => {
-                    var trigger = response.headers.get('HX-Trigger');
-                    if (trigger) {
-                        try {
-                            var data = JSON.parse(trigger);
-                            if (data.showToast) {
-                                Alpine.store('app').addToast(data.showToast.type, data.showToast.message);
-                            }
-                        } catch(e) {}
-                    }
-                    if (response.ok) {
-                        htmx.trigger('#watch-paths', 'refreshPaths');
-                    }
-                })
-                .catch(() => {
-                    Alpine.store('app').addToast('error', 'Failed to import paths: Network error');
-                })
-                .finally(() => {
-                    this.importing = false;
-                });
-        },
 
         confirmRemove(path) {
             this.pendingRemove = path;
@@ -351,10 +301,10 @@ function watcherPage() {
         },
 
         toggleAutostart(enable) {
-            var formData = new FormData();
-            formData.append('enabled', enable ? 'true' : 'false');
+            var params = new URLSearchParams();
+            params.append('enabled', enable ? 'true' : 'false');
 
-            fetch('/api/watchers/config/autostart', { method: 'POST', body: formData, headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+            fetch('/api/watchers/config/autostart', { method: 'POST', body: params, headers: { 'X-Requested-With': 'XMLHttpRequest' } })
                 .then(response => {
                     if (response.ok) {
                         Alpine.store('app').addToast('success', enable ? 'Autostart enabled' : 'Autostart disabled');

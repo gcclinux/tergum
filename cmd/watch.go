@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"sort"
 	"strings"
 	"syscall"
 	"time"
@@ -39,6 +40,9 @@ The watcher batches stable files into backup jobs at a configurable interval
 	cmd.AddCommand(newWatchRunCmd())
 	cmd.AddCommand(newWatchEnableCmd())
 	cmd.AddCommand(newWatchDisableCmd())
+	cmd.AddCommand(newWatchAddCmd())
+	cmd.AddCommand(newWatchRemoveCmd())
+	cmd.AddCommand(newWatchListCmd())
 
 	return cmd
 }
@@ -172,23 +176,6 @@ func runWatch(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("starting file watcher: %w", err)
 	}
 
-	// Add include paths to the watcher (can be slow for large trees).
-	fmt.Printf("Registering watch paths...\n")
-	pathCount := 0
-	for _, p := range includePaths {
-		if err := fw.AddPath(p, true); err != nil {
-			fmt.Fprintf(os.Stderr, "  Warning: cannot watch %s: %v\n", p, err)
-		} else {
-			pathCount++
-			fmt.Printf("  + %s\n", p)
-		}
-	}
-
-	if pathCount == 0 {
-		fw.Stop()
-		return fmt.Errorf("no paths could be watched")
-	}
-
 	// Create server connection based on node role.
 	serverConn, err := connection.NewServerConnection(cfg)
 	if err != nil {
@@ -217,8 +204,12 @@ func runWatch(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("starting ongoing backup: %w", err)
 	}
 
+	// Resolve watch exclusions for status reporting.
+	watchExcludes, _ := repo.ListWatchExcludes(ctx)
+
 	fmt.Printf("File watcher started.\n")
-	fmt.Printf("  Watching:          %d paths\n", len(includePaths))
+	fmt.Printf("  Include paths:     %d\n", len(includePaths))
+	fmt.Printf("  Watch exclusions:  %d\n", len(watchExcludes))
 	fmt.Printf("  Exclude patterns:  %d\n", len(excludePatterns))
 	fmt.Printf("  Debounce:          %dms\n", cfg.Watcher.DebounceMs)
 	fmt.Printf("  Stability gate:    %ds\n", cfg.Watcher.StabilitySeconds)
@@ -297,4 +288,111 @@ func loadWatchMasterKey(cfg *config.Config) ([]byte, error) {
 	}
 
 	return masterKey, nil
+}
+
+func newWatchAddCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "add [path...]",
+		Short: "Remove one or more paths from the watch exclusion list (watches them again)",
+		Args:  cobra.MinimumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			repo, cleanup, err := openRepo()
+			if err != nil {
+				return err
+			}
+			defer cleanup()
+
+			ctx := context.Background()
+			var removed []string
+
+			for _, p := range args {
+				absPath, err := filepath.Abs(p)
+				if err != nil {
+					absPath = p
+				}
+				if err := repo.RemoveWatchExclude(ctx, absPath); err != nil {
+					return fmt.Errorf("cannot remove watch exclusion %s: %w", absPath, err)
+				}
+				removed = append(removed, absPath)
+			}
+
+			printOutput(
+				map[string]interface{}{"removed_exclusions": removed},
+				fmt.Sprintf("Removed %d path(s) from watch exclusions.", len(removed)),
+			)
+			return nil
+		},
+	}
+}
+
+func newWatchRemoveCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "remove [path...]",
+		Short: "Add one or more paths to the watch exclusion list (excludes them from watch)",
+		Args:  cobra.MinimumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			repo, cleanup, err := openRepo()
+			if err != nil {
+				return err
+			}
+			defer cleanup()
+
+			ctx := context.Background()
+			var added []string
+
+			for _, p := range args {
+				absPath, err := filepath.Abs(p)
+				if err != nil {
+					return fmt.Errorf("cannot resolve path %s: %w", p, err)
+				}
+				if err := repo.AddWatchExclude(ctx, absPath); err != nil {
+					return fmt.Errorf("cannot add watch exclusion %s: %w", absPath, err)
+				}
+				added = append(added, absPath)
+			}
+
+			printOutput(
+				map[string]interface{}{"added_exclusions": added},
+				fmt.Sprintf("Added %d path(s) to watch exclusions.", len(added)),
+			)
+			return nil
+		},
+	}
+}
+
+func newWatchListCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "list",
+		Short: "List all watch exclusions",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			repo, cleanup, err := openRepo()
+			if err != nil {
+				return err
+			}
+			defer cleanup()
+
+			ctx := context.Background()
+			excludes, err := repo.ListWatchExcludes(ctx)
+			if err != nil {
+				return fmt.Errorf("cannot list watch exclusions: %w", err)
+			}
+
+			sort.Strings(excludes)
+
+			if jsonOut {
+				printOutput(map[string]interface{}{
+					"watch_exclusions": excludes,
+				}, "")
+			} else {
+				fmt.Println("Watch Exclusions:")
+				if len(excludes) == 0 {
+					fmt.Println("  (none)")
+				}
+				for _, p := range excludes {
+					fmt.Printf("  - %s\n", p)
+				}
+			}
+			return nil
+		},
+	}
 }

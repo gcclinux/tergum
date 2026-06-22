@@ -540,12 +540,6 @@ func (s *Server) startClient(ctx context.Context) error {
 					s.logger.Warn("failed to start file watcher", "error", startErr)
 					watchCancel()
 				} else {
-					for _, p := range includePaths {
-						if addErr := fileWatcher.AddPath(p, true); addErr != nil {
-							s.logger.Warn("cannot watch path", "path", p, "error", addErr)
-						}
-					}
-
 					fw = fileWatcher
 					cmdHandler.SetWatcher(fw)
 

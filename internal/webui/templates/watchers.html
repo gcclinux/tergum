@@ -51,26 +51,27 @@
     {{end}}
 </div>
 
-<!-- Watched Paths List -->
+<!-- Watch Exclusions List -->
 <div class="bg-white rounded shadow p-4 m-4">
-    <h2 class="font-bold mb-2">Watched Paths</h2>
-    <p class="text-sm text-gray-600 mb-4">Directories monitored for file changes. Changed files are automatically backed up after passing the stability gate.</p>
+    <h2 class="font-bold mb-2">Watch Exclusions</h2>
+    <p class="text-sm text-gray-600 mb-4">Paths excluded from file watching.</p>
     <div hx-get="/api/watchers" hx-trigger="load, every 10s" hx-swap="innerHTML">
         <p class="text-gray-500 text-sm italic p-4">Loading...</p>
     </div>
 </div>
 
-<!-- Add Watch Path -->
+<!-- Exclude Watch Path -->
 <div class="bg-white rounded shadow p-4 m-4">
-    <h2 class="font-bold mb-2">Add Watch Path</h2>
+    <h2 class="font-bold mb-2">Exclude Watch Path</h2>
     <form hx-post="/api/watchers" hx-swap="outerHTML">
         <div class="flex items-center gap-3">
-            <input type="text" name="path" required placeholder="/home/user/Documents"
-                   class="border rounded px-3 py-2 flex-1 text-sm">
-            <label class="text-sm flex items-center gap-1">
-                <input type="checkbox" name="recursive" checked> Recursive
-            </label>
-            <button type="submit" class="bg-green-600 text-white px-4 py-2 rounded text-sm hover:bg-green-700">Add Path</button>
+            <select name="path" required class="border rounded px-3 py-2 flex-1 text-sm bg-white text-gray-900">
+                <option value="">-- Select a path to exclude --</option>
+                {{range .IncludePaths}}
+                <option value="{{.}}">{{.}}</option>
+                {{end}}
+            </select>
+            <button type="submit" class="bg-red-600 text-white px-4 py-2 rounded text-sm hover:bg-red-700">Exclude Path</button>
         </div>
     </form>
 </div>
