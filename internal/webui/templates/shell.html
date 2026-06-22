@@ -259,6 +259,258 @@
             }
         }));
 
+        Alpine.data('watcherPage', () => ({
+            running: false,
+            pending: false,
+            newPath: '',
+            pathError: '',
+            addingPath: false,
+            pendingRemove: null,
+
+            init() {
+                this.running = this.$el.dataset.running === 'true';
+            },
+
+            startWatcher() {
+                if (this.pending) return;
+                this.pending = true;
+                this.running = true;
+
+                fetch('/api/watcher/start', { method: 'POST', headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+                    .then(response => {
+                        if (!response.ok) {
+                            this.running = false;
+                            return response.text().then(text => {
+                                Alpine.store('app').addToast('error', 'Failed to start watcher: ' + (text || 'Server error'));
+                            });
+                        }
+                        Alpine.store('app').addToast('success', 'Watcher started');
+                    })
+                    .catch(() => {
+                        this.running = false;
+                        Alpine.store('app').addToast('error', 'Failed to start watcher: Network error');
+                    })
+                    .finally(() => {
+                        this.pending = false;
+                    });
+            },
+
+            stopWatcher() {
+                if (this.pending) return;
+                this.pending = true;
+                this.running = false;
+
+                fetch('/api/watcher/stop', { method: 'POST', headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+                    .then(response => {
+                        if (!response.ok) {
+                            this.running = true;
+                            return response.text().then(text => {
+                                Alpine.store('app').addToast('error', 'Failed to stop watcher: ' + (text || 'Server error'));
+                            });
+                        }
+                        Alpine.store('app').addToast('success', 'Watcher stopped');
+                    })
+                    .catch(() => {
+                        this.running = true;
+                        Alpine.store('app').addToast('error', 'Failed to stop watcher: Network error');
+                    })
+                    .finally(() => {
+                        this.pending = false;
+                    });
+            },
+
+            addPath() {
+                this.pathError = '';
+                if (!this.newPath || !this.newPath.trim()) {
+                    this.pathError = 'Please select a path';
+                    return;
+                }
+                this.addingPath = true;
+
+                var params = new URLSearchParams();
+                params.append('path', this.newPath.trim());
+
+                fetch('/api/watchers/paths', { method: 'POST', body: params, headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+                    .then(response => {
+                        var trigger = response.headers.get('HX-Trigger');
+                        if (trigger) {
+                            try {
+                                var data = JSON.parse(trigger);
+                                if (data.showToast) {
+                                    Alpine.store('app').addToast(data.showToast.type, data.showToast.message);
+                                }
+                            } catch(e) {}
+                        }
+                        if (response.ok) {
+                            this.newPath = '';
+                            htmx.trigger('#watch-paths', 'refreshPaths');
+                        }
+                    })
+                    .catch(() => {
+                        Alpine.store('app').addToast('error', 'Failed to exclude path: Network error');
+                    })
+                    .finally(() => {
+                        this.addingPath = false;
+                    });
+            },
+
+            confirmRemove(path) {
+                this.pendingRemove = path;
+            },
+
+            cancelRemove() {
+                this.pendingRemove = null;
+            },
+
+            doRemove(path) {
+                fetch('/api/watchers?path=' + encodeURIComponent(path), { method: 'DELETE', headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+                    .then(response => {
+                        var trigger = response.headers.get('HX-Trigger');
+                        if (trigger) {
+                            try {
+                                var data = JSON.parse(trigger);
+                                if (data.showToast) {
+                                    Alpine.store('app').addToast(data.showToast.type, data.showToast.message);
+                                }
+                            } catch(e) {}
+                        }
+                        if (response.ok) {
+                            this.pendingRemove = null;
+                            htmx.trigger('#watch-paths', 'refreshPaths');
+                        }
+                    })
+                    .catch(() => {
+                        Alpine.store('app').addToast('error', 'Failed to remove path: Network error');
+                    });
+            },
+
+            toggleAutostart(enable) {
+                var params = new URLSearchParams();
+                params.append('enabled', enable ? 'true' : 'false');
+
+                fetch('/api/watchers/config/autostart', { method: 'POST', body: params, headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+                    .then(response => {
+                        if (response.ok) {
+                            Alpine.store('app').addToast('success', enable ? 'Autostart enabled' : 'Autostart disabled');
+                            setTimeout(() => { window.location.reload(); }, 500);
+                        } else {
+                            response.text().then(text => {
+                                Alpine.store('app').addToast('error', 'Failed to update autostart: ' + (text || 'Server error'));
+                            });
+                        }
+                    })
+                    .catch(() => {
+                        Alpine.store('app').addToast('error', 'Network error');
+                    });
+            }
+        }));
+
+        Alpine.data('activityPage', () => ({
+            events: [],
+            loading: true,
+            connected: true,
+            maxEvents: 200,
+            _eventCounter: 0,
+
+            init() {
+                this.fetchHistory();
+
+                this._sseHandler = (e) => this.handleSSEEvent(e.detail);
+                document.body.addEventListener('sse-activity', this._sseHandler);
+
+                const eventTypes = [
+                    'backup_started', 'backup_completed', 'backup_failed', 'backup_progress',
+                    'retention_run', 'client_connected', 'client_disconnected',
+                    'watcher_started', 'watcher_stopped', 'restore_started', 'restore_completed'
+                ];
+                this._sseHandlers = {};
+                eventTypes.forEach(type => {
+                    const handler = (e) => this.handleSSEEvent(e.detail);
+                    this._sseHandlers[type] = handler;
+                    document.body.addEventListener('sse-' + type, handler);
+                });
+
+                this._connectHandler = () => { this.connected = true; };
+                this._disconnectHandler = () => { this.connected = false; };
+                document.body.addEventListener('sse-connected', this._connectHandler);
+                document.body.addEventListener('sse-disconnected', this._disconnectHandler);
+
+                this._reconnectHandler = () => {
+                    this.connected = true;
+                    this.fetchHistory();
+                };
+                document.body.addEventListener('sse-reconnected', this._reconnectHandler);
+
+                this.$cleanup(() => {
+                    document.body.removeEventListener('sse-activity', this._sseHandler);
+                    document.body.removeEventListener('sse-connected', this._connectHandler);
+                    document.body.removeEventListener('sse-disconnected', this._disconnectHandler);
+                    document.body.removeEventListener('sse-reconnected', this._reconnectHandler);
+                    if (this._sseHandlers) {
+                        Object.keys(this._sseHandlers).forEach(type => {
+                            document.body.removeEventListener('sse-' + type, this._sseHandlers[type]);
+                        });
+                    }
+                });
+            },
+
+            async fetchHistory() {
+                try {
+                    const resp = await fetch('/api/activity/recent?format=json');
+                    if (resp.ok) {
+                        const contentType = resp.headers.get('content-type') || '';
+                        if (contentType.includes('application/json')) {
+                            const data = await resp.json();
+                            if (Array.isArray(data)) {
+                                const existingIds = new Set(this.events.map(e => e.id));
+                                const newEvents = data
+                                    .filter(e => !existingIds.has(e.id))
+                                    .map(e => ({ ...e, id: e.id || this.generateId() }));
+                                this.events = [...newEvents, ...this.events].slice(0, this.maxEvents);
+                            }
+                        }
+                    }
+                } catch (e) {}
+                this.loading = false;
+            },
+
+            handleSSEEvent(data) {
+                if (!data || !data.type || !data.message) return;
+
+                const event = {
+                    id: this.generateId(),
+                    type: data.type,
+                    message: data.message,
+                    timestamp: data.timestamp || new Date().toISOString(),
+                    resource: data.resource || ''
+                };
+
+                this.events.unshift(event);
+
+                if (this.events.length > this.maxEvents) {
+                    this.events = this.events.slice(0, this.maxEvents);
+                }
+            },
+
+            generateId() {
+                this._eventCounter++;
+                return 'evt-' + Date.now() + '-' + this._eventCounter;
+            },
+
+            formatTime(timestamp) {
+                if (!timestamp) return '';
+                const date = new Date(timestamp);
+                const now = new Date();
+                const diffMs = now - date;
+                const diffSec = Math.floor(diffMs / 1000);
+
+                if (diffSec < 60) return 'just now';
+                if (diffSec < 3600) return Math.floor(diffSec / 60) + 'm ago';
+                if (diffSec < 86400) return Math.floor(diffSec / 3600) + 'h ago';
+                return date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            }
+        }));
+
     }
 
     if (window.Alpine) {
