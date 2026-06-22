@@ -1,6 +1,9 @@
 package webui
 
-import "testing"
+import (
+	"runtime"
+	"testing"
+)
 
 func TestStorageColorScheme_Default(t *testing.T) {
 	tests := []struct {
@@ -65,9 +68,13 @@ func TestDiskUsagePercent_NonexistentPath(t *testing.T) {
 }
 
 func TestDiskUsagePercent_ValidPath(t *testing.T) {
-	// Root "/" should return some percentage > 0 on any Linux system.
-	got := diskUsagePercent("/")
+	// Root "/" on Linux/Unix, or "C:\" on Windows should return some percentage > 0.
+	path := "/"
+	if runtime.GOOS == "windows" {
+		path = `C:\`
+	}
+	got := diskUsagePercent(path)
 	if got <= 0 || got > 100 {
-		t.Errorf("diskUsagePercent(\"/\") = %v, want value in (0, 100]", got)
+		t.Errorf("diskUsagePercent(%q) = %v, want value in (0, 100]", path, got)
 	}
 }
