@@ -2,8 +2,14 @@
 
 ## First-Time Setup
 
+**Linux / macOS:**
 ```bash
 tergum setup
+```
+
+**PowerShell (Windows):**
+```powershell
+.\tergum.exe setup
 ```
 
 The interactive wizard walks you through:
@@ -22,8 +28,14 @@ After setup, your config lives at `~/.config/tergum/tergum.toml` (Linux).
 
 To regenerate just the TLS certificates:
 
+**Linux / macOS:**
 ```bash
 tergum setup --generate-certs
+```
+
+**PowerShell (Windows):**
+```powershell
+.\tergum.exe setup --generate-certs
 ```
 
 ---
@@ -34,12 +46,19 @@ tergum setup --generate-certs
 
 The server must be running for backups to work (even in `both` mode for scheduled/watcher backups):
 
+**Linux / macOS:**
 ```bash
 tergum server
 ```
 
+**PowerShell (Windows):**
+```powershell
+.\tergum.exe server
+```
+
 ### Manual backup
 
+**Linux / macOS:**
 ```bash
 # Auto level — only new/modified files since last backup
 tergum backup
@@ -54,11 +73,46 @@ TERGUM_PASSPHRASE=mypassphrase tergum backup
 TERGUM_PASSPHRASE=mypassphrase tergum backup --json
 ```
 
+**PowerShell (Windows):**
+```powershell
+# Auto level — only new/modified files since last backup
+.\tergum.exe backup
+
+# Full backup — all files in include paths
+.\tergum.exe backup --level full
+
+# Set passphrase via env var (avoids prompt)
+$env:TERGUM_PASSPHRASE="mypassphrase"; .\tergum.exe backup
+
+# JSON output for scripting
+$env:TERGUM_PASSPHRASE="mypassphrase"; .\tergum.exe backup --json
+```
+
 ### Environment variables
 
 | Variable | Description |
 |----------|-------------|
 | `TERGUM_PASSPHRASE` | Encryption passphrase (avoids interactive prompt) |
+
+#### Setting Environment Variables on Windows
+
+Since Windows shells do not support the Unix `VAR=value command` inline syntax, use the following methods instead:
+
+**PowerShell:**
+```powershell
+# Set for the current session, then run
+$env:TERGUM_PASSPHRASE="mypassphrase"
+tergum server
+
+# Or as a one-liner:
+$env:TERGUM_PASSPHRASE="mypassphrase"; tergum server
+```
+
+**Command Prompt (cmd.exe):**
+```cmd
+set TERGUM_PASSPHRASE=mypassphrase
+tergum server
+```
 
 ---
 
@@ -66,18 +120,31 @@ TERGUM_PASSPHRASE=mypassphrase tergum backup --json
 
 ### Add directories to back up
 
+**Linux / macOS:**
 ```bash
 tergum paths add /home/user/Documents /home/user/Projects
 ```
 
+**PowerShell (Windows):**
+```powershell
+.\tergum.exe paths add C:\Users\user\Documents C:\Users\user\Projects
+```
+
 ### Remove a directory
 
+**Linux / macOS:**
 ```bash
 tergum paths remove /home/user/Downloads
 ```
 
+**PowerShell (Windows):**
+```powershell
+.\tergum.exe paths remove C:\Users\user\Downloads
+```
+
 ### Scan a directory (add all top-level folders)
 
+**Linux / macOS:**
 ```bash
 # Scan home directory (skips hidden folders)
 tergum paths scan
@@ -86,22 +153,49 @@ tergum paths scan
 tergum paths scan /mnt/data --include-hidden
 ```
 
+**PowerShell (Windows):**
+```powershell
+# Scan home directory (skips hidden folders)
+.\tergum.exe paths scan
+
+# Scan specific directory, include hidden folders
+.\tergum.exe paths scan D:\data --include-hidden
+```
+
 ### Add exclude patterns
 
+**Linux / macOS:**
 ```bash
 tergum paths exclude "*.tmp" "*.log" "node_modules/" ".git/"
 ```
 
+**PowerShell (Windows):**
+```powershell
+.\tergum.exe paths exclude "*.tmp" "*.log" "node_modules/" ".git/"
+```
+
 ### Remove an exclude pattern
 
+**Linux / macOS:**
 ```bash
 tergum paths unexclude "*.log"
 ```
 
+**PowerShell (Windows):**
+```powershell
+.\tergum.exe paths unexclude "*.log"
+```
+
 ### View current configuration
 
+**Linux / macOS:**
 ```bash
 tergum paths list
+```
+
+**PowerShell (Windows):**
+```powershell
+.\tergum.exe paths list
 ```
 
 ---
@@ -165,12 +259,22 @@ Flags:
 Starts just the Web UI without gRPC services, scheduler, or watcher. Use this for
 lightweight browser-based management.
 
+**Linux / macOS:**
 ```bash
 # Start on default port
 tergum admin
 
 # Start on a custom port
 tergum admin --port 8080
+```
+
+**PowerShell (Windows):**
+```powershell
+# Start on default port
+.\tergum.exe admin
+
+# Start on a custom port
+.\tergum.exe admin --port 8080
 ```
 
 The admin panel provides the same Web UI as the full server:
@@ -194,9 +298,16 @@ Flags:
 **Auto** mode backs up files that are new or modified since the last backup.
 **Full** mode backs up everything in the include paths regardless of changes.
 
+**Linux / macOS:**
 ```bash
 # JSON output for scripting
 TERGUM_PASSPHRASE=mypassphrase tergum backup --json
+```
+
+**PowerShell (Windows):**
+```powershell
+# JSON output for scripting
+$env:TERGUM_PASSPHRASE="mypassphrase"; .\tergum.exe backup --json
 ```
 
 ### tergum paths
@@ -219,9 +330,16 @@ Global flags apply:
   --json             Output as JSON (works with all subcommands)
 ```
 
+**Linux / macOS:**
 ```bash
 # JSON output for paths list
 tergum paths list --json
+```
+
+**PowerShell (Windows):**
+```powershell
+# JSON output for paths list
+.\tergum.exe paths list --json
 ```
 
 ### tergum restore
@@ -237,6 +355,7 @@ Flags:
       --json               Output as JSON
 ```
 
+**Linux / macOS:**
 ```bash
 # Search for files without restoring
 tergum restore "*.go" --list
@@ -255,6 +374,27 @@ TERGUM_PASSPHRASE=mypass tergum restore --backup-id abc123 --dest /tmp/restored
 
 # Restore to original paths (in-place)
 TERGUM_PASSPHRASE=mypass tergum restore "important.docx"
+```
+
+**PowerShell (Windows):**
+```powershell
+# Search for files without restoring
+.\tergum.exe restore "*.go" --list
+
+# Restore all .go files to a directory
+$env:TERGUM_PASSPHRASE="mypass"; .\tergum.exe restore "*.go" --dest C:\temp\restored
+
+# Restore a specific file by name
+$env:TERGUM_PASSPHRASE="mypass"; .\tergum.exe restore "report.pdf" --dest C:\temp\restored
+
+# Restore an entire folder
+$env:TERGUM_PASSPHRASE="mypass"; .\tergum.exe restore "C:\Users\user\Documents\" --dest C:\temp\restored
+
+# Restore from a specific backup set
+$env:TERGUM_PASSPHRASE="mypass"; .\tergum.exe restore --backup-id abc123 --dest C:\temp\restored
+
+# Restore to original paths (in-place)
+$env:TERGUM_PASSPHRASE="mypass"; .\tergum.exe restore "important.docx"
 ```
 
 Search behavior:
@@ -279,6 +419,7 @@ Flags:
       --json               Output as JSON
 ```
 
+**Linux / macOS:**
 ```bash
 # List all backup jobs
 tergum list
@@ -291,6 +432,21 @@ tergum list --backup-id 099fc690-f77a-4e55-b606-3fc9c1b0512c
 
 # Search for files by pattern
 tergum list --pattern "*.go"
+```
+
+**PowerShell (Windows):**
+```powershell
+# List all backup jobs
+.\tergum.exe list
+
+# List with JSON output
+.\tergum.exe list --json
+
+# List files in a specific backup
+.\tergum.exe list --backup-id 099fc690-f77a-4e55-b606-3fc9c1b0512c
+
+# Search for files by pattern
+.\tergum.exe list --pattern "*.go"
 ```
 
 ### tergum delete
@@ -308,6 +464,7 @@ Flags:
 
 Must specify either `--backup-id`, `--all-backups`, or `--all-activity`.
 
+**Linux / macOS:**
 ```bash
 # Delete a specific backup set
 tergum delete --backup-id 099fc690-f77a-4e55-b606-3fc9c1b0512c
@@ -333,6 +490,34 @@ tergum delete --all-activity
 # Full clean slate (delete all backups AND clear activity)
 tergum delete --all-backups
 tergum delete --all-activity
+```
+
+**PowerShell (Windows):**
+```powershell
+# Delete a specific backup set
+.\tergum.exe delete --backup-id 099fc690-f77a-4e55-b606-3fc9c1b0512c
+
+# Delete ALL backups (dangerous)
+.\tergum.exe delete --all-backups
+
+# Preview what would be deleted
+.\tergum.exe delete --all-backups --dry-run
+
+# Delete a specific file from a backup
+.\tergum.exe delete C:\Users\user\Documents\secret.txt --backup-id abc123
+
+# Delete a folder from all backups
+.\tergum.exe delete C:\Users\user\Downloads\ --all-backups
+
+# Preview folder deletion
+.\tergum.exe delete C:\Users\user\Downloads\ --all-backups --dry-run
+
+# Clear activity history (restore records + completed job records)
+.\tergum.exe delete --all-activity
+
+# Full clean slate (delete all backups AND clear activity)
+.\tergum.exe delete --all-backups
+.\tergum.exe delete --all-activity
 ```
 
 Output shows: entries deleted, bytes freed, physical storage files removed, and orphan jobs cleaned up.
@@ -373,6 +558,7 @@ Global flags apply:
 - `--keep-versions 0` = purge mode: all versions deleted after `keep-days`, including the latest
 - Higher priority policies are evaluated first (first-match-wins)
 
+**Linux / macOS:**
 ```bash
 # Keep logs for only 7 days, minimum 2 versions
 tergum retention add cleanup-logs --pattern "*.log" --keep-days 7 --keep-versions 2 --priority 10
@@ -398,6 +584,32 @@ tergum retention list
 tergum retention remove cleanup-logs
 ```
 
+**PowerShell (Windows):**
+```powershell
+# Keep logs for only 7 days, minimum 2 versions
+.\tergum.exe retention add cleanup-logs --pattern "*.log" --keep-days 7 --keep-versions 2 --priority 10
+
+# Keep Downloads for 30 days
+.\tergum.exe retention add cleanup-downloads --pattern "C:\Users\user\Downloads\*" --keep-days 30
+
+# Keep tmp files for 3 days
+.\tergum.exe retention add cleanup-tmp --pattern "*.tmp" --keep-days 3 --priority 5
+
+# Everything else (Documents, Projects, etc.) is kept FOREVER automatically
+
+# Preview what would be cleaned up
+.\tergum.exe retention run --dry-run
+
+# Actually run retention cleanup
+.\tergum.exe retention run
+
+# List current policies
+.\tergum.exe retention list
+
+# Remove a policy (files revert to "keep forever")
+.\tergum.exe retention remove cleanup-logs
+```
+
 #### Purge Mode (keep-versions 0)
 
 Setting `--keep-versions 0` enables purge mode: ALL versions of matching files are
@@ -407,6 +619,7 @@ Physical storage is freed when no other backup entry references the same content
 This is useful when you want a folder's contents to be completely removed from backups
 after a certain age — no trace left in the database or on disk.
 
+**Linux / macOS:**
 ```bash
 # Delete everything in .cache after 7 days (nothing preserved)
 tergum retention add purge-cache --pattern "/home/user/.cache/*" --keep-days 7 --keep-versions 0
@@ -419,6 +632,21 @@ tergum retention add purge-builds --pattern "/tmp/builds/*" --keep-days 3 --keep
 
 # Always preview first!
 tergum retention run --dry-run
+```
+
+**PowerShell (Windows):**
+```powershell
+# Delete everything in .cache after 7 days (nothing preserved)
+.\tergum.exe retention add purge-cache --pattern "C:\Users\user\.cache\*" --keep-days 7 --keep-versions 0
+
+# Purge Downloads after 14 days
+.\tergum.exe retention add purge-downloads --pattern "C:\Users\user\Downloads\*" --keep-days 14 --keep-versions 0
+
+# Purge temp build artifacts after 3 days
+.\tergum.exe retention add purge-builds --pattern "C:\temp\builds\*" --keep-days 3 --keep-versions 0 --priority 20
+
+# Always preview first!
+.\tergum.exe retention run --dry-run
 ```
 
 **Safety notes for purge mode:**
@@ -436,12 +664,22 @@ Usage: tergum stop [--json]
 
 Sends a stop signal to a running backup. The backup will complete its current file, update the job status to "stopped", and exit cleanly.
 
+**Linux / macOS:**
 ```bash
 # In one terminal: start a backup
 TERGUM_PASSPHRASE=mypass tergum backup --level full
 
 # In another terminal: stop it
 tergum stop
+```
+
+**PowerShell (Windows):**
+```powershell
+# In one terminal: start a backup
+$env:TERGUM_PASSPHRASE="mypass"; .\tergum.exe backup --level full
+
+# In another terminal: stop it
+.\tergum.exe stop
 ```
 
 ### tergum status
@@ -452,9 +690,16 @@ Usage: tergum status [--json]
 
 Shows a full system overview: configuration, paths, backup history, storage usage, and last backup details.
 
+**Linux / macOS:**
 ```bash
 tergum status
 tergum status --json
+```
+
+**PowerShell (Windows):**
+```powershell
+.\tergum.exe status
+.\tergum.exe status --json
 ```
 
 ### tergum watch
@@ -466,6 +711,7 @@ Usage: tergum watch [--json]
 Starts the file watcher for continuous backup. Monitors all configured include paths
 for changes and automatically backs up files that pass the stability gate.
 
+**Linux / macOS:**
 ```bash
 # Start watcher (runs in foreground, Ctrl+C to stop)
 TERGUM_PASSPHRASE=mypass tergum watch
@@ -473,6 +719,16 @@ TERGUM_PASSPHRASE=mypass tergum watch
 # Or set passphrase via env for unattended operation
 export TERGUM_PASSPHRASE=mypass
 tergum watch
+```
+
+**PowerShell (Windows):**
+```powershell
+# Start watcher (runs in foreground, Ctrl+C to stop)
+$env:TERGUM_PASSPHRASE="mypass"; .\tergum.exe watch
+
+# Or set passphrase via env for unattended operation
+$env:TERGUM_PASSPHRASE="mypass"
+.\tergum.exe watch
 ```
 
 **Pipeline:** filesystem event → exclude filter → debounce (500ms) → stability gate (60s) → BLAKE3 hash → encrypt → upload
@@ -529,12 +785,22 @@ Available on every command:
 
 The `--json` flag works on all commands and is useful for scripting:
 
+**Linux / macOS:**
 ```bash
 tergum list --json
 tergum backup --json
 tergum paths list --json
 tergum version --json
 tergum list --backup-id <id> --json
+```
+
+**PowerShell (Windows):**
+```powershell
+.\tergum.exe list --json
+.\tergum.exe backup --json
+.\tergum.exe paths list --json
+.\tergum.exe version --json
+.\tergum.exe list --backup-id <id> --json
 ```
 
 ---
@@ -550,9 +816,16 @@ http://localhost:7480
 Default login: `admin` / `admin` (change in `tergum.toml`).
 
 Start the Web UI with either:
+**Linux / macOS:**
 ```bash
 tergum server    # full server with Web UI included
 tergum admin     # Web UI only (lightweight, no gRPC/scheduler)
+```
+
+**PowerShell (Windows):**
+```powershell
+.\tergum.exe server    # full server with Web UI included
+.\tergum.exe admin     # Web UI only (lightweight, no gRPC/scheduler)
 ```
 
 Pages and capabilities:
@@ -570,6 +843,7 @@ Pages and capabilities:
 
 ## Typical Workflow
 
+**Linux / macOS:**
 ```bash
 # 1. Initial setup (one-time)
 tergum setup
@@ -588,6 +862,27 @@ tergum paths add /home/user/NewProject
 
 # 6. Check what's configured
 tergum paths list
+```
+
+**PowerShell (Windows):**
+```powershell
+# 1. Initial setup (one-time)
+.\tergum.exe setup
+
+# 2. Start server (keep running in background)
+Start-Process -FilePath ".\tergum.exe" -ArgumentList "server" -NoNewWindow
+
+# 3. Run first full backup
+$env:TERGUM_PASSPHRASE="mypassphrase"; .\tergum.exe backup --level full
+
+# 4. Subsequent incremental backups
+$env:TERGUM_PASSPHRASE="mypassphrase"; .\tergum.exe backup
+
+# 5. Add more paths later
+.\tergum.exe paths add C:\Users\user\NewProject
+
+# 6. Check what's configured
+.\tergum.exe paths list
 ```
 
 ---
@@ -619,6 +914,7 @@ Both directions are authenticated with mutual TLS. The client identifies itself 
 
 Run the setup wizard on the server machine. This generates a CA and server certificate:
 
+**Linux / macOS:**
 ```bash
 # On the server
 tergum setup
@@ -626,10 +922,24 @@ tergum setup
 # This generates: ca.crt, server.crt, server.key in ~/.config/tergum/certs/
 ```
 
+**PowerShell (Windows):**
+```powershell
+# On the server
+.\tergum.exe setup
+# Choose role: server
+# This generates: ca.crt, server.crt, server.key in C:\Users\user\AppData\Roaming\tergum\certs\
+```
+
 Or regenerate certificates only:
 
+**Linux / macOS:**
 ```bash
 tergum setup --generate-certs
+```
+
+**PowerShell (Windows):**
+```powershell
+.\tergum.exe setup --generate-certs
 ```
 
 #### 2. Distribute certificates to clients
@@ -693,6 +1003,7 @@ port = 7480
 
 #### 5. Start both daemons
 
+**Linux / macOS:**
 ```bash
 # On the server
 tergum server
@@ -703,12 +1014,24 @@ tergum server
 # Detects role = "client", starts: client CommandService, heartbeat, file watcher (if enabled)
 ```
 
+**PowerShell (Windows):**
+```powershell
+# On the server
+.\tergum.exe server
+# Starts: gRPC services, Web UI, scheduler, registry
+
+# On each client
+.\tergum.exe server
+# Detects role = "client", starts: client CommandService, heartbeat, file watcher (if enabled)
+```
+
 The `tergum server` command detects the node role from the config and starts the appropriate subsystems.
 
 ### Client Operations
 
 Once the client daemon is running, backups work the same as local mode:
 
+**Linux / macOS:**
 ```bash
 # Manual backup (streams to remote server)
 TERGUM_PASSPHRASE=mypass tergum backup
@@ -721,6 +1044,21 @@ TERGUM_PASSPHRASE=mypass tergum restore "*.go" --dest /tmp/restored
 
 # File watcher (continuous backup to server)
 TERGUM_PASSPHRASE=mypass tergum watch
+```
+
+**PowerShell (Windows):**
+```powershell
+# Manual backup (streams to remote server)
+$env:TERGUM_PASSPHRASE="mypass"; .\tergum.exe backup
+
+# Full backup
+$env:TERGUM_PASSPHRASE="mypass"; .\tergum.exe backup --level full
+
+# Restore from server
+$env:TERGUM_PASSPHRASE="mypass"; .\tergum.exe restore "*.go" --dest C:\temp\restored
+
+# File watcher (continuous backup to server)
+$env:TERGUM_PASSPHRASE="mypass"; .\tergum.exe watch
 ```
 
 Key differences in remote mode:
@@ -785,6 +1123,7 @@ The clients page shows:
 
 ### Example: Two-Machine Setup
 
+**Linux / macOS:**
 ```bash
 # === SERVER (192.168.1.5) ===
 tergum setup
@@ -800,6 +1139,24 @@ tergum server     # starts client daemon (heartbeat + watcher)
 
 # Or run a one-off backup without the daemon:
 tergum backup --level full
+```
+
+**PowerShell (Windows):**
+```powershell
+# === SERVER (192.168.1.5) ===
+.\tergum.exe setup
+# role: server, storage: D:\tergum\storage
+.\tergum.exe server
+
+# === CLIENT (laptop) ===
+.\tergum.exe setup
+# role: client, server address: 192.168.1.5
+# Copy ca.crt from server, generate client cert
+$env:TERGUM_PASSPHRASE="mypassphrase"
+.\tergum.exe server     # starts client daemon (heartbeat + watcher)
+
+# Or run a one-off backup without the daemon:
+$env:TERGUM_PASSPHRASE="mypassphrase"; .\tergum.exe backup --level full
 ```
 
 ### Troubleshooting
