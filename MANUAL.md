@@ -705,30 +705,42 @@ tergum status --json
 ### tergum watch
 
 ```
-Usage: tergum watch [--json]
+Usage: tergum watch [command] [--json]
+
+Available Commands:
+  run       Start file watcher in the foreground (default)
+  enable    Enable the file watcher in configuration
+  disable   Disable the file watcher in configuration
 ```
 
-Starts the file watcher for continuous backup. Monitors all configured include paths
-for changes and automatically backs up files that pass the stability gate.
+Starts the file watcher for continuous backup or manages its configuration. When running, it monitors all configured include paths for changes and automatically backs up files that pass the stability gate.
 
 **Linux / macOS:**
 ```bash
 # Start watcher (runs in foreground, Ctrl+C to stop)
 TERGUM_PASSPHRASE=mypass tergum watch
+# Or explicitly:
+TERGUM_PASSPHRASE=mypass tergum watch run
 
-# Or set passphrase via env for unattended operation
-export TERGUM_PASSPHRASE=mypass
-tergum watch
+# Enable the watcher in the configuration file
+tergum watch enable
+
+# Disable the watcher in the configuration file
+tergum watch disable
 ```
 
 **PowerShell (Windows):**
 ```powershell
 # Start watcher (runs in foreground, Ctrl+C to stop)
 $env:TERGUM_PASSPHRASE="mypass"; .\tergum.exe watch
+# Or explicitly:
+$env:TERGUM_PASSPHRASE="mypass"; .\tergum.exe watch run
 
-# Or set passphrase via env for unattended operation
-$env:TERGUM_PASSPHRASE="mypass"
-.\tergum.exe watch
+# Enable the watcher in the configuration file
+.\tergum.exe watch enable
+
+# Disable the watcher in the configuration file
+.\tergum.exe watch disable
 ```
 
 **Pipeline:** filesystem event → exclude filter → debounce (500ms) → stability gate (60s) → BLAKE3 hash → encrypt → upload

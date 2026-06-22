@@ -21,6 +21,7 @@ func parseFragmentTemplates() (fragmentTemplates, error) {
 		"backups",
 		"restore",
 		"config",
+		"paths",
 		"retention",
 		"watchers",
 		"activity",
@@ -49,6 +50,9 @@ func parseFragmentTemplates() (fragmentTemplates, error) {
 // the full "shell" template is rendered with the fragment embedded.
 func (s *Server) renderFragment(w http.ResponseWriter, r *http.Request, fragment string, data any) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
+	w.Header().Set("Pragma", "no-cache")
+	w.Header().Set("Expires", "0")
 
 	tmpl, ok := s.fragmentTmpl[fragment]
 	if !ok {

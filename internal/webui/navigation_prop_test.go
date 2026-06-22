@@ -38,7 +38,7 @@ func TestProperty_NavigationRoleFiltering(t *testing.T) {
 		switch role {
 		case "client":
 			// Client-specific items should be present.
-			clientPaths := []string{"/backups", "/restore", "/watchers"}
+			clientPaths := []string{"/backups", "/restore", "/paths", "/watchers"}
 			for _, p := range clientPaths {
 				if !paths[p] {
 					rt.Fatalf("role %q: expected client item %q to be present", role, p)
@@ -55,7 +55,7 @@ func TestProperty_NavigationRoleFiltering(t *testing.T) {
 				rt.Fatalf("role %q: expected /clients to be present", role)
 			}
 			// Client-only items should be absent.
-			clientOnlyPaths := []string{"/backups", "/restore", "/watchers"}
+			clientOnlyPaths := []string{"/backups", "/restore", "/paths", "/watchers"}
 			for _, p := range clientOnlyPaths {
 				if paths[p] {
 					rt.Fatalf("role %q: expected client-only item %q to be absent", role, p)
@@ -63,15 +63,15 @@ func TestProperty_NavigationRoleFiltering(t *testing.T) {
 			}
 
 		case "both":
-			// All items should be present (9 total).
-			allPaths := []string{"/", "/backups", "/restore", "/config", "/retention", "/watchers", "/activity", "/clients", "/metrics"}
+			// All items should be present (10 total).
+			allPaths := []string{"/", "/backups", "/restore", "/config", "/paths", "/retention", "/watchers", "/activity", "/clients", "/metrics"}
 			for _, p := range allPaths {
 				if !paths[p] {
 					rt.Fatalf("role %q: expected item %q to be present", role, p)
 				}
 			}
-			if len(items) != 9 {
-				rt.Fatalf("role %q: expected 9 items, got %d", role, len(items))
+			if len(items) != 10 {
+				rt.Fatalf("role %q: expected 10 items, got %d", role, len(items))
 			}
 		}
 	})

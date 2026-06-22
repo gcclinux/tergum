@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/ricardopadilha/tergum/internal/config"
 	"pgregory.net/rapid"
 )
 
@@ -16,7 +17,7 @@ func TestProperty_FragmentVsFullResponse(t *testing.T) {
 	s := newTestServerForFragments(t)
 
 	fragments := []string{
-		"dashboard", "backups", "restore", "config",
+		"dashboard", "backups", "restore", "config", "paths",
 		"retention", "watchers", "activity", "clients", "metrics",
 	}
 
@@ -26,6 +27,7 @@ func TestProperty_FragmentVsFullResponse(t *testing.T) {
 		"backups":   "/backups",
 		"restore":   "/restore",
 		"config":    "/config",
+		"paths":     "/paths",
 		"retention": "/retention",
 		"watchers":  "/watchers",
 		"activity":  "/activity",
@@ -42,13 +44,82 @@ func TestProperty_FragmentVsFullResponse(t *testing.T) {
 		// Randomly decide whether to include HX-Request header.
 		isHTMX := rapid.Bool().Draw(t, "isHTMXRequest")
 
-		// Build test data with Title, NodeRole, and NavItems (common fields across all page data types).
-		data := dashboardData{
-			Title:    strings.Title(fragment),
-			NodeRole: "both",
-			NavItems: FilterNavItems("both"),
-			Version:  "3.0.0",
-			Uptime:   "1h",
+		// Build fragment-specific test data.
+		var data any
+		switch fragment {
+		case "dashboard":
+			data = dashboardData{
+				Title:    "Dashboard",
+				NodeRole: "both",
+				NavItems: FilterNavItems("both"),
+				Version:  "3.0.0",
+				Uptime:   "1h",
+			}
+		case "backups":
+			data = backupsData{
+				Title:    "Backups",
+				NodeRole: "both",
+				NavItems: FilterNavItems("both"),
+				Jobs:     []backupJobView{},
+			}
+		case "restore":
+			data = restoreData{
+				Title:    "Restore",
+				NodeRole: "both",
+				NavItems: FilterNavItems("both"),
+			}
+		case "config":
+			data = configData{
+				Title:    "Config",
+				NodeRole: "both",
+				NavItems: FilterNavItems("both"),
+				Config:   &config.Config{},
+			}
+		case "paths":
+			data = pathsData{
+				Title:    "Paths",
+				NodeRole: "both",
+				NavItems: FilterNavItems("both"),
+			}
+		case "retention":
+			data = retentionData{
+				Title:    "Retention",
+				NodeRole: "both",
+				NavItems: FilterNavItems("both"),
+				Policies: []retentionPolicyView{},
+			}
+		case "watchers":
+			data = watchersData{
+				Title:          "Watchers",
+				NodeRole:       "both",
+				NavItems:       FilterNavItems("both"),
+				WatcherEnabled: true,
+				WatcherRunning: true,
+			}
+		case "activity":
+			data = activityData{
+				Title:    "Activity",
+				NodeRole: "both",
+				NavItems: FilterNavItems("both"),
+			}
+		case "clients":
+			data = clientsData{
+				Title:    "Clients",
+				NodeRole: "both",
+				NavItems: FilterNavItems("both"),
+			}
+		case "metrics":
+			data = metricsData{
+				Title:    "Metrics",
+				NodeRole: "both",
+				NavItems: FilterNavItems("both"),
+			}
+		default:
+			data = dashboardData{
+				Title:    strings.Title(fragment),
+				NodeRole: "both",
+				NavItems: FilterNavItems("both"),
+			}
 		}
 
 		req := httptest.NewRequest(http.MethodGet, path, nil)

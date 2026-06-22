@@ -75,97 +75,147 @@ func (c *LocalWatcherController) SetBroker(b *SSEBroker) {
 // StartWatcher starts the file watcher and ongoing backup processor.
 func (c *LocalWatcherController) StartWatcher() error {
 	c.mu.Lock()
-	defer c.mu.Unlock()
-
 	if c.running {
+		c.mu.Unlock()
 		return fmt.Errorf("watcher is already running")
 	}
 
-	ctx := context.Background()
-
-	// Get include paths from DB.
-	includePaths, err := c.repo.ListIncludePaths(ctx)
-	if err != nil {
-		return fmt.Errorf("listing paths: %w", err)
-	}
-	if len(includePaths) == 0 {
-		return fmt.Errorf("no include paths configured")
-	}
-
-	// Get exclude patterns from DB.
-	excludePatterns, _ := c.repo.ListExcludePatterns(ctx)
-	if len(excludePatterns) == 0 {
-		excludePatterns = c.excludePatterns
-	}
-
-	// Create file watcher.
-	watcherCfg := watcher.Config{
-		DebounceMs:       c.debounceMs,
-		StabilitySeconds: c.stabilitySec,
-		ExcludePatterns:  excludePatterns,
-		Repository:       c.repo,
-	}
-
-	fw, err := watcher.NewFileWatcher(watcherCfg)
-	if err != nil {
-		return fmt.Errorf("creating watcher: %w", err)
-	}
-
-	// Start watcher first (sets internal context needed by AddPath).
-	c.ctx, c.cancel = context.WithCancel(ctx)
-	if err := fw.Start(c.ctx); err != nil {
-		return fmt.Errorf("starting watcher: %w", err)
-	}
-
-	// Add paths after start so the internal context is available.
-	for _, p := range includePaths {
-		if err := fw.AddPath(p, true); err != nil {
-			slog.Warn("watcher: cannot watch path", "path", p, "error", err)
-		}
-	}
-
-	// Create ongoing backup.
-	serverConn := &backup.LocalServerConnection{
-		StorageDir: c.storageDir,
-		Repo:       c.repo,
-	}
-
-	var encryptor *crypto.AESEncryptor
-	if c.encEnabled {
-		encryptor = crypto.NewEncryptor()
-	}
-
-	batchInterval := time.Duration(c.batchMinutes) * time.Minute
-	if batchInterval <= 0 {
-		batchInterval = 5 * time.Minute
-	}
-
-	ongoing := scheduler.NewOngoingBackup(scheduler.OngoingConfig{
-		Watcher:       fw,
-		Server:        serverConn,
-		Repo:          c.repo,
-		Encryptor:     encryptor,
-		MasterKey:     c.masterKey,
-		BatchInterval: batchInterval,
-	})
-
-	if err := ongoing.Start(c.ctx); err != nil {
-		fw.Stop()
-		return fmt.Errorf("starting ongoing backup: %w", err)
-	}
-
-	c.fw = fw
-	c.ongoing = ongoing
 	c.running = true
+	ctx := context.Background()
+	c.ctx, c.cancel = context.WithCancel(ctx)
+	c.mu.Unlock()
 
-	slog.Info("watcher started from web UI")
+	// Spawn a background goroutine to perform the directory walking and startup.
+	go func() {
+		bgCtx := c.ctx
+
+		// 1. Get include paths from DB.
+		includePaths, err := c.repo.ListIncludePaths(bgCtx)
+		if err != nil {
+			slog.Error("watcher: failed to list include paths", "error", err)
+			c.failStartup(err)
+			return
+		}
+		if len(includePaths) == 0 {
+			slog.Warn("watcher: no include paths configured")
+			c.failStartup(fmt.Errorf("no include paths configured"))
+			return
+		}
+
+		// 2. Get exclude patterns from DB.
+		excludePatterns, _ := c.repo.ListExcludePatterns(bgCtx)
+		if len(excludePatterns) == 0 {
+			excludePatterns = c.excludePatterns
+		}
+
+		// 3. Create file watcher.
+		watcherCfg := watcher.Config{
+			DebounceMs:       c.debounceMs,
+			StabilitySeconds: c.stabilitySec,
+			ExcludePatterns:  excludePatterns,
+			Repository:       c.repo,
+		}
+
+		fw, err := watcher.NewFileWatcher(watcherCfg)
+		if err != nil {
+			slog.Error("watcher: failed to create file watcher", "error", err)
+			c.failStartup(err)
+			return
+		}
+
+		// Start watcher first (sets internal context needed by AddPath).
+		if err := fw.Start(bgCtx); err != nil {
+			slog.Error("watcher: failed to start file watcher", "error", err)
+			c.failStartup(err)
+			return
+		}
+
+		// Add paths after start so the internal context is available.
+		for _, p := range includePaths {
+			if bgCtx.Err() != nil {
+				fw.Stop()
+				c.failStartup(bgCtx.Err())
+				return
+			}
+			if err := fw.AddPath(p, true); err != nil {
+				slog.Warn("watcher: cannot watch path", "path", p, "error", err)
+			}
+		}
+
+		// Create ongoing backup.
+		serverConn := &backup.LocalServerConnection{
+			StorageDir: c.storageDir,
+			Repo:       c.repo,
+		}
+
+		var encryptor *crypto.AESEncryptor
+		if c.encEnabled {
+			encryptor = crypto.NewEncryptor()
+		}
+
+		batchInterval := time.Duration(c.batchMinutes) * time.Minute
+		if batchInterval <= 0 {
+			batchInterval = 5 * time.Minute
+		}
+
+		ongoing := scheduler.NewOngoingBackup(scheduler.OngoingConfig{
+			Watcher:       fw,
+			Server:        serverConn,
+			Repo:          c.repo,
+			Encryptor:     encryptor,
+			MasterKey:     c.masterKey,
+			BatchInterval: batchInterval,
+		})
+
+		if err := ongoing.Start(bgCtx); err != nil {
+			fw.Stop()
+			slog.Error("watcher: failed to start ongoing backup", "error", err)
+			c.failStartup(err)
+			return
+		}
+
+		// Verify we weren't cancelled during initialization.
+		c.mu.Lock()
+		if bgCtx.Err() != nil {
+			c.mu.Unlock()
+			fw.Stop()
+			ongoing.Stop()
+			c.failStartup(bgCtx.Err())
+			return
+		}
+
+		c.fw = fw
+		c.ongoing = ongoing
+		c.mu.Unlock()
+
+		slog.Info("watcher started from web UI (async complete)")
+		if c.broker != nil {
+			c.broker.Publish(ActivityEvent{
+				Type:    "watcher_started",
+				Message: "File watcher started",
+			})
+		}
+	}()
+
+	return nil
+}
+
+func (c *LocalWatcherController) failStartup(err error) {
+	c.mu.Lock()
+	c.running = false
+	if c.cancel != nil {
+		c.cancel()
+	}
+	c.fw = nil
+	c.ongoing = nil
+	c.mu.Unlock()
+
 	if c.broker != nil {
 		c.broker.Publish(ActivityEvent{
-			Type:    "watcher_started",
-			Message: "File watcher started",
+			Type:    "watcher_failed",
+			Message: fmt.Sprintf("File watcher failed to start: %v", err),
 		})
 	}
-	return nil
 }
 
 // StopWatcher stops the file watcher and ongoing backup processor.

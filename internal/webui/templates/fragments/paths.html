@@ -1,0 +1,116 @@
+{{define "content"}}
+<div class="space-y-6">
+
+    <!-- Include Paths -->
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-sm">
+        <div class="p-6 border-b border-gray-100 dark:border-gray-700">
+            <h2 class="text-base font-semibold text-gray-800 dark:text-gray-100">Include Paths</h2>
+            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Directories that will be included in backups and watched for changes.</p>
+        </div>
+        <div class="p-6" x-data="pathList('/api/paths/includes', 'path', 'paths')">
+            <div class="space-y-2 mb-4">
+                <template x-for="p in items" :key="p">
+                    <div>
+                        <!-- Normal row -->
+                        <div x-show="pendingRemove !== p"
+                             class="flex items-center justify-between gap-2 px-3 py-2 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                            <span class="text-sm text-gray-800 dark:text-gray-100 font-mono break-all" x-text="p"></span>
+                            <button type="button" @click.prevent.stop="confirmRemove(p)"
+                                    class="text-red-500 hover:text-red-700 dark:hover:text-red-400 text-xs font-medium flex-shrink-0 px-2 py-1 rounded hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors">
+                                Remove
+                            </button>
+                        </div>
+                        <!-- Confirmation row -->
+                        <div x-show="pendingRemove === p"
+                             class="flex items-center justify-between gap-2 px-3 py-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+                            <span class="text-sm text-red-700 dark:text-red-300 font-medium">Remove <span class="font-mono" x-text="p"></span>?</span>
+                            <div class="flex gap-2 flex-shrink-0">
+                                <button type="button" @click.prevent.stop="doRemove(p)" :disabled="loading"
+                                        class="px-3 py-1 text-xs font-medium text-white bg-red-600 hover:bg-red-700 rounded disabled:opacity-50 transition-colors">
+                                    Yes, remove
+                                </button>
+                                <button type="button" @click.prevent.stop="cancelRemove()"
+                                        class="px-3 py-1 text-xs font-medium text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-gray-600 hover:bg-gray-200 dark:hover:bg-gray-500 rounded transition-colors">
+                                    Cancel
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </template>
+                <p x-show="items.length === 0" class="text-sm text-gray-400 dark:text-gray-500 italic">No include paths configured</p>
+            </div>
+            <!-- Add input -->
+            <div class="flex gap-2">
+                <div class="flex-1 relative">
+                    <input type="text" x-model="newItem" @keydown.enter.prevent="addItem()" @input="error = ''"
+                           :class="error ? 'border-red-500 focus:ring-red-500' : 'border-gray-300 dark:border-gray-600 focus:ring-blue-500'"
+                           class="w-full px-3 py-2 text-sm rounded-lg border bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2"
+                           placeholder="Enter path to include...">
+                    <p x-show="error" x-text="error" class="absolute mt-1 text-xs text-red-500"></p>
+                </div>
+                <button type="button" @click.prevent="addItem()" :disabled="loading"
+                        class="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
+                    Add
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Exclude Patterns -->
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-sm">
+        <div class="p-6 border-b border-gray-100 dark:border-gray-700">
+            <h2 class="text-base font-semibold text-gray-800 dark:text-gray-100">Exclude Patterns</h2>
+            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Glob patterns for files and directories to skip during backup.</p>
+        </div>
+        <div class="p-6" x-data="pathList('/api/paths/excludes', 'pattern', 'patterns')">
+            <div class="space-y-2 mb-4">
+                <template x-for="p in items" :key="p">
+                    <div>
+                        <!-- Normal row -->
+                        <div x-show="pendingRemove !== p"
+                             class="flex items-center justify-between gap-2 px-3 py-2 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                            <span class="text-sm text-gray-800 dark:text-gray-100 font-mono break-all" x-text="p"></span>
+                            <button type="button" @click.prevent.stop="confirmRemove(p)"
+                                    class="text-red-500 hover:text-red-700 dark:hover:text-red-400 text-xs font-medium flex-shrink-0 px-2 py-1 rounded hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors">
+                                Remove
+                            </button>
+                        </div>
+                        <!-- Confirmation row -->
+                        <div x-show="pendingRemove === p"
+                             class="flex items-center justify-between gap-2 px-3 py-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+                            <span class="text-sm text-red-700 dark:text-red-300 font-medium">Remove <span class="font-mono" x-text="p"></span>?</span>
+                            <div class="flex gap-2 flex-shrink-0">
+                                <button type="button" @click.prevent.stop="doRemove(p)" :disabled="loading"
+                                        class="px-3 py-1 text-xs font-medium text-white bg-red-600 hover:bg-red-700 rounded disabled:opacity-50 transition-colors">
+                                    Yes, remove
+                                </button>
+                                <button type="button" @click.prevent.stop="cancelRemove()"
+                                        class="px-3 py-1 text-xs font-medium text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-gray-600 hover:bg-gray-200 dark:hover:bg-gray-500 rounded transition-colors">
+                                    Cancel
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </template>
+                <p x-show="items.length === 0" class="text-sm text-gray-400 dark:text-gray-500 italic">No exclude patterns configured</p>
+            </div>
+            <!-- Add input -->
+            <div class="flex gap-2">
+                <div class="flex-1 relative">
+                    <input type="text" x-model="newItem" @keydown.enter.prevent="addItem()" @input="error = ''"
+                           :class="error ? 'border-red-500 focus:ring-red-500' : 'border-gray-300 dark:border-gray-600 focus:ring-blue-500'"
+                           class="w-full px-3 py-2 text-sm rounded-lg border bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2"
+                           placeholder="Enter pattern to exclude...">
+                    <p x-show="error" x-text="error" class="absolute mt-1 text-xs text-red-500"></p>
+                </div>
+                <button type="button" @click.prevent="addItem()" :disabled="loading"
+                        class="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
+                    Add
+                </button>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+{{end}}

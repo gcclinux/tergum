@@ -35,6 +35,12 @@ var allNavItems = []NavItem{
 		Roles: []string{"client", "server", "both"},
 	},
 	{
+		Path:  "/paths",
+		Label: "Paths",
+		Icon:  "M3 7a2 2 0 012-2h4l2 2h6a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z",
+		Roles: []string{"client", "both"},
+	},
+	{
 		Path:  "/retention",
 		Label: "Retention",
 		Icon:  "M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z",

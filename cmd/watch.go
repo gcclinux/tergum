@@ -36,7 +36,72 @@ The watcher batches stable files into backup jobs at a configurable interval
 		RunE: runWatch,
 	}
 
+	cmd.AddCommand(newWatchRunCmd())
+	cmd.AddCommand(newWatchEnableCmd())
+	cmd.AddCommand(newWatchDisableCmd())
+
 	return cmd
+}
+
+func newWatchRunCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "run",
+		Short: "Start file watcher in the foreground",
+		RunE:  runWatch,
+	}
+}
+
+func newWatchEnableCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "enable",
+		Short: "Enable the file watcher in configuration",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return updateWatcherEnabled(true)
+		},
+	}
+}
+
+func newWatchDisableCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "disable",
+		Short: "Disable the file watcher in configuration",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return updateWatcherEnabled(false)
+		},
+	}
+}
+
+func updateWatcherEnabled(enabled bool) error {
+	path := cfgFile
+	if path == "" {
+		path = config.DefaultConfigPath()
+	}
+
+	cfg, err := config.Load(path)
+	if err != nil {
+		return fmt.Errorf("loading config: %w", err)
+	}
+
+	cfg.Watcher.Enabled = enabled
+
+	if err := writeConfigTOML(path, cfg); err != nil {
+		return fmt.Errorf("saving config: %w", err)
+	}
+
+	statusStr := "disabled"
+	if enabled {
+		statusStr = "enabled"
+	}
+
+	printOutput(
+		map[string]interface{}{
+			"status":  "success",
+			"enabled": enabled,
+		},
+		fmt.Sprintf("Watcher %s in configuration (%s).", statusStr, path),
+	)
+
+	return nil
 }
 
 func runWatch(cmd *cobra.Command, args []string) error {

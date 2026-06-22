@@ -236,6 +236,7 @@ func (s *Server) routes() http.Handler {
 	authed.HandleFunc("/backups", s.handleBackups)
 	authed.HandleFunc("/restore", s.handleRestore)
 	authed.HandleFunc("/config", s.handleConfig)
+	authed.HandleFunc("/paths", s.handlePaths)
 	authed.HandleFunc("/retention", s.handleRetention)
 	authed.HandleFunc("/watchers", s.handleWatchers)
 	authed.HandleFunc("/activity", s.handleActivity)
@@ -279,6 +280,9 @@ func (s *Server) routes() http.Handler {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		}
 	})
+	authed.HandleFunc("/api/watchers/import", s.handleWatchersImport)
+	authed.HandleFunc("/api/watchers/config/autostart", s.handleAPIWatcherAutostart)
+
 
 	// Backup API endpoints.
 	authed.HandleFunc("/api/backups/trigger", s.handleAPIBackupTrigger)
@@ -297,6 +301,7 @@ func (s *Server) routes() http.Handler {
 	authed.HandleFunc("/api/restore/backups", s.handleAPIRestoreBackups)
 	authed.HandleFunc("/api/restore/files", s.handleAPIRestoreFiles)
 	authed.HandleFunc("/api/restore/run", s.handleAPIRestoreFile)
+	authed.HandleFunc("/api/restore/jobs", s.handleAPIRestoreJobs)
 
 	// Dashboard API.
 	authed.HandleFunc("/api/dashboard", s.handleAPIDashboard)
@@ -529,7 +534,13 @@ type configData struct {
 	Title    string
 	NodeRole string
 	NavItems []NavItem
-	Config   config.Config
+	Config   *config.Config
+}
+
+type pathsData struct {
+	Title    string
+	NodeRole string
+	NavItems []NavItem
 }
 
 type retentionData struct {
@@ -725,14 +736,19 @@ func (s *Server) handleRestore(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
 	data := configData{Title: "Configuration", NodeRole: s.nodeRole(), NavItems: FilterNavItems(s.nodeRole())}
 	if s.fullCfg != nil {
-		data.Config = *s.fullCfg
+		data.Config = s.fullCfg
 	} else if s.configPath != "" {
 		cfg, err := config.Load(s.configPath)
 		if err == nil {
-			data.Config = *cfg
+			data.Config = cfg
 		}
 	}
 	s.renderFragment(w, r, "config", data)
+}
+
+func (s *Server) handlePaths(w http.ResponseWriter, r *http.Request) {
+	data := pathsData{Title: "Paths", NodeRole: s.nodeRole(), NavItems: FilterNavItems(s.nodeRole())}
+	s.renderFragment(w, r, "paths", data)
 }
 
 func (s *Server) handleRetention(w http.ResponseWriter, r *http.Request) {

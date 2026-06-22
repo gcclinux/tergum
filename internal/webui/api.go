@@ -1092,6 +1092,59 @@ func (s *Server) runWebRestore(hash, filePath, backupID, dest string) {
 	}
 }
 
+// handleAPIRestoreJobs handles GET /api/restore/jobs — returns recent restore jobs.
+func (s *Server) handleAPIRestoreJobs(w http.ResponseWriter, r *http.Request) {
+	if s.repo == nil {
+		fmt.Fprint(w, `<p class="text-gray-500 dark:text-gray-400 italic text-sm">Database not available.</p>`)
+		return
+	}
+
+	restores, err := s.repo.ListRestoreHistory(r.Context(), 10)
+	if err != nil {
+		s.logger.Error("list restore history failed", "error", err)
+		fmt.Fprint(w, `<p class="text-red-500 dark:text-red-400 text-sm">Failed to load restore history.</p>`)
+		return
+	}
+
+	if len(restores) == 0 {
+		fmt.Fprint(w, `<p class="text-gray-500 dark:text-gray-400 italic text-sm">No recent restore jobs.</p>`)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/html")
+	w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
+	w.Header().Set("Pragma", "no-cache")
+	w.Header().Set("Expires", "0")
+
+	fmt.Fprint(w, `<div class="overflow-x-auto"><table class="w-full text-left text-sm text-gray-500 dark:text-gray-400">`)
+	fmt.Fprint(w, `<thead class="text-xs text-gray-700 dark:text-gray-300 uppercase bg-gray-50 dark:bg-gray-700/50"><tr>`)
+	fmt.Fprint(w, `<th class="px-4 py-3">File Name</th>`)
+	fmt.Fprint(w, `<th class="px-4 py-3">Restored To</th>`)
+	fmt.Fprint(w, `<th class="px-4 py-3">Restored At</th>`)
+	fmt.Fprint(w, `<th class="px-4 py-3">User</th>`)
+	fmt.Fprint(w, `<th class="px-4 py-3">Status</th>`)
+	fmt.Fprint(w, `</tr></thead><tbody>`)
+
+	for _, rec := range restores {
+		statusText := "Success"
+		statusClass := "bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300"
+		if !rec.Success {
+			statusText = "Failed"
+			statusClass = "bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-300"
+		}
+		date := rec.RestoredAt.Format("2006-01-02 15:04:05")
+
+		fmt.Fprintf(w, `<tr class="border-b border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800/50">`)
+		fmt.Fprintf(w, `<td class="px-4 py-3 font-medium text-gray-900 dark:text-white">%s</td>`, rec.FileName)
+		fmt.Fprintf(w, `<td class="px-4 py-3 font-mono text-xs">%s</td>`, rec.RestoredTo)
+		fmt.Fprintf(w, `<td class="px-4 py-3">%s</td>`, date)
+		fmt.Fprintf(w, `<td class="px-4 py-3">%s</td>`, rec.RestoredBy)
+		fmt.Fprintf(w, `<td class="px-4 py-3"><span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium %s">%s</span></td>`, statusClass, statusText)
+		fmt.Fprintf(w, `</tr>`)
+	}
+	fmt.Fprint(w, `</tbody></table></div>`)
+}
+
 // localDataSource reads files from a local CAS directory.
 type localDataSource struct {
 	storageDir string

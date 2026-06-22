@@ -8,7 +8,10 @@
     <script src="/assets/alpine.min.js" defer></script>
     <script src="/assets/htmx.min.js" defer></script>
     <script>
-    document.addEventListener('alpine:init', () => {
+    function initAlpine() {
+        if (window.AlpineInitialized) return;
+        window.AlpineInitialized = true;
+
         Alpine.store('app', {
             // Sidebar state
             sidebarCollapsed: localStorage.getItem('sidebar_collapsed') === 'true',
@@ -165,21 +168,123 @@
                 }
             }
         });
-    });
+
+        Alpine.data('pathList', (baseUrl, fieldName, responseKey) => ({
+            items: [],
+            newItem: '',
+            error: '',
+            loading: false,
+            pendingRemove: null,
+            init() {
+                this.fetchItems();
+            },
+            async fetchItems() {
+                try {
+                    const resp = await fetch(baseUrl);
+                    if (resp.ok) {
+                        const data = await resp.json();
+                        this.items = data[responseKey] || [];
+                    }
+                } catch (e) {
+                    console.error('Failed to fetch paths:', e);
+                }
+            },
+            async addItem() {
+                this.error = '';
+                const val = this.newItem.trim();
+                if (!val) {
+                    this.error = 'Path must not be blank';
+                    return;
+                }
+                this.loading = true;
+                try {
+                    const body = {};
+                    body[fieldName] = val;
+                    const resp = await fetch(baseUrl + '/add', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(body)
+                    });
+                    if (resp.ok) {
+                        this.newItem = '';
+                        await this.fetchItems();
+                        if (window.Alpine && Alpine.store('app')) {
+                            Alpine.store('app').addToast('success', 'Path added');
+                        }
+                    } else {
+                        const text = await resp.text();
+                        this.error = text || 'Failed to add path';
+                    }
+                } catch (e) {
+                    this.error = 'Network error';
+                } finally {
+                    this.loading = false;
+                }
+            },
+            confirmRemove(path) {
+                this.pendingRemove = path;
+            },
+            cancelRemove() {
+                this.pendingRemove = null;
+            },
+            async doRemove(path) {
+                this.pendingRemove = null;
+                this.loading = true;
+                try {
+                    const body = {};
+                    body[fieldName] = path;
+                    const resp = await fetch(baseUrl + '/remove', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(body)
+                    });
+                    if (resp.ok) {
+                        await this.fetchItems();
+                        if (window.Alpine && Alpine.store('app')) {
+                            Alpine.store('app').addToast('success', 'Path removed');
+                        }
+                    } else {
+                        const text = await resp.text();
+                        if (window.Alpine && Alpine.store('app')) {
+                            Alpine.store('app').addToast('error', 'Failed to remove: ' + (text || 'server error'));
+                        }
+                    }
+                } catch (e) {
+                    if (window.Alpine && Alpine.store('app')) {
+                        Alpine.store('app').addToast('error', 'Network error');
+                    }
+                } finally {
+                    this.loading = false;
+                }
+            }
+        }));
+
+    }
+
+    if (window.Alpine) {
+        initAlpine();
+    } else {
+        document.addEventListener('alpine:init', initAlpine);
+    }
 
     // Responsive sidebar: auto-collapse below 1024px
-    document.addEventListener('alpine:initialized', () => {
+    function initSidebar() {
         const store = Alpine.store('app');
-        store.handleResize();
-        window.addEventListener('resize', () => store.handleResize());
-    });
+        if (store) {
+            store.handleResize();
+            window.addEventListener('resize', () => store.handleResize());
+        }
+    }
+    if (window.Alpine && Alpine.store && Alpine.store('app')) {
+        initSidebar();
+    } else {
+        document.addEventListener('alpine:initialized', initSidebar);
+    }
     </script>
 </head>
 <body class="bg-gray-50 dark:bg-gray-900 min-h-screen flex"
       hx-boost="true"
-      hx-target="#content-area"
       hx-swap="innerHTML transition:true"
-      hx-push-url="true"
       hx-indicator="#page-loader">
 
     <!-- Mobile sidebar backdrop -->
@@ -195,7 +300,8 @@
          style="display: none;"></div>
 
     <!-- Sidebar -->
-    <aside :class="[
+    <aside hx-target="#content-area"
+           :class="[
                $store.app.sidebarCollapsed ? 'w-16' : 'w-64',
                $store.app.sidebarMobileOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'
            ]"
@@ -337,13 +443,13 @@
                     if (window.Alpine && Alpine.store('app')) {
                         Alpine.store('app').addToast('info', 'Live connection restored');
                     }
-                    document.body.dispatchEvent(new CustomEvent('sse:reconnected'));
+                    document.body.dispatchEvent(new CustomEvent('sse-reconnected'));
                 } else {
                     if (window.Alpine && Alpine.store('app')) {
                         Alpine.store('app').addToast('info', 'Live connection established');
                     }
                 }
-                document.body.dispatchEvent(new CustomEvent('sse:connected'));
+                document.body.dispatchEvent(new CustomEvent('sse-connected'));
             };
 
             evtSource.onmessage = function(event) {
@@ -352,11 +458,11 @@
                     const data = JSON.parse(event.data);
                     if (data.type && data.message) {
                         const toastType = data.type.includes('failed') ? 'error' :
-                                          data.type.includes('warning') ? 'warning' : 'info';
+                                           data.type.includes('warning') ? 'warning' : 'info';
                         Alpine.store('app').addToast(toastType, data.message);
                     }
                     // Trigger htmx refresh for relevant sections
-                    document.body.dispatchEvent(new CustomEvent('sse:' + data.type, { detail: data }));
+                    document.body.dispatchEvent(new CustomEvent('sse-' + data.type, { detail: data }));
                 } catch (e) {
                     // Legacy plain-text format fallback
                 }
@@ -367,7 +473,7 @@
                 if (reconnectAttempts === 1 && window.Alpine && Alpine.store('app')) {
                     Alpine.store('app').addToast('warning', 'Live connection lost, reconnecting...');
                 }
-                document.body.dispatchEvent(new CustomEvent('sse:disconnected'));
+                document.body.dispatchEvent(new CustomEvent('sse-disconnected'));
                 // EventSource will auto-reconnect with browser built-in backoff
             };
         }

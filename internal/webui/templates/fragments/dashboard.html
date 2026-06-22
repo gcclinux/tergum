@@ -1,11 +1,11 @@
 {{define "content"}}
 <div class="space-y-6"
      x-data
-     @sse:backup_completed.window="htmx.trigger('#card-files', 'load'); htmx.trigger('#card-storage', 'load'); htmx.trigger('#activity-feed', 'load')"
-     @sse:backup_started.window="htmx.trigger('#activity-feed', 'load')"
-     @sse:backup_failed.window="htmx.trigger('#activity-feed', 'load')"
-     @sse:client_connected.window="htmx.trigger('#activity-feed', 'load')"
-     @sse:client_disconnected.window="htmx.trigger('#activity-feed', 'load')"
+     @sse-backup_completed.window="htmx.trigger('#card-files', 'load'); htmx.trigger('#card-storage', 'load'); htmx.trigger('#activity-feed', 'load')"
+     @sse-backup_started.window="htmx.trigger('#activity-feed', 'load')"
+     @sse-backup_failed.window="htmx.trigger('#activity-feed', 'load')"
+     @sse-client_connected.window="htmx.trigger('#activity-feed', 'load')"
+     @sse-client_disconnected.window="htmx.trigger('#activity-feed', 'load')"
 >
     <!-- System info row -->
     <div class="flex items-center gap-3 text-sm text-gray-500 dark:text-gray-400">

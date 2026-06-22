@@ -1,5 +1,48 @@
 {{define "content"}}
-<div class="space-y-6" x-data="watcherPage()">
+<div class="space-y-6" x-data="watcherPage()" data-running="{{.WatcherRunning}}">
+    <!-- Watcher Configuration (read-only, from config) -->
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-sm" x-data="{ open: true }">
+        <button @click="open = !open" class="w-full flex items-center justify-between p-6 text-left">
+            <h2 class="text-base font-semibold text-gray-800 dark:text-gray-100">Watcher Configuration</h2>
+            <svg :class="open ? 'rotate-180' : ''" class="w-5 h-5 text-gray-500 transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+            </svg>
+        </button>
+        <div x-show="open" x-transition class="px-6 pb-6 border-t border-gray-100 dark:border-gray-700 pt-4">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-600 dark:text-gray-400">Watcher Enabled (Config)</label>
+                    <div class="mt-1 flex items-center gap-3">
+                        {{if .WatcherEnabled}}
+                            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 dark:bg-green-900/40 text-green-800 dark:text-green-300">Enabled</span>
+                            <button @click="toggleAutostart(false)" class="text-xs text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300 hover:underline focus:outline-none">
+                                Disable
+                            </button>
+                        {{else}}
+                            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400">Disabled</span>
+                            <button @click="toggleAutostart(true)" class="text-xs text-green-600 hover:text-green-800 dark:text-green-400 dark:hover:text-green-300 hover:underline focus:outline-none">
+                                Enable
+                            </button>
+                        {{end}}
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-600 dark:text-gray-400">Debounce</label>
+                    <p class="mt-1 text-sm text-gray-800 dark:text-gray-100">{{.DebounceMs}} ms</p>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-600 dark:text-gray-400">Stability Timeout</label>
+                    <p class="mt-1 text-sm text-gray-800 dark:text-gray-100">{{.StabilitySec}} seconds</p>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-600 dark:text-gray-400">Batch Interval</label>
+                    <p class="mt-1 text-sm text-gray-800 dark:text-gray-100">{{.BatchMinutes}} minutes</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+
     <!-- Watcher Status & Controls -->
     <div class="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6">
         <div class="flex items-center justify-between mb-4">
@@ -70,7 +113,40 @@
 
     <!-- Watched Paths List -->
     <div class="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6">
-        <h2 class="text-base font-semibold text-gray-800 dark:text-gray-100 mb-4">Watched Paths</h2>
+        <div class="flex items-center justify-between mb-4">
+            <div>
+                <h2 class="text-base font-semibold text-gray-800 dark:text-gray-100">Watched Paths</h2>
+                <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Removing a path only removes it from the watcher — it does not affect your backup path list.</p>
+            </div>
+            <button @click="importPaths()" :disabled="importing"
+                    class="flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-lg border border-blue-300 dark:border-blue-600 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed">
+                <svg x-show="!importing" class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/>
+                </svg>
+                <svg x-show="importing" class="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path>
+                </svg>
+                <span x-text="importing ? 'Importing…' : 'Import from Paths'"></span>
+            </button>
+        </div>
+        <!-- Inline confirmation bar — shown when a remove is pending -->
+        <div x-show="pendingRemove !== null" x-cloak
+             class="flex items-center justify-between gap-4 px-4 py-3 mb-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+            <span class="text-sm text-red-700 dark:text-red-300 font-medium">
+                Remove <span class="font-mono break-all" x-text="pendingRemove"></span> from watcher?
+            </span>
+            <div class="flex gap-2 flex-shrink-0">
+                <button @click="doRemove(pendingRemove)"
+                        class="px-3 py-1 text-xs font-medium text-white bg-red-600 hover:bg-red-700 rounded transition-colors">
+                    Yes, remove
+                </button>
+                <button @click="cancelRemove()"
+                        class="px-3 py-1 text-xs font-medium text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-gray-600 hover:bg-gray-200 dark:hover:bg-gray-500 rounded transition-colors">
+                    Cancel
+                </button>
+            </div>
+        </div>
         <div id="watch-paths" class="overflow-x-auto" hx-get="/api/watchers/paths" hx-trigger="load, every 10s, refreshPaths" hx-swap="innerHTML">
             {{if .WatchPaths}}
             <table class="w-full text-sm">
@@ -93,7 +169,7 @@
                         <td class="px-4 py-3 text-gray-600 dark:text-gray-300 whitespace-nowrap">{{if .LastEvent}}{{.LastEvent}}{{else}}-{{end}}</td>
                         <td class="px-4 py-3 text-right text-gray-600 dark:text-gray-300">{{.EventCount}}</td>
                         <td class="px-4 py-3 text-center">
-                            <button @click="$store.app.openModal('Remove Watch Path', '{{.Path}}', '/api/watchers?path={{.Path}}', 'DELETE')"
+                            <button @click="confirmRemove($el.dataset.path)" data-path="{{.Path}}"
                                     class="text-red-600 dark:text-red-400 border border-red-300 dark:border-red-600 rounded px-2 py-0.5 text-xs hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors duration-150">
                                 Remove
                             </button>
@@ -109,15 +185,20 @@
     </div>
 </div>
 
+
 <script>
 function watcherPage() {
     return {
-        running: {{.WatcherRunning}},
+        running: document.querySelector('[data-running]')?.dataset.running === 'true',
         pending: false,
         newPath: '',
         newRecursive: true,
         pathError: '',
         addingPath: false,
+        importing: false,
+        pendingRemove: null,
+
+
 
         startWatcher() {
             if (this.pending) return;
@@ -211,8 +292,86 @@ function watcherPage() {
                 .finally(() => {
                     this.addingPath = false;
                 });
+        },
+
+        importPaths() {
+            if (this.importing) return;
+            this.importing = true;
+            fetch('/api/watchers/import', { method: 'POST', headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+                .then(response => {
+                    var trigger = response.headers.get('HX-Trigger');
+                    if (trigger) {
+                        try {
+                            var data = JSON.parse(trigger);
+                            if (data.showToast) {
+                                Alpine.store('app').addToast(data.showToast.type, data.showToast.message);
+                            }
+                        } catch(e) {}
+                    }
+                    if (response.ok) {
+                        htmx.trigger('#watch-paths', 'refreshPaths');
+                    }
+                })
+                .catch(() => {
+                    Alpine.store('app').addToast('error', 'Failed to import paths: Network error');
+                })
+                .finally(() => {
+                    this.importing = false;
+                });
+        },
+
+        confirmRemove(path) {
+            this.pendingRemove = path;
+        },
+
+        cancelRemove() {
+            this.pendingRemove = null;
+        },
+
+        doRemove(path) {
+            fetch('/api/watchers?path=' + encodeURIComponent(path), { method: 'DELETE', headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+                .then(response => {
+                    var trigger = response.headers.get('HX-Trigger');
+                    if (trigger) {
+                        try {
+                            var data = JSON.parse(trigger);
+                            if (data.showToast) {
+                                Alpine.store('app').addToast(data.showToast.type, data.showToast.message);
+                            }
+                        } catch(e) {}
+                    }
+                    if (response.ok) {
+                        this.pendingRemove = null;
+                        htmx.trigger('#watch-paths', 'refreshPaths');
+                    }
+                })
+                .catch(() => {
+                    Alpine.store('app').addToast('error', 'Failed to remove path: Network error');
+                });
+        },
+
+        toggleAutostart(enable) {
+            var formData = new FormData();
+            formData.append('enabled', enable ? 'true' : 'false');
+
+            fetch('/api/watchers/config/autostart', { method: 'POST', body: formData, headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+                .then(response => {
+                    if (response.ok) {
+                        Alpine.store('app').addToast('success', enable ? 'Autostart enabled' : 'Autostart disabled');
+                        // Reload page to show updated configuration badge
+                        setTimeout(() => { window.location.reload(); }, 500);
+                    } else {
+                        response.text().then(text => {
+                            Alpine.store('app').addToast('error', 'Failed to update autostart: ' + (text || 'Server error'));
+                        });
+                    }
+                })
+                .catch(() => {
+                    Alpine.store('app').addToast('error', 'Network error');
+                });
         }
     };
 }
+
 </script>
 {{end}}

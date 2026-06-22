@@ -4,7 +4,7 @@
     <!-- Running Job Banner (polls every 2s, hidden when no running jobs) -->
     <div id="backup-status"
          hx-get="/api/backups/status"
-         hx-trigger="load, every 2s, sse:backup_progress from:body"
+         hx-trigger="load, every 2s, sse-backup_progress from:body"
          hx-swap="innerHTML">
         <div class="animate-pulse">
             <div class="h-16 w-full bg-gray-200 dark:bg-gray-700 rounded-lg"></div>
@@ -14,7 +14,7 @@
     <!-- Backup Progress (refreshed by SSE backup_progress events) -->
     <div id="backup-progress"
          hx-get="/api/backups/progress"
-         hx-trigger="load, sse:backup_progress from:body"
+         hx-trigger="load, sse-backup_progress from:body"
          hx-swap="outerHTML">
         <div id="backup-progress" class="hidden"></div>
     </div>

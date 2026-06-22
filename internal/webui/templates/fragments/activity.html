@@ -95,11 +95,11 @@ function activityPage() {
 
             // Listen for SSE events dispatched by the shell's EventSource handler
             this._sseHandler = (e) => this.handleSSEEvent(e.detail);
-            document.body.addEventListener('sse:activity', this._sseHandler);
+            document.body.addEventListener('sse-activity', this._sseHandler);
 
-            // Listen for all SSE custom events (they're dispatched as sse:<type>)
+            // Listen for all SSE custom events (they're dispatched as sse-<type>)
             this._genericSSEHandler = (e) => {
-                if (e.type.startsWith('sse:') && e.detail) {
+                if (e.type.startsWith('sse-') && e.detail) {
                     this.handleSSEEvent(e.detail);
                 }
             };
@@ -113,31 +113,31 @@ function activityPage() {
             eventTypes.forEach(type => {
                 const handler = (e) => this.handleSSEEvent(e.detail);
                 this._sseHandlers[type] = handler;
-                document.body.addEventListener('sse:' + type, handler);
+                document.body.addEventListener('sse-' + type, handler);
             });
 
             // Listen for connection state changes
             this._connectHandler = () => { this.connected = true; };
             this._disconnectHandler = () => { this.connected = false; };
-            document.body.addEventListener('sse:connected', this._connectHandler);
-            document.body.addEventListener('sse:disconnected', this._disconnectHandler);
+            document.body.addEventListener('sse-connected', this._connectHandler);
+            document.body.addEventListener('sse-disconnected', this._disconnectHandler);
 
             // Listen for reconnection to re-fetch missed events
             this._reconnectHandler = () => {
                 this.connected = true;
                 this.fetchHistory();
             };
-            document.body.addEventListener('sse:reconnected', this._reconnectHandler);
+            document.body.addEventListener('sse-reconnected', this._reconnectHandler);
         },
 
         destroy() {
-            document.body.removeEventListener('sse:activity', this._sseHandler);
-            document.body.removeEventListener('sse:connected', this._connectHandler);
-            document.body.removeEventListener('sse:disconnected', this._disconnectHandler);
-            document.body.removeEventListener('sse:reconnected', this._reconnectHandler);
+            document.body.removeEventListener('sse-activity', this._sseHandler);
+            document.body.removeEventListener('sse-connected', this._connectHandler);
+            document.body.removeEventListener('sse-disconnected', this._disconnectHandler);
+            document.body.removeEventListener('sse-reconnected', this._reconnectHandler);
             if (this._sseHandlers) {
                 Object.keys(this._sseHandlers).forEach(type => {
-                    document.body.removeEventListener('sse:' + type, this._sseHandlers[type]);
+                    document.body.removeEventListener('sse-' + type, this._sseHandlers[type]);
                 });
             }
         },

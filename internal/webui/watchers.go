@@ -4,9 +4,12 @@ import (
 	"fmt"
 	"html"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strings"
 
+	"github.com/BurntSushi/toml"
+	"github.com/ricardopadilha/tergum/internal/config"
 	"github.com/ricardopadilha/tergum/internal/db"
 )
 
@@ -243,8 +246,10 @@ func (s *Server) handleWatchersPaths(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, `<td class="px-4 py-3 text-center">%s</td>`, enabledHTML)
 		fmt.Fprintf(w, `<td class="px-4 py-3 text-gray-600 dark:text-gray-300 whitespace-nowrap">%s</td>`, lastEvent)
 		fmt.Fprintf(w, `<td class="px-4 py-3 text-right text-gray-600 dark:text-gray-300">%d</td>`, wp.EventCount)
-		fmt.Fprintf(w, `<td class="px-4 py-3 text-center"><button @click="$store.app.openModal('Remove Watch Path', '%s', '/api/watchers?path=%s', 'DELETE')" class="text-red-600 dark:text-red-400 border border-red-300 dark:border-red-600 rounded px-2 py-0.5 text-xs hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors duration-150">Remove</button></td>`, escapedPath, escapedPath)
+		fmt.Fprintf(w, `<td class="px-4 py-3 text-center"><button @click="confirmRemove($el.dataset.path)" data-path="%s" class="text-red-600 dark:text-red-400 border border-red-300 dark:border-red-600 rounded px-2 py-0.5 text-xs hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors duration-150">Remove</button></td>`, escapedPath)
 		fmt.Fprint(w, `</tr>`)
+
+
 	}
 
 	fmt.Fprint(w, `</tbody></table>`)
@@ -298,3 +303,124 @@ func (s *Server) handleWatchersPathsAdd(w http.ResponseWriter, r *http.Request) 
 	setSuccessToast(w, fmt.Sprintf("Watch path added: %s", absPath))
 	w.WriteHeader(http.StatusOK)
 }
+
+// handleWatchersImport handles POST /api/watchers/import — imports all backup include paths as watcher paths.
+func (s *Server) handleWatchersImport(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if s.repo == nil {
+		http.Error(w, "database not available", http.StatusServiceUnavailable)
+		return
+	}
+
+	includePaths, err := s.repo.ListIncludePaths(r.Context())
+	if err != nil {
+		s.logger.Error("list include paths failed", "error", err)
+		setErrorToast(w, "Failed to load backup paths: "+err.Error())
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	if len(includePaths) == 0 {
+		setErrorToast(w, "No backup include paths found to import")
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	// Load existing watch paths to report how many are new vs already present.
+	existing, err := s.repo.LoadWatchPaths(r.Context())
+	if err != nil {
+		s.logger.Error("load watch paths failed", "error", err)
+		setErrorToast(w, "Failed to load current watch paths: "+err.Error())
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	existingSet := make(map[string]struct{}, len(existing))
+	for _, wp := range existing {
+		existingSet[wp.Path] = struct{}{}
+	}
+
+	added := 0
+	skipped := 0
+	for _, p := range includePaths {
+		wp := db.WatchPath{
+			Path:      p,
+			Recursive: true,
+			Enabled:   true,
+		}
+		if err := s.repo.SaveWatchPath(r.Context(), wp); err != nil {
+			s.logger.Error("import watch path failed", "path", p, "error", err)
+			continue
+		}
+		if _, exists := existingSet[p]; exists {
+			skipped++
+		} else {
+			added++
+		}
+	}
+
+	if added == 0 && skipped > 0 {
+		setSuccessToast(w, fmt.Sprintf("All %d path(s) already present in watcher", skipped))
+	} else if added > 0 && skipped > 0 {
+		setSuccessToast(w, fmt.Sprintf("Imported %d path(s) (%d already present)", added, skipped))
+	} else {
+		setSuccessToast(w, fmt.Sprintf("Imported %d path(s) from backup path list", added))
+	}
+	w.WriteHeader(http.StatusOK)
+}
+
+// handleAPIWatcherAutostart handles POST /api/watchers/config/autostart.
+func (s *Server) handleAPIWatcherAutostart(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	if s.configPath == "" {
+		http.Error(w, "configuration path not set", http.StatusBadRequest)
+		return
+	}
+
+	enabled := r.FormValue("enabled") == "true"
+
+	// Load current config.
+	cfg, err := config.Load(s.configPath)
+	if err != nil {
+		s.logger.Error("watcher autostart: cannot load config", "error", err)
+		setErrorToast(w, "Failed to load config: "+err.Error())
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+
+	// Update config.
+	cfg.Watcher.Enabled = enabled
+
+	// Write back to file.
+	f, err := os.OpenFile(s.configPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
+	if err != nil {
+		s.logger.Error("watcher autostart: cannot open config file", "error", err)
+		setErrorToast(w, "Failed to open config file: "+err.Error())
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	defer f.Close()
+
+	encoder := toml.NewEncoder(f)
+	if err := encoder.Encode(cfg); err != nil {
+		s.logger.Error("watcher autostart: cannot write config file", "error", err)
+		setErrorToast(w, "Failed to save config: "+err.Error())
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+
+	// Sync in-memory config.
+	if s.fullCfg != nil {
+		s.fullCfg.Watcher.Enabled = enabled
+	}
+
+	setSuccessToast(w, "Autostart on boot updated")
+	w.WriteHeader(http.StatusOK)
+}
+
