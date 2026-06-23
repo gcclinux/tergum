@@ -235,14 +235,29 @@ func (e *BackupEngine) RunBackup(ctx context.Context, req BackupRequest) (*Backu
 			return
 		}
 		lastUpdate = time.Now()
-		_ = e.repo.UpdateJob(ctx, backupID, db.JobUpdate{
-			FileCount:    &result.FilesProcessed,
+		update := db.JobUpdate{
 			BytesNew:     &result.BytesNew,
 			FilesDeduped: &result.FilesDeduped,
-		})
+		}
+		// Only write FileCount when files have actually been processed.
+		// Before any uploads complete, FilesProcessed is 0 and would overwrite
+		// the scan count set earlier, causing the UI to show "0 files".
+		if result.FilesProcessed > 0 {
+			update.FileCount = &result.FilesProcessed
+		}
+		_ = e.repo.UpdateJob(ctx, backupID, update)
 	}
 
 	// 6. Upload needed files (one upload per unique hash).
+	// Build a map of hash → number of files sharing that hash in the manifest,
+	// so we can report accurate file-level progress during uploads.
+	hashFileCount := make(map[string]int64, len(diff.NeededHashes))
+	for _, mEntry := range manifest {
+		if neededSet[mEntry.Blake3Hash] {
+			hashFileCount[mEntry.Blake3Hash]++
+		}
+	}
+
 	uploadedHashes := make(map[string]bool, len(diff.NeededHashes))
 	type encMeta struct {
 		wrappedDEK []byte
@@ -303,6 +318,7 @@ func (e *BackupEngine) RunBackup(ctx context.Context, req BackupRequest) (*Backu
 
 		uploadedHashes[hash] = true
 		result.BytesNew += int64(len(data))
+		result.FilesProcessed += hashFileCount[hash]
 		updateProgress()
 	}
 
@@ -334,9 +350,9 @@ func (e *BackupEngine) RunBackup(ctx context.Context, req BackupRequest) (*Backu
 			continue
 		}
 
-		result.FilesProcessed++
 		if !neededSet[mEntry.Blake3Hash] {
-			// Hash already on server — server-side dedup.
+			// Hash already on server — server-side dedup (not counted in step 6).
+			result.FilesProcessed++
 			result.FilesDeduped++
 		} else if seenUploaded[mEntry.Blake3Hash] {
 			// Hash was needed but we already counted one file for this hash — intra-backup dedup.

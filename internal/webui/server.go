@@ -426,16 +426,32 @@ func (s *Server) watchJobActivity() {
 				knownJobs[j.BackupID] = currentStatus
 				switch j.Status {
 				case "completed":
+					// Clear progress events from history since backup is done.
+					s.broker.ClearByType("backup_progress")
+					s.broker.Publish(ActivityEvent{
+						Type:    "backup_progress_clear",
+						Message: "clear",
+					})
 					s.broker.Publish(ActivityEvent{
 						Type:    "backup_completed",
 						Message: fmt.Sprintf("Backup %s completed: %d files, %s", j.Level, j.FileCount, formatSize(j.BytesNew)),
 					})
 				case "failed":
+					s.broker.ClearByType("backup_progress")
+					s.broker.Publish(ActivityEvent{
+						Type:    "backup_progress_clear",
+						Message: "clear",
+					})
 					s.broker.Publish(ActivityEvent{
 						Type:    "backup_failed",
 						Message: fmt.Sprintf("Backup %s failed: %s", j.Level, j.ErrorMessage),
 					})
 				case "stopped":
+					s.broker.ClearByType("backup_progress")
+					s.broker.Publish(ActivityEvent{
+						Type:    "backup_progress_clear",
+						Message: "clear",
+					})
 					s.broker.Publish(ActivityEvent{
 						Type:    "backup_stopped",
 						Message: fmt.Sprintf("Backup %s stopped", j.Level),

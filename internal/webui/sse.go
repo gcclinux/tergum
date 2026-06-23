@@ -110,6 +110,21 @@ func (b *SSEBroker) ClientCount() int {
 	return len(b.clients)
 }
 
+// ClearByType removes events matching the given type from history.
+// This is useful for removing transient progress events after a backup completes.
+func (b *SSEBroker) ClearByType(eventType string) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	filtered := b.history[:0]
+	for _, e := range b.history {
+		if e.Type != eventType {
+			filtered = append(filtered, e)
+		}
+	}
+	b.history = filtered
+}
+
 // ServeHTTP implements the SSE endpoint handler.
 // It streams activity events to the client as Server-Sent Events.
 func (b *SSEBroker) ServeHTTP(w http.ResponseWriter, r *http.Request) {

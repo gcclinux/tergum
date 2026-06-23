@@ -81,7 +81,19 @@
             toasts: [],
             toastQueue: [],
             maxVisible: 5,
+            toastsEnabled: localStorage.getItem('toasts_enabled') !== 'false',
+            toggleToasts() {
+                this.toastsEnabled = !this.toastsEnabled;
+                localStorage.setItem('toasts_enabled', this.toastsEnabled ? 'true' : 'false');
+                if (!this.toastsEnabled) {
+                    // Clear all visible toasts when disabling
+                    this.toasts.forEach(t => { if (t.timeoutId) clearTimeout(t.timeoutId); });
+                    this.toasts = [];
+                    this.toastQueue = [];
+                }
+            },
             addToast(type, message) {
+                if (!this.toastsEnabled) return;
                 if (message && message.length > 200) {
                     message = message.substring(0, 200);
                 }
@@ -443,6 +455,7 @@
 
                 const eventTypes = [
                     'backup_started', 'backup_completed', 'backup_failed', 'backup_progress',
+                    'backup_progress_clear', 'backup_stopped',
                     'retention_run', 'client_connected', 'client_disconnected',
                     'watcher_started', 'watcher_stopped', 'restore_started', 'restore_completed'
                 ];
@@ -499,6 +512,12 @@
 
             handleSSEEvent(data) {
                 if (!data || !data.type || !data.message) return;
+
+                // Remove all progress entries when backup finishes.
+                if (data.type === 'backup_progress_clear') {
+                    this.events = this.events.filter(e => e.type !== 'backup_progress');
+                    return;
+                }
 
                 const event = {
                     id: this.generateId(),
@@ -735,9 +754,12 @@
                 try {
                     const data = JSON.parse(event.data);
                     if (data.type && data.message) {
-                        const toastType = data.type.includes('failed') ? 'error' :
-                                           data.type.includes('warning') ? 'warning' : 'info';
-                        Alpine.store('app').addToast(toastType, data.message);
+                        // Don't show toast for progress_clear events
+                        if (data.type !== 'backup_progress_clear') {
+                            const toastType = data.type.includes('failed') ? 'error' :
+                                               data.type.includes('warning') ? 'warning' : 'info';
+                            Alpine.store('app').addToast(toastType, data.message);
+                        }
                     }
                     // Trigger htmx refresh for relevant sections
                     document.body.dispatchEvent(new CustomEvent('sse-' + data.type, { detail: data }));
