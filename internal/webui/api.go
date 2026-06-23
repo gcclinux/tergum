@@ -1069,7 +1069,7 @@ func (s *Server) runWebRestore(hash, filePath, backupID, dest string) {
 				continue
 			}
 			entry := found[0]
-			destination := dest + entry.FilePath
+			destination := resolveDestination(dest, entry.FilePath)
 			entries = append(entries, restore.RestoreEntry{
 				Hash:        entry.Blake3Hash,
 				FileName:    entry.FileName,
@@ -1094,7 +1094,7 @@ func (s *Server) runWebRestore(hash, filePath, backupID, dest string) {
 		}
 	} else {
 		// Restore single file.
-		destination := dest + filePath
+		destination := resolveDestination(dest, filePath)
 		err := engine.RestoreFile(ctx, hash, destination)
 		if err != nil {
 			slog.Error("web restore: file restore failed", "hash", hash, "error", err)
@@ -1124,6 +1124,23 @@ func (s *Server) runWebRestore(hash, filePath, backupID, dest string) {
 			})
 		}
 	}
+}
+
+// resolveDestination determines where to write a restored file.
+// If dest is set, files are placed under dest preserving their relative structure.
+// If dest is empty, files are restored to their original paths.
+func resolveDestination(dest, originalPath string) string {
+	if dest == "" {
+		return originalPath
+	}
+	// Strip volume name (e.g. "C:") on Windows or UNC prefixes
+	vol := filepath.VolumeName(originalPath)
+	rel := originalPath[len(vol):]
+	// Strip any leading slashes or backslashes to make it a relative path component
+	for len(rel) > 0 && (rel[0] == '/' || rel[0] == '\\') {
+		rel = rel[1:]
+	}
+	return filepath.Join(dest, rel)
 }
 
 // handleAPIRestoreJobs handles GET /api/restore/jobs — returns recent restore jobs.

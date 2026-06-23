@@ -10,6 +10,7 @@ import (
 	"github.com/gcclinux/tergum/internal/grpc/proto"
 	"github.com/gcclinux/tergum/internal/model"
 	"github.com/gcclinux/tergum/internal/registry"
+	versionPkg "github.com/gcclinux/tergum/internal/version"
 	"github.com/google/uuid"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/peer"
@@ -59,7 +60,7 @@ func NewCommandServer(cfg CommandServerConfig) *CommandServer {
 
 	version := cfg.Version
 	if version == "" {
-		version = "3.0.0-dev"
+		version = versionPkg.Version
 	}
 
 	return &CommandServer{

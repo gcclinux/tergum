@@ -12,16 +12,22 @@ if ($Prod) {
     if ($dirty) {
         Write-Warning "Working tree is dirty. Prod build will use clean version anyway."
     }
-    $Version = git describe --tags --always 2>$null
-} else {
-    $Version = git describe --tags --always --dirty 2>$null
 }
-if (-not $Version) { $Version = "dev" }
+
+if (Test-Path "version.json") {
+    $versionJson = Get-Content "version.json" -Raw | ConvertFrom-Json
+    $Version = $versionJson.version
+    $Build = $versionJson.build
+}
+
+if (-not $Version) { $Version = "3.0.0" }
+if (-not $Build) { $Build = "dev" }
+
 $Commit = git rev-parse --short HEAD 2>$null
 if (-not $Commit) { $Commit = "none" }
 
 $BuildDate = (Get-Date -Format "yyyy-MM-ddTHH:mm:ssZ")
-$LdFlags = "-s -w -X `"github.com/gcclinux/tergum/cmd.Version=$Version`" -X `"github.com/gcclinux/tergum/cmd.Commit=$Commit`" -X `"github.com/gcclinux/tergum/cmd.BuildDate=$BuildDate`""
+$LdFlags = "-s -w -X `"github.com/gcclinux/tergum/internal/version.Version=$Version`" -X `"github.com/gcclinux/tergum/internal/version.Build=$Build`" -X `"github.com/gcclinux/tergum/internal/version.Commit=$Commit`" -X `"github.com/gcclinux/tergum/internal/version.BuildDate=$BuildDate`" -X `"github.com/gcclinux/tergum/cmd.Version=$Version`" -X `"github.com/gcclinux/tergum/cmd.Commit=$Commit`" -X `"github.com/gcclinux/tergum/cmd.BuildDate=$BuildDate`""
 
 $OutputDir = "dist"
 if (-not (Test-Path $OutputDir)) {

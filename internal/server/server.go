@@ -35,14 +35,12 @@ import (
 	"github.com/gcclinux/tergum/internal/scheduler"
 	"github.com/gcclinux/tergum/internal/storage"
 	tlspkg "github.com/gcclinux/tergum/internal/tls"
+	"github.com/gcclinux/tergum/internal/version"
 	"github.com/gcclinux/tergum/internal/watcher"
 	"github.com/gcclinux/tergum/internal/webui"
 
 	_ "modernc.org/sqlite"
 )
-
-// Version is the current Tergum version, set at build time.
-var Version = "3.0.0-dev"
 
 // Server holds all subsystems and manages their lifecycle.
 type Server struct {
@@ -56,7 +54,8 @@ type Server struct {
 	metrics *observe.MetricsServer
 
 	// Web UI
-	webUI *webui.Server
+	webUI             *webui.Server
+	watcherController *webui.LocalWatcherController
 
 	// Background subsystems
 	retentionEngine retention.Engine
@@ -167,7 +166,7 @@ func (s *Server) Start(ctx context.Context) error {
 		RetentionEngine: retEngine,
 		Registry:        reg,
 		MaxBackups:      s.cfg.Backup.MaxConcurrentUploads,
-		Version:         Version,
+		Version:         version.Version,
 	})
 
 	// Build gRPC data server.
@@ -217,7 +216,7 @@ func (s *Server) Start(ctx context.Context) error {
 
 	// Start metrics server.
 	if s.cfg.Metrics.Enabled {
-		s.metrics = observe.NewMetricsServer(s.cfg.Metrics.Port, Version)
+		s.metrics = observe.NewMetricsServer(s.cfg.Metrics.Port, version.Version)
 		metricsCtx, metricsCancel := context.WithCancel(ctx)
 		defer metricsCancel()
 
@@ -257,6 +256,7 @@ func (s *Server) Start(ctx context.Context) error {
 					BatchMinutes:    s.cfg.Watcher.BatchIntervalMinutes,
 					ExcludePatterns: excludes,
 				})
+				s.watcherController = wc
 				webuiOpts = append(webuiOpts, webui.WithWatcherController(wc))
 			} else {
 				s.logger.Warn("web backup trigger disabled: cannot derive key", "error", err)
@@ -295,6 +295,14 @@ func (s *Server) Start(ctx context.Context) error {
 				s.logger.Error("web UI server error", "error", err)
 			}
 		}()
+
+		// Auto-start watcher on boot if enabled in configuration.
+		if s.watcherController != nil && s.cfg.Watcher.Enabled {
+			s.logger.Info("auto-starting file watcher")
+			if err := s.watcherController.StartWatcher(); err != nil {
+				s.logger.Error("failed to auto-start file watcher", "error", err)
+			}
+		}
 	}
 
 	// Start retention engine (hourly ticker).
@@ -378,6 +386,14 @@ func (s *Server) Stop() error {
 			s.logger.Info("web UI server stopped")
 		}
 
+		// Stop local watcher if running.
+		if s.watcherController != nil && s.watcherController.IsRunning() {
+			s.logger.Info("stopping file watcher")
+			if err := s.watcherController.StopWatcher(); err != nil {
+				s.logger.Error("failed to stop file watcher", "error", err)
+			}
+		}
+
 		// Close database.
 		if s.repo != nil {
 			if err := s.repo.Close(); err != nil {
@@ -446,7 +462,7 @@ func (s *Server) startClient(ctx context.Context) error {
 		Encryptor:  encryptor,
 		Cfg:        s.cfg,
 		MasterKey:  masterKey,
-		Version:    Version,
+		Version:    version.Version,
 	})
 
 	// Start gRPC server for client-side CommandService on :7400.

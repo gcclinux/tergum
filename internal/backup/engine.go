@@ -192,6 +192,19 @@ func (e *BackupEngine) RunBackup(ctx context.Context, req BackupRequest) (*Backu
 		BackupID: backupID,
 	}
 
+	var lastUpdate time.Time
+	updateProgress := func() {
+		if time.Since(lastUpdate) < 1*time.Second {
+			return
+		}
+		lastUpdate = time.Now()
+		_ = e.repo.UpdateJob(ctx, backupID, db.JobUpdate{
+			FileCount:    &result.FilesProcessed,
+			BytesNew:     &result.BytesNew,
+			FilesDeduped: &result.FilesDeduped,
+		})
+	}
+
 	// 6. Upload needed files (one upload per unique hash).
 	uploadedHashes := make(map[string]bool, len(diff.NeededHashes))
 	type encMeta struct {
@@ -253,6 +266,7 @@ func (e *BackupEngine) RunBackup(ctx context.Context, req BackupRequest) (*Backu
 
 		uploadedHashes[hash] = true
 		result.BytesNew += int64(len(data))
+		updateProgress()
 	}
 
 	// 7. Insert backup entries for all manifest files.
@@ -293,6 +307,7 @@ func (e *BackupEngine) RunBackup(ctx context.Context, req BackupRequest) (*Backu
 		} else {
 			seenUploaded[mEntry.Blake3Hash] = true
 		}
+		updateProgress()
 	}
 
 	// 8. Sync local database to server.

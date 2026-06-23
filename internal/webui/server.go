@@ -16,6 +16,7 @@ import (
 	"github.com/gcclinux/tergum/internal/db"
 	"github.com/gcclinux/tergum/internal/model"
 	registryPkg "github.com/gcclinux/tergum/internal/registry"
+	"github.com/gcclinux/tergum/internal/version"
 )
 
 //go:embed assets
@@ -306,6 +307,7 @@ func (s *Server) routes() http.Handler {
 	// Dashboard API.
 	authed.HandleFunc("/api/dashboard", s.handleAPIDashboard)
 	authed.HandleFunc("/api/dashboard/files", s.handleAPIDashboardFiles)
+	authed.HandleFunc("/api/dashboard/dedup", s.handleAPIDashboardDedup)
 	authed.HandleFunc("/api/dashboard/storage", s.handleAPIDashboardStorage)
 	authed.HandleFunc("/api/dashboard/clients", s.handleAPIDashboardClients)
 	authed.HandleFunc("/api/dashboard/activity", s.handleAPIDashboardActivity)
@@ -451,7 +453,12 @@ func parseTemplates() (map[string]*template.Template, error) {
 
 	templates := make(map[string]*template.Template, len(pages))
 	for _, page := range pages {
-		t, err := template.ParseFS(templatesFS,
+		t := template.New("").Funcs(template.FuncMap{
+			"version": func() string {
+				return version.Version
+			},
+		})
+		t, err := t.ParseFS(templatesFS,
 			"templates/layout.html",
 			"templates/partials/*.html",
 			"templates/"+page,
@@ -536,6 +543,7 @@ type configData struct {
 	NodeRole string
 	NavItems []NavItem
 	Config   *config.Config
+	Version  string
 }
 
 type pathsData struct {
@@ -644,7 +652,7 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 		NodeRole:      s.nodeRole(),
 		NavItems:      FilterNavItems(s.nodeRole()),
 		Uptime:        uptime,
-		Version:       "3.0.0",
+		Version:       version.Version,
 		TotalFiles:    0,
 		TotalSize:     "0 B",
 		ActiveClients: 0,
@@ -760,7 +768,12 @@ func (s *Server) handleRestore(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
-	data := configData{Title: "Configuration", NodeRole: s.nodeRole(), NavItems: FilterNavItems(s.nodeRole())}
+	data := configData{
+		Title:    "Configuration",
+		NodeRole: s.nodeRole(),
+		NavItems: FilterNavItems(s.nodeRole()),
+		Version:  version.Version,
+	}
 	if s.fullCfg != nil {
 		data.Config = s.fullCfg
 	} else if s.configPath != "" {
@@ -768,6 +781,9 @@ func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
 		if err == nil {
 			data.Config = cfg
 		}
+	}
+	if data.Config == nil {
+		data.Config = &config.Config{}
 	}
 	s.renderFragment(w, r, "config", data)
 }

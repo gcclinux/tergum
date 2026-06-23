@@ -265,9 +265,14 @@ func resolveDestination(dest, originalPath string) string {
 	if dest == "" {
 		return originalPath
 	}
-	// Place under dest directory, preserving the full path structure.
-	// e.g., dest=/tmp/restored, originalPath=/home/user/file.txt → /tmp/restored/home/user/file.txt
-	return filepath.Join(dest, originalPath)
+	// Strip volume name (e.g. "C:") on Windows or UNC prefixes
+	vol := filepath.VolumeName(originalPath)
+	rel := originalPath[len(vol):]
+	// Strip any leading slashes or backslashes to make it a relative path component
+	for len(rel) > 0 && (rel[0] == '/' || rel[0] == '\\') {
+		rel = rel[1:]
+	}
+	return filepath.Join(dest, rel)
 }
 
 // loadRestoreMasterKey is the same key loading logic used for backup.

@@ -179,6 +179,19 @@ func (o *OngoingBackup) processBatch(ctx context.Context, batch []watcher.Stable
 		lastErr        error
 	)
 
+	var lastUpdate time.Time
+	updateProgress := func() {
+		if time.Since(lastUpdate) < 1*time.Second {
+			return
+		}
+		lastUpdate = time.Now()
+		_ = o.repo.UpdateJob(ctx, backupID, db.JobUpdate{
+			FileCount:    &filesProcessed,
+			BytesNew:     &bytesNew,
+			FilesDeduped: &filesDeduped,
+		})
+	}
+
 	// Process each file independently (no global cooldown).
 	for _, sf := range batch {
 		if ctx.Err() != nil {
@@ -198,6 +211,7 @@ func (o *OngoingBackup) processBatch(ctx context.Context, batch []watcher.Stable
 		filesProcessed += processed
 		bytesNew += bytes
 		filesDeduped += deduped
+		updateProgress()
 	}
 
 	// Update job with completion status.

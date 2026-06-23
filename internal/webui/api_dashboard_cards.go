@@ -65,6 +65,42 @@ func (s *Server) handleAPIDashboardStorage(w http.ResponseWriter, r *http.Reques
 	fmt.Fprint(w, `</div></div>`)
 }
 
+// handleAPIDashboardDedup handles GET /api/dashboard/dedup — returns deduplication ratio Data_Card content.
+func (s *Server) handleAPIDashboardDedup(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/html")
+
+	var ratioStr string = "0.0%"
+	var ratioPercent float64 = 0.0
+
+	if s.repo != nil {
+		jobs, err := s.repo.ListJobs(r.Context(), db.JobFilter{})
+		if err == nil {
+			var totalFiles, totalDeduped int64
+			for _, j := range jobs {
+				totalFiles += j.FileCount
+				totalDeduped += j.FilesDeduped
+			}
+			if totalFiles > 0 {
+				ratioPercent = float64(totalDeduped) / float64(totalFiles) * 100
+				ratioStr = fmt.Sprintf("%.1f%%", ratioPercent)
+			}
+		}
+	}
+
+	fmt.Fprint(w, `<div class="flex items-center gap-3">`)
+	fmt.Fprint(w, `<div class="flex-shrink-0 w-10 h-10 flex items-center justify-center rounded-lg bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400">`)
+	fmt.Fprint(w, `<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">`)
+	fmt.Fprint(w, `<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>`)
+	fmt.Fprint(w, `</svg></div>`)
+	fmt.Fprint(w, `<div class="flex-1 min-w-0">`)
+	fmt.Fprintf(w, `<p class="text-xl font-bold text-gray-900 dark:text-gray-100 truncate">%s</p>`, ratioStr)
+	fmt.Fprint(w, `<p class="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide">Dedup Ratio</p>`)
+	fmt.Fprint(w, `</div></div>`)
+	fmt.Fprint(w, `<div class="mt-3 h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">`)
+	fmt.Fprintf(w, `<div class="h-full bg-indigo-500 rounded-full transition-all duration-300" style="width: %.1f%%"></div>`, ratioPercent)
+	fmt.Fprint(w, `</div>`)
+}
+
 // handleAPIDashboardClients handles GET /api/dashboard/clients — returns active clients Data_Card content.
 func (s *Server) handleAPIDashboardClients(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html")

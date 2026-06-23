@@ -13,6 +13,7 @@ import (
 	"github.com/gcclinux/tergum/internal/db"
 	"github.com/gcclinux/tergum/internal/grpc/proto"
 	"github.com/gcclinux/tergum/internal/model"
+	versionPkg "github.com/gcclinux/tergum/internal/version"
 	"github.com/gcclinux/tergum/internal/watcher"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -60,7 +61,7 @@ type ClientCommandServerConfig struct {
 func NewClientCommandServer(cfg ClientCommandServerConfig) *ClientCommandServer {
 	version := cfg.Version
 	if version == "" {
-		version = "3.0.0-dev"
+		version = versionPkg.Version
 	}
 
 	return &ClientCommandServer{

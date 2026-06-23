@@ -300,6 +300,23 @@ func (s *Server) handleAPIWatcherAutostart(w http.ResponseWriter, r *http.Reques
 		s.fullCfg.Watcher.Enabled = enabled
 	}
 
+	// Dynamically start or stop the watcher if controller is available.
+	if s.watcherController != nil {
+		if enabled {
+			if !s.watcherController.IsRunning() {
+				if err := s.watcherController.StartWatcher(); err != nil {
+					s.logger.Error("watcher autostart: failed to start watcher", "error", err)
+				}
+			}
+		} else {
+			if s.watcherController.IsRunning() {
+				if err := s.watcherController.StopWatcher(); err != nil {
+					s.logger.Error("watcher autostart: failed to stop watcher", "error", err)
+				}
+			}
+		}
+	}
+
 	setSuccessToast(w, "Autostart on boot updated")
 	w.WriteHeader(http.StatusOK)
 }

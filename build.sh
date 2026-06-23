@@ -18,14 +18,24 @@ if [ "$PROD" = "1" ]; then
     if [ -n "$(git status --porcelain 2>/dev/null)" ]; then
         echo "WARNING: Working tree is dirty. Prod build will use clean version anyway." >&2
     fi
-    VERSION="${VERSION:-$(git describe --tags --always 2>/dev/null || echo "dev")}"
-else
-    VERSION="${VERSION:-$(git describe --tags --always --dirty 2>/dev/null || echo "dev")}"
 fi
+
+# Read from version.json if available
+if [ -f "version.json" ]; then
+    JSON_VERSION=$(sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' version.json)
+    JSON_BUILD=$(sed -n 's/.*"build": *"\([^"]*\)".*/\1/p' version.json)
+fi
+
+VERSION="${VERSION:-${JSON_VERSION:-3.0.0}}"
+BUILD="${BUILD:-${JSON_BUILD:-dev}}"
 COMMIT="${COMMIT:-$(git rev-parse --short HEAD 2>/dev/null || echo "none")}"
 BUILD_DATE="${BUILD_DATE:-$(date -u +"%Y-%m-%dT%H:%M:%SZ")}"
 
 LDFLAGS="-s -w \
+  -X 'github.com/gcclinux/tergum/internal/version.Version=${VERSION}' \
+  -X 'github.com/gcclinux/tergum/internal/version.Build=${BUILD}' \
+  -X 'github.com/gcclinux/tergum/internal/version.Commit=${COMMIT}' \
+  -X 'github.com/gcclinux/tergum/internal/version.BuildDate=${BUILD_DATE}' \
   -X 'github.com/gcclinux/tergum/cmd.Version=${VERSION}' \
   -X 'github.com/gcclinux/tergum/cmd.Commit=${COMMIT}' \
   -X 'github.com/gcclinux/tergum/cmd.BuildDate=${BUILD_DATE}'"

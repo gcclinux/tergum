@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"html/template"
 	"net/http"
+
+	"github.com/gcclinux/tergum/internal/version"
 )
 
 // fragmentTemplates holds pre-parsed template sets for the shell+fragment architecture.
@@ -31,7 +33,12 @@ func parseFragmentTemplates() (fragmentTemplates, error) {
 
 	templates := make(fragmentTemplates, len(fragments))
 	for _, name := range fragments {
-		t, err := template.ParseFS(templatesFS,
+		t := template.New("").Funcs(template.FuncMap{
+			"version": func() string {
+				return version.Version
+			},
+		})
+		t, err := t.ParseFS(templatesFS,
 			"templates/shell.html",
 			"templates/fragments/"+name+".html",
 			"templates/partials/*.html",

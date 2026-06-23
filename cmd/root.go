@@ -7,6 +7,7 @@ import (
 	"os"
 
 	"github.com/gcclinux/tergum/internal/model"
+	"github.com/gcclinux/tergum/internal/version"
 	"github.com/spf13/cobra"
 )
 
@@ -19,9 +20,9 @@ var (
 
 // Version information set at build time via ldflags.
 var (
-	Version   = "dev"
-	Commit    = "none"
-	BuildDate = "unknown"
+	Version   = version.Version
+	Commit    = version.Commit
+	BuildDate = version.BuildDate
 )
 
 // rootCmd is the top-level Tergum command.

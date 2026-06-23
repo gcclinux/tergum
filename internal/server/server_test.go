@@ -8,6 +8,7 @@ import (
 
 	"github.com/gcclinux/tergum/internal/backup"
 	"github.com/gcclinux/tergum/internal/config"
+	"github.com/gcclinux/tergum/internal/version"
 )
 
 func TestNew_ReturnsServer(t *testing.T) {
@@ -134,7 +135,7 @@ func TestNoopBackupEngine(t *testing.T) {
 }
 
 func TestVersion(t *testing.T) {
-	if Version == "" {
+	if version.Version == "" {
 		t.Error("Version should not be empty")
 	}
 }
