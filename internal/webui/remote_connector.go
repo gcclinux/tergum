@@ -130,6 +130,21 @@ func (c *RemoteClientConnector) GetClientStatus(ctx context.Context, clientID st
 	}, nil
 }
 
+// StopClientBackup connects to the client and sends a StopBackup RPC.
+func (c *RemoteClientConnector) StopClientBackup(ctx context.Context, clientID string) error {
+	client, err := c.connectToClient(clientID)
+	if err != nil {
+		return err
+	}
+
+	_, err = client.StopBackup(ctx, "", clientID)
+	if err != nil {
+		return fmt.Errorf("stop backup on client %s: %w", clientID, err)
+	}
+	return nil
+}
+
+
 // connectToClient looks up the client address in the registry and creates
 // a gRPC connection via mTLS. Returns an error if the client is not found
 // or is offline.

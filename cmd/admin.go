@@ -71,7 +71,7 @@ func runAdmin(cmd *cobra.Command, args []string) error {
 	if passphrase := os.Getenv("TERGUM_PASSPHRASE"); passphrase != "" {
 		masterKey, err := deriveKeyFromEnv(cfg)
 		if err == nil {
-			trigger := webui.NewLocalBackupTrigger(repo, cfg.StorageDir(), masterKey, cfg.Encryption.Enabled)
+			trigger := webui.NewLocalBackupTrigger(repo, cfg.Database.Path, cfg.StorageDir(), masterKey, cfg.Encryption.Enabled)
 			opts = append(opts, webui.WithBackupTrigger(trigger))
 			fmt.Println("Web backup trigger enabled (TERGUM_PASSPHRASE set).")
 		}

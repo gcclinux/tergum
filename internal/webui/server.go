@@ -48,6 +48,7 @@ type Server struct {
 // BackupTrigger is an interface for triggering backups from the Web UI.
 type BackupTrigger interface {
 	TriggerBackup(level string) error
+	StopBackup() error
 	IsAvailable() bool
 }
 
@@ -61,6 +62,7 @@ type WatcherController interface {
 // ClientConnector sends commands to remote client nodes via gRPC.
 type ClientConnector interface {
 	TriggerClientBackup(ctx context.Context, clientID string) error
+	StopClientBackup(ctx context.Context, clientID string) error
 	StartClientWatcher(ctx context.Context, clientID string) error
 	StopClientWatcher(ctx context.Context, clientID string) error
 	GetClientStatus(ctx context.Context, clientID string) (*ClientStatusInfo, error)
@@ -287,6 +289,7 @@ func (s *Server) routes() http.Handler {
 
 	// Backup API endpoints.
 	authed.HandleFunc("/api/backups/trigger", s.handleAPIBackupTrigger)
+	authed.HandleFunc("/api/backups/stop", s.handleAPIBackupStop)
 	authed.HandleFunc("/api/backups/active", s.handleAPIBackupsActive)
 	authed.HandleFunc("/api/backups/status", s.handleAPIBackupsStatus)
 	authed.HandleFunc("/api/backups/progress", s.handleAPIBackupsProgress)
@@ -386,6 +389,12 @@ func (s *Server) watchJobActivity() {
 	// Track known jobs to detect new ones and status changes.
 	knownJobs := make(map[string]string) // backup_id -> status
 
+	type progressInfo struct {
+		FileCount int64
+		BytesNew  int64
+	}
+	knownProgress := make(map[string]progressInfo)
+
 	// Initial load.
 	ctx := context.Background()
 	jobs, err := s.repo.ListJobs(ctx, db.JobFilter{Limit: 50})
@@ -432,6 +441,23 @@ func (s *Server) watchJobActivity() {
 						Message: fmt.Sprintf("Backup %s stopped", j.Level),
 					})
 				}
+			}
+
+			// Publish progress if it's a running job and counts have changed.
+			if j.Status == model.JobRunning {
+				prevProg, progKnown := knownProgress[j.BackupID]
+				if !progKnown || prevProg.FileCount != j.FileCount || prevProg.BytesNew != j.BytesNew {
+					knownProgress[j.BackupID] = progressInfo{
+						FileCount: j.FileCount,
+						BytesNew:  j.BytesNew,
+					}
+					s.broker.Publish(ActivityEvent{
+						Type:    "backup_progress",
+						Message: fmt.Sprintf("Progress: %d files, %s", j.FileCount, formatSize(j.BytesNew)),
+					})
+				}
+			} else {
+				delete(knownProgress, j.BackupID)
 			}
 		}
 	}

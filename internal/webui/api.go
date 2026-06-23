@@ -59,6 +59,32 @@ func (s *Server) handleAPIBackupTrigger(w http.ResponseWriter, r *http.Request) 
 	fmt.Fprintf(w, `<div class="p-3 bg-green-100 text-green-800 rounded text-sm">%s backup started! Check the Active Jobs section above.</div>`, level)
 }
 
+// handleAPIBackupStop handles POST /api/backups/stop — stops the currently running local backup.
+func (s *Server) handleAPIBackupStop(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	if s.backupTrigger == nil {
+		setErrorToast(w, "Backup trigger not available")
+		w.Header().Set("Content-Type", "text/html")
+		fmt.Fprint(w, `<div class="p-3 bg-red-100 text-red-800 rounded text-sm">Backup trigger not available.</div>`)
+		return
+	}
+
+	if err := s.backupTrigger.StopBackup(); err != nil {
+		setErrorToast(w, fmt.Sprintf("Failed to stop backup: %v", err))
+		w.Header().Set("Content-Type", "text/html")
+		fmt.Fprintf(w, `<div class="p-3 bg-red-100 text-red-800 rounded text-sm">Failed to stop backup: %v</div>`, err)
+		return
+	}
+
+	setSuccessToast(w, "Backup stop signal sent successfully")
+	w.Header().Set("Content-Type", "text/html")
+	fmt.Fprint(w, `<div class="p-3 bg-green-100 text-green-800 rounded text-sm">Stop signal sent to backup!</div>`)
+}
+
 // handleAPIBackupsProgress handles GET /api/backups/progress — returns a progress
 // fragment showing files count and bytes transferred for running backup jobs.
 // This endpoint is designed to be called when SSE backup_progress events trigger a refresh.
@@ -148,6 +174,8 @@ func (s *Server) handleAPIBackupsStatus(w http.ResponseWriter, r *http.Request) 
 	fmt.Fprintf(w, `<p class="text-sm font-medium text-blue-800 dark:text-blue-200">Backup Running</p>`)
 	fmt.Fprintf(w, `<p class="text-xs text-blue-600 dark:text-blue-300">ID: <span class="font-mono">%s</span> · Client: %s · Level: %s · Elapsed: %s</p>`, shortID, j.ClientID, j.Level, elapsed)
 	fmt.Fprint(w, `</div>`)
+	fmt.Fprint(w, `<button class="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white text-xs font-semibold rounded-lg transition-colors"
+		hx-post="/api/backups/stop" hx-swap="none" hx-confirm="Stop the running backup?">Stop Backup</button>`)
 	fmt.Fprint(w, `</div>`)
 }
 
@@ -266,11 +294,17 @@ func (s *Server) handleAPIBackupsHistory(w http.ResponseWriter, r *http.Request)
 	fmt.Fprint(w, `<td class="px-4 py-3 text-gray-700 dark:text-gray-300" x-text="row.size"></td>`)
 	fmt.Fprint(w, `<td class="px-4 py-3 text-gray-700 dark:text-gray-300 whitespace-nowrap" x-text="row.started"></td>`)
 	fmt.Fprint(w, `<td class="px-4 py-3 text-gray-700 dark:text-gray-300" x-text="row.duration"></td>`)
-	// Delete action (placeholder for modal when 6.2 is complete)
-	fmt.Fprint(w, `<td class="px-4 py-3">`)
-	fmt.Fprint(w, `<button class="text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 text-xs"
-		@click="$store.app.openModal('Delete Backup', row.id, '/api/backups/' + row.id, 'DELETE')">Delete</button>`)
-	fmt.Fprint(w, `</td>`)
+	// Stop/Delete action
+	fmt.Fprint(w, `<td class="px-4 py-3">
+		<template x-if="row.status === 'running'">
+			<button class="text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300 text-xs font-semibold"
+				@click="if (confirm('Stop the running backup?')) { fetch('/api/backups/stop', { method: 'POST' }); }">Stop</button>
+		</template>
+		<template x-if="row.status !== 'running'">
+			<button class="text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 text-xs"
+				@click="$store.app.openModal('Delete Backup', row.id, '/api/backups/' + row.id, 'DELETE')">Delete</button>
+		</template>
+	</td>`)
 	fmt.Fprint(w, `</tr>`)
 	fmt.Fprint(w, `</template>`)
 	fmt.Fprint(w, `</tbody></table>`)
@@ -1283,6 +1317,8 @@ func (s *Server) handleAPIClientAction(w http.ResponseWriter, r *http.Request) {
 	}
 
 	switch {
+	case action == "backup" && subAction == "stop" && r.Method == http.MethodPost:
+		s.handleAPIClientBackupStop(w, r, clientID)
 	case action == "backup" && r.Method == http.MethodPost:
 		s.handleAPIClientBackup(w, r, clientID)
 	case action == "watcher" && subAction == "start" && r.Method == http.MethodPost:
@@ -1339,6 +1375,47 @@ func (s *Server) handleAPIClientBackup(w http.ResponseWriter, r *http.Request, c
 		"message": fmt.Sprintf("backup triggered on client %s", clientID),
 	})
 }
+
+// handleAPIClientBackupStop handles POST /api/clients/{id}/backup/stop — stops backup on client via RPC.
+func (s *Server) handleAPIClientBackupStop(w http.ResponseWriter, r *http.Request, clientID string) {
+	if s.clientConnector == nil {
+		setErrorToast(w, "Client connector not available")
+		writeJSONError(w, "client connector not available", http.StatusServiceUnavailable)
+		return
+	}
+	if s.clientRegistry == nil {
+		setErrorToast(w, "Client registry not available")
+		writeJSONError(w, "registry not available", http.StatusServiceUnavailable)
+		return
+	}
+
+	ci := s.clientRegistry.GetClient(clientID)
+	if ci == nil {
+		setErrorToast(w, fmt.Sprintf("Client %s not found", clientID))
+		writeJSONError(w, "client not found", http.StatusNotFound)
+		return
+	}
+	if ci.Status != "online" {
+		setErrorToast(w, fmt.Sprintf("Client %s is offline", clientID))
+		writeJSONError(w, "client is offline", http.StatusConflict)
+		return
+	}
+
+	if err := s.clientConnector.StopClientBackup(r.Context(), clientID); err != nil {
+		s.logger.Error("stop backup on client failed", "client_id", clientID, "error", err)
+		setErrorToast(w, fmt.Sprintf("Failed to stop backup on client %s: %v", clientID, err))
+		writeJSONError(w, fmt.Sprintf("stop backup failed: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	setSuccessToast(w, fmt.Sprintf("Backup stop signal sent to client %s", clientID))
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"message": fmt.Sprintf("backup stop signal sent to client %s", clientID),
+	})
+}
+
 
 // handleAPIClientWatcherStart handles POST /api/clients/{id}/watcher/start.
 func (s *Server) handleAPIClientWatcherStart(w http.ResponseWriter, r *http.Request, clientID string) {

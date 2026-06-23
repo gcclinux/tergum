@@ -68,6 +68,7 @@ type Repository interface {
 	CreateJob(ctx context.Context, job model.BackupJob) error
 	UpdateJob(ctx context.Context, jobID string, update JobUpdate) error
 	ListJobs(ctx context.Context, filter JobFilter) ([]model.BackupJob, error)
+	FailStaleJobs(ctx context.Context, message string) (int64, error)
 
 	// Retention operations
 	GetFileVersions(ctx context.Context, filePath string) ([]model.BackupEntry, error)
@@ -486,6 +487,23 @@ func (r *SQLiteRepository) UpdateJob(ctx context.Context, jobID string, update J
 	_, err := r.db.ExecContext(ctx, query, args...)
 	return err
 }
+
+// FailStaleJobs updates any job marked as 'running' to 'failed' status with a specific error message.
+// This is used on startup to clean up jobs that were interrupted by a crash or restart.
+func (r *SQLiteRepository) FailStaleJobs(ctx context.Context, message string) (int64, error) {
+	now := time.Now().UTC().Format(time.DateTime)
+	res, err := r.db.ExecContext(ctx,
+		`UPDATE backup_jobs 
+		 SET status = 'failed', finished_at = ?, error_message = ? 
+		 WHERE status = 'running'`,
+		now, message,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
+}
+
 
 // ListJobs returns backup jobs matching the filter, ordered by started_at DESC.
 func (r *SQLiteRepository) ListJobs(ctx context.Context, filter JobFilter) ([]model.BackupJob, error) {

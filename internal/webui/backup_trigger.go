@@ -17,19 +17,22 @@ import (
 // LocalBackupTrigger triggers backups directly using the backup engine.
 type LocalBackupTrigger struct {
 	repo       db.Repository
+	dbPath     string
 	storageDir string
 	masterKey  []byte
 	encEnabled bool
 	broker     *SSEBroker
 	mu         sync.Mutex
 	running    bool
+	engine     backup.Engine
 }
 
 // NewLocalBackupTrigger creates a backup trigger with the given parameters.
 // If masterKey is nil and encryption is enabled, backups cannot be triggered.
-func NewLocalBackupTrigger(repo db.Repository, storageDir string, masterKey []byte, encEnabled bool) *LocalBackupTrigger {
+func NewLocalBackupTrigger(repo db.Repository, dbPath string, storageDir string, masterKey []byte, encEnabled bool) *LocalBackupTrigger {
 	return &LocalBackupTrigger{
 		repo:       repo,
+		dbPath:     dbPath,
 		storageDir: storageDir,
 		masterKey:  masterKey,
 		encEnabled: encEnabled,
@@ -63,6 +66,7 @@ func (t *LocalBackupTrigger) TriggerBackup(level string) error {
 		defer func() {
 			t.mu.Lock()
 			t.running = false
+			t.engine = nil
 			t.mu.Unlock()
 		}()
 
@@ -96,9 +100,13 @@ func (t *LocalBackupTrigger) TriggerBackup(level string) error {
 			MaxFileSize:     10 * 1024 * 1024 * 1024, // 10GB
 			EncryptionOn:    t.encEnabled,
 			MasterKey:       t.masterKey,
+			DatabasePath:    t.dbPath,
 		}
 
 		engine := backup.NewBackupEngine(serverConn, t.repo, encryptor, engineCfg)
+		t.mu.Lock()
+		t.engine = engine
+		t.mu.Unlock()
 
 		// Determine level.
 		var backupLevel model.BackupLevel
@@ -150,4 +158,16 @@ func (t *LocalBackupTrigger) TriggerBackup(level string) error {
 	}()
 
 	return nil
+}
+
+// StopBackup gracefully stops the currently running local backup.
+func (t *LocalBackupTrigger) StopBackup() error {
+	t.mu.Lock()
+	engine := t.engine
+	t.mu.Unlock()
+
+	if engine == nil {
+		return fmt.Errorf("no backup is currently running")
+	}
+	return engine.Stop(context.Background())
 }

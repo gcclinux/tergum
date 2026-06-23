@@ -166,6 +166,7 @@ func (m *mockRepository) ListIncludePaths(ctx context.Context) ([]string, error)
 func (m *mockRepository) AddExcludePattern(ctx context.Context, pattern string) error    { return nil }
 func (m *mockRepository) RemoveExcludePattern(ctx context.Context, pattern string) error { return nil }
 func (m *mockRepository) ListExcludePatterns(ctx context.Context) ([]string, error)      { return nil, nil }
+func (m *mockRepository) FailStaleJobs(ctx context.Context, message string) (int64, error) { return 0, nil }
 func (m *mockRepository) Close() error                                                   { return nil }
 
 func TestNewOngoingBackup_DefaultBatchInterval(t *testing.T) {

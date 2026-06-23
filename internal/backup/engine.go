@@ -91,6 +91,30 @@ func (e *BackupEngine) RunBackup(ctx context.Context, req BackupRequest) (*Backu
 	// Reset stop flag for new backup.
 	e.stopped.Store(false)
 
+	// Monitor stop file if DatabasePath is set.
+	if e.config.DatabasePath != "" {
+		stopCtx, stopCancel := context.WithCancel(ctx)
+		defer stopCancel()
+		go func() {
+			stopFile := filepath.Join(filepath.Dir(e.config.DatabasePath), "stop")
+			ticker := time.NewTicker(500 * time.Millisecond)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-stopCtx.Done():
+					return
+				case <-ticker.C:
+					if _, err := os.Stat(stopFile); err == nil {
+						slog.Info("stop file detected, stopping backup engine")
+						e.stopped.Store(true)
+						_ = os.Remove(stopFile)
+						return
+					}
+				}
+			}
+		}()
+	}
+
 	// 1. Generate unique backup ID.
 	backupID := uuid.New().String()
 
@@ -117,7 +141,9 @@ func (e *BackupEngine) RunBackup(ctx context.Context, req BackupRequest) (*Backu
 			FinishedAt: &finishedAt,
 		}
 		if result != nil {
-			update.FileCount = &result.FilesProcessed
+			if result.FilesProcessed > 0 || status == model.JobCompleted {
+				update.FileCount = &result.FilesProcessed
+			}
 			update.BytesNew = &result.BytesNew
 			update.FilesDeduped = &result.FilesDeduped
 		}
@@ -150,6 +176,17 @@ func (e *BackupEngine) RunBackup(ctx context.Context, req BackupRequest) (*Backu
 	}
 
 	slog.Info("scan complete", "backup_id", backupID, "files_found", len(files))
+
+	// Update job in DB with the scanned file count and total size immediately.
+	var totalBytes int64
+	for i := range files {
+		totalBytes += files[i].Size
+	}
+	scannedCount := int64(len(files))
+	_ = e.repo.UpdateJob(ctx, backupID, db.JobUpdate{
+		FileCount:  &scannedCount,
+		BytesTotal: &totalBytes,
+	})
 
 	// 4. Build manifest.
 	manifest, err := BuildManifest(files)

@@ -55,6 +55,7 @@ func init() {
 	rootCmd.AddCommand(newRetentionCmd())
 	rootCmd.AddCommand(newPathsCmd())
 	rootCmd.AddCommand(newStatusCmd())
+	rootCmd.AddCommand(newCleanupCmd())
 	rootCmd.AddCommand(newMigrateCmd())
 	rootCmd.AddCommand(newVersionCmd())
 }

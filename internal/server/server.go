@@ -110,6 +110,11 @@ func (s *Server) Start(ctx context.Context) error {
 	}
 	s.repo = repo
 
+	// Fail any stale jobs that were left running from a previous instance.
+	if affected, err := repo.FailStaleJobs(ctx, "Interrupted by server restart"); err == nil && affected > 0 {
+		s.logger.Info("cleaned up stale running backup jobs", "count", affected)
+	}
+
 	// Initialize CAS store.
 	storageDir := s.cfg.StorageDir()
 	cas := storage.NewCAS(storageDir, repo)
@@ -240,7 +245,7 @@ func (s *Server) Start(ctx context.Context) error {
 		if passphrase := os.Getenv("TERGUM_PASSPHRASE"); passphrase != "" {
 			masterKey, err := loadMasterKeyFromEnv(s.cfg)
 			if err == nil {
-				trigger := webui.NewLocalBackupTrigger(s.repo, s.cfg.StorageDir(), masterKey, s.cfg.Encryption.Enabled)
+				trigger := webui.NewLocalBackupTrigger(s.repo, s.cfg.Database.Path, s.cfg.StorageDir(), masterKey, s.cfg.Encryption.Enabled)
 				webuiOpts = append(webuiOpts, webui.WithBackupTrigger(trigger))
 				s.logger.Info("web backup trigger enabled (TERGUM_PASSPHRASE set)")
 
@@ -424,6 +429,11 @@ func (s *Server) startClient(ctx context.Context) error {
 		return fmt.Errorf("open database: %w", err)
 	}
 	s.repo = repo
+
+	// Fail any stale jobs that were left running from a previous instance.
+	if affected, err := repo.FailStaleJobs(ctx, "Interrupted by client restart"); err == nil && affected > 0 {
+		s.logger.Info("cleaned up stale running backup jobs", "count", affected)
+	}
 
 	// 2. Derive master key from TERGUM_PASSPHRASE.
 	masterKey, err := loadMasterKeyFromEnv(s.cfg)
