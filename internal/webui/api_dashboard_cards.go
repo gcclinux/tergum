@@ -3,6 +3,7 @@ package webui
 import (
 	"fmt"
 	"net/http"
+	"sort"
 	"time"
 
 	"github.com/gcclinux/tergum/internal/db"
@@ -217,27 +218,86 @@ func (s *Server) handleAPIDashboardActivity(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	if len(jobs) == 0 {
+	restores, _ := s.repo.ListRestoreHistory(r.Context(), 10)
+
+	if len(jobs) == 0 && len(restores) == 0 {
 		fmt.Fprint(w, `<p class="text-sm text-gray-400 dark:text-gray-500 italic">No recent activity.</p>`)
 		return
 	}
 
-	fmt.Fprint(w, `<div class="space-y-3">`)
+	type activityItem struct {
+		Timestamp   time.Time
+		Icon        string
+		HtmlContent string
+		Status      string
+		StatusColor string
+	}
+
+	var items []activityItem
+
 	for _, j := range jobs {
 		icon := getStatusIcon(string(j.Status))
 		statusColor := getStatusColor(string(j.Status))
 		started := j.StartedAt.Format("Jan 02, 15:04")
+		backupIDTrunc := j.BackupID
+		if len(backupIDTrunc) > 12 {
+			backupIDTrunc = backupIDTrunc[:12]
+		}
+		htmlContent := fmt.Sprintf(`<p class="text-sm text-gray-700 dark:text-gray-300 truncate">Backup <span class="font-medium">%s</span> — %s</p><p class="text-xs text-gray-400 dark:text-gray-500">%s</p>`, j.Level, backupIDTrunc, started)
+
+		items = append(items, activityItem{
+			Timestamp:   j.StartedAt,
+			Icon:        icon,
+			HtmlContent: htmlContent,
+			Status:      string(j.Status),
+			StatusColor: statusColor,
+		})
+	}
+
+	for _, rec := range restores {
+		icon := "📥"
+		status := "success"
+		statusColor := "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400"
+		if !rec.Success {
+			icon = "❌"
+			status = "failed"
+			statusColor = "bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400"
+		}
+		restoredTime := rec.RestoredAt.Format("Jan 02, 15:04")
+		htmlContent := fmt.Sprintf(`<p class="text-sm text-gray-700 dark:text-gray-300 truncate">Restore — <span class="font-medium">%s</span></p><p class="text-xs text-gray-400 dark:text-gray-500">%s</p>`, rec.FileName, restoredTime)
+
+		items = append(items, activityItem{
+			Timestamp:   rec.RestoredAt,
+			Icon:        icon,
+			HtmlContent: htmlContent,
+			Status:      status,
+			StatusColor: statusColor,
+		})
+	}
+
+	// Sort newest first
+	sort.Slice(items, func(i, j int) bool {
+		return items[i].Timestamp.After(items[j].Timestamp)
+	})
+
+	// Limit to 10
+	if len(items) > 10 {
+		items = items[:10]
+	}
+
+	fmt.Fprint(w, `<div class="space-y-3">`)
+	for _, item := range items {
 		fmt.Fprintf(w, `<div class="flex items-center gap-3 py-2 border-b border-gray-100 dark:border-gray-700 last:border-0">`)
-		fmt.Fprintf(w, `<span class="text-base">%s</span>`, icon)
+		fmt.Fprintf(w, `<span class="text-base">%s</span>`, item.Icon)
 		fmt.Fprintf(w, `<div class="flex-1 min-w-0">`)
-		fmt.Fprintf(w, `<p class="text-sm text-gray-700 dark:text-gray-300 truncate">Backup <span class="font-medium">%s</span> — %s</p>`, j.Level, j.BackupID[:min(12, len(j.BackupID))])
-		fmt.Fprintf(w, `<p class="text-xs text-gray-400 dark:text-gray-500">%s</p>`, started)
+		fmt.Fprint(w, item.HtmlContent)
 		fmt.Fprintf(w, `</div>`)
-		fmt.Fprintf(w, `<span class="text-xs font-medium px-2 py-0.5 rounded-full %s">%s</span>`, statusColor, j.Status)
+		fmt.Fprintf(w, `<span class="text-xs font-medium px-2 py-0.5 rounded-full %s">%s</span>`, item.StatusColor, item.Status)
 		fmt.Fprintf(w, `</div>`)
 	}
 	fmt.Fprint(w, `</div>`)
 }
+
 
 // getStatusIcon returns an emoji icon for a job status.
 func getStatusIcon(status string) string {
