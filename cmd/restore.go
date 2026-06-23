@@ -24,12 +24,13 @@ func newRestoreCmd() *cobra.Command {
 		Long: `Search for and restore files by name, path, or glob pattern.
 
 Examples:
-  tergum restore "*.go"                          # restore all .go files
-  tergum restore "/home/user/Documents/"         # restore a folder
-  tergum restore "report.pdf"                    # restore by file name
-  tergum restore "*.go" --dest /tmp/restored     # custom destination
-  tergum restore --backup-id abc123 --dest ./out # restore entire backup
-  tergum restore "*.log" --list                  # search without restoring`,
+  tergum restore "*.go"                                        # restore all .go files
+  tergum restore "/home/user/Documents/"                       # restore a folder
+  tergum restore "report.pdf"                                  # restore by file name
+  tergum restore "*.go" --dest /tmp/restored                   # custom destination
+  tergum restore --backup-id abc123 --dest ./out               # restore entire backup
+  tergum restore --backup-id abc123 -f report.pdf --dest ./out # restore specific file from specific backup
+  tergum restore "*.log" --list                                # search without restoring`,
 		RunE: runRestore,
 	}
 
@@ -37,6 +38,7 @@ Examples:
 	cmd.Flags().IntP("concurrency", "c", 4, "number of parallel restore streams")
 	cmd.Flags().String("backup-id", "", "restore from a specific backup set")
 	cmd.Flags().Bool("list", false, "search and list matching files without restoring")
+	cmd.Flags().StringP("file", "f", "", "specific file path, name, or pattern to restore")
 
 	return cmd
 }
@@ -46,9 +48,21 @@ func runRestore(cmd *cobra.Command, args []string) error {
 	concurrency, _ := cmd.Flags().GetInt("concurrency")
 	backupID, _ := cmd.Flags().GetString("backup-id")
 	listOnly, _ := cmd.Flags().GetBool("list")
+	fileQuery, _ := cmd.Flags().GetString("file")
 
-	if len(args) == 0 && backupID == "" {
-		return fmt.Errorf("provide a search query or --backup-id")
+	if len(args) == 0 && backupID == "" && fileQuery == "" {
+		return fmt.Errorf("provide a search query, --file, or --backup-id")
+	}
+
+	if len(args) > 0 && fileQuery != "" {
+		return fmt.Errorf("cannot specify both a positional search query and the --file flag")
+	}
+
+	query := ""
+	if fileQuery != "" {
+		query = fileQuery
+	} else if len(args) > 0 {
+		query = args[0]
 	}
 
 	cfg, err := config.Load(cfgFile)
@@ -88,7 +102,7 @@ func runRestore(cmd *cobra.Command, args []string) error {
 	// Find files to restore.
 	var entries []restore.RestoreEntry
 
-	if backupID != "" && len(args) == 0 {
+	if backupID != "" && query == "" {
 		// Restore entire backup set.
 		manifest, err := repo.GetManifest(ctx, backupID)
 		if err != nil {
@@ -116,7 +130,6 @@ func runRestore(cmd *cobra.Command, args []string) error {
 		}
 	} else {
 		// Search by query.
-		query := args[0]
 		searchQuery := restore.SearchQuery{}
 
 		if strings.Contains(query, "/") {

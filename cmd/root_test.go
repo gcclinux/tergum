@@ -100,3 +100,22 @@ func TestRetentionRunAcceptsDryRun(t *testing.T) {
 		t.Fatalf("retention run --dry-run returned error: %v", err)
 	}
 }
+
+func TestRestoreCommandAcceptsFile(t *testing.T) {
+	rootCmd.SetArgs([]string{"restore", "--file", "test.txt", "--list"})
+	err := rootCmd.Execute()
+	if err != nil && !strings.Contains(err.Error(), "loading") && !strings.Contains(err.Error(), "config") {
+		t.Fatalf("restore --file test.txt --list returned unexpected error: %v", err)
+	}
+}
+
+func TestRestoreCommandMutuallyExclusive(t *testing.T) {
+	rootCmd.SetArgs([]string{"restore", "positional.txt", "--file", "test.txt", "--list"})
+	err := rootCmd.Execute()
+	if err == nil {
+		t.Fatal("expected error when specifying both positional arg and --file flag")
+	}
+	if !strings.Contains(err.Error(), "cannot specify both a positional search query and the --file flag") {
+		t.Fatalf("expected mutual exclusion error, got: %v", err)
+	}
+}
