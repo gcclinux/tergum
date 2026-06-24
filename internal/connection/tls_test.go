@@ -16,6 +16,7 @@ func TestLoadClientTLS_Success(t *testing.T) {
 	}
 
 	cfg := &config.Config{}
+	cfg.Node.Hostname = "Tergum Client"
 	cfg.TLS.CACert = filepath.Join(dir, "ca.crt")
 	cfg.TLS.Cert = filepath.Join(dir, "client.crt")
 	cfg.TLS.Key = filepath.Join(dir, "client.key")
@@ -40,6 +41,29 @@ func TestLoadClientTLS_Success(t *testing.T) {
 	// The generated client cert has CN "Tergum Client"
 	if clientID != "Tergum Client" {
 		t.Errorf("clientID = %q, want %q", clientID, "Tergum Client")
+	}
+}
+
+func TestLoadClientTLS_HostnameFallback(t *testing.T) {
+	dir := t.TempDir()
+	mgr := tlspkg.NewManager()
+	if err := mgr.GenerateCerts(dir); err != nil {
+		t.Fatalf("GenerateCerts: %v", err)
+	}
+
+	cfg := &config.Config{}
+	cfg.Node.Hostname = "custom-test-host"
+	cfg.TLS.CACert = filepath.Join(dir, "ca.crt")
+	cfg.TLS.Cert = filepath.Join(dir, "client.crt")
+	cfg.TLS.Key = filepath.Join(dir, "client.key")
+
+	_, clientID, err := LoadClientTLS(cfg)
+	if err != nil {
+		t.Fatalf("LoadClientTLS: %v", err)
+	}
+
+	if clientID != "custom-test-host" {
+		t.Errorf("clientID = %q, want %q", clientID, "custom-test-host")
 	}
 }
 

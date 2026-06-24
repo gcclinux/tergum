@@ -520,10 +520,13 @@ func (s *Server) handleAPIRetentionList(w http.ResponseWriter, r *http.Request) 
 
 // handleAPIRestoreSearch handles GET /api/restore/search?query=... — search files in backup.
 func (s *Server) handleAPIRestoreSearch(w http.ResponseWriter, r *http.Request) {
-	if s.repo == nil {
-		fmt.Fprint(w, `<p class="text-gray-500">Database not available.</p>`)
+	clientID := strings.TrimSpace(r.URL.Query().Get("client_id"))
+	repo, closeFunc, err := s.getRepoForClient(r.Context(), clientID)
+	if err != nil {
+		fmt.Fprintf(w, `<p class="text-red-500 dark:text-red-400">Failed to load client database: %v</p>`, err)
 		return
 	}
+	defer closeFunc()
 
 	query := strings.TrimSpace(r.URL.Query().Get("query"))
 	if query == "" {
@@ -537,14 +540,13 @@ func (s *Server) handleAPIRestoreSearch(w http.ResponseWriter, r *http.Request) 
 
 	backupID := strings.TrimSpace(r.URL.Query().Get("backup_id"))
 	var entries []model.BackupEntry
-	var err error
 
 	if backupID != "" {
-		entries, err = s.repo.SearchBackupFiles(r.Context(), backupID, query)
+		entries, err = repo.SearchBackupFiles(r.Context(), backupID, query)
 	} else {
 		// Search by path pattern across all backups (fallback/legacy)
 		pattern := "%" + query + "%"
-		entries, err = s.repo.FindByPath(r.Context(), pattern)
+		entries, err = repo.FindByPath(r.Context(), pattern)
 	}
 
 	if err != nil {
@@ -590,12 +592,15 @@ func (s *Server) handleAPIRestoreSearch(w http.ResponseWriter, r *http.Request) 
 
 // handleAPIRestoreBackups handles GET /api/restore/backups — lists backups for browsing.
 func (s *Server) handleAPIRestoreBackups(w http.ResponseWriter, r *http.Request) {
-	if s.repo == nil {
-		fmt.Fprint(w, `<p class="text-gray-500 dark:text-gray-400 italic">Database not available.</p>`)
+	clientID := strings.TrimSpace(r.URL.Query().Get("client_id"))
+	repo, closeFunc, err := s.getRepoForClient(r.Context(), clientID)
+	if err != nil {
+		fmt.Fprintf(w, `<p class="text-red-500 dark:text-red-400 italic">Failed to load client database: %v</p>`, err)
 		return
 	}
+	defer closeFunc()
 
-	jobs, err := s.repo.ListJobs(r.Context(), db.JobFilter{Limit: 100})
+	jobs, err := repo.ListJobs(r.Context(), db.JobFilter{Limit: 100})
 	if err != nil || len(jobs) == 0 {
 		fmt.Fprint(w, `<p class="text-gray-500 dark:text-gray-400 italic">No backups found.</p>`)
 		return
@@ -910,10 +915,13 @@ func (s *Server) handleAPISystemMemory(w http.ResponseWriter, r *http.Request) {
 
 // handleAPIRestoreFiles handles GET /api/restore/files?backup_id=... — returns files in a backup as HTML table.
 func (s *Server) handleAPIRestoreFiles(w http.ResponseWriter, r *http.Request) {
-	if s.repo == nil {
-		fmt.Fprint(w, `<p class="text-red-500 dark:text-red-400">Database not available.</p>`)
+	clientID := strings.TrimSpace(r.URL.Query().Get("client_id"))
+	repo, closeFunc, err := s.getRepoForClient(r.Context(), clientID)
+	if err != nil {
+		fmt.Fprintf(w, `<p class="text-red-500 dark:text-red-400">Failed to load client database: %v</p>`, err)
 		return
 	}
+	defer closeFunc()
 
 	backupID := strings.TrimSpace(r.URL.Query().Get("backup_id"))
 	if backupID == "" {
@@ -921,7 +929,7 @@ func (s *Server) handleAPIRestoreFiles(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	entries, err := s.repo.GetManifest(r.Context(), backupID)
+	entries, err := repo.GetManifest(r.Context(), backupID)
 	if err != nil {
 		s.logger.Error("get manifest failed", "error", err)
 		fmt.Fprint(w, `<p class="text-red-500 dark:text-red-400">Failed to load files.</p>`)
@@ -1012,6 +1020,7 @@ func (s *Server) handleAPIRestoreFile(w http.ResponseWriter, r *http.Request) {
 	filePath := strings.TrimSpace(r.FormValue("path"))
 	backupID := strings.TrimSpace(r.FormValue("backup_id"))
 	dest := strings.TrimSpace(r.FormValue("dest"))
+	clientID := strings.TrimSpace(r.FormValue("client_id"))
 
 	if hash == "" && backupID == "" {
 		w.Header().Set("Content-Type", "application/json")
@@ -1023,7 +1032,7 @@ func (s *Server) handleAPIRestoreFile(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Run restore in background.
-	go s.runWebRestore(hash, filePath, backupID, dest)
+	go s.runWebRestore(hash, filePath, backupID, dest, clientID)
 
 	w.Header().Set("Content-Type", "application/json")
 	if backupID != "" && hash == "" {
@@ -1034,8 +1043,16 @@ func (s *Server) handleAPIRestoreFile(w http.ResponseWriter, r *http.Request) {
 }
 
 // runWebRestore performs a restore operation in the background.
-func (s *Server) runWebRestore(hash, filePath, backupID, dest string) {
+func (s *Server) runWebRestore(hash, filePath, backupID, dest, clientID string) {
 	ctx := context.Background()
+
+	// Get client repository.
+	repo, closeFunc, err := s.getRepoForClient(ctx, clientID)
+	if err != nil {
+		slog.Error("web restore: get repository for client failed", "client_id", clientID, "error", err)
+		return
+	}
+	defer closeFunc()
 
 	// Get master key from the backup trigger.
 	var masterKey []byte
@@ -1063,11 +1080,11 @@ func (s *Server) runWebRestore(hash, filePath, backupID, dest string) {
 	if encEnabled {
 		encryptor = cryptoPkg.NewEncryptor()
 	}
-	engine := restore.NewRestoreEngine(source, s.repo, encryptor, masterKey)
+	engine := restore.NewRestoreEngine(source, repo, encryptor, masterKey)
 
 	if backupID != "" && hash == "" {
 		// Restore entire backup.
-		manifest, err := s.repo.GetManifest(ctx, backupID)
+		manifest, err := repo.GetManifest(ctx, backupID)
 		if err != nil {
 			slog.Error("web restore: get manifest failed", "error", err)
 			return
@@ -1075,7 +1092,7 @@ func (s *Server) runWebRestore(hash, filePath, backupID, dest string) {
 
 		var entries []restore.RestoreEntry
 		for _, m := range manifest {
-			found, err := s.repo.FindByHash(ctx, m.Blake3Hash)
+			found, err := repo.FindByHash(ctx, m.Blake3Hash)
 			if err != nil || len(found) == 0 {
 				continue
 			}
@@ -1110,7 +1127,7 @@ func (s *Server) runWebRestore(hash, filePath, backupID, dest string) {
 		if err != nil {
 			slog.Error("web restore: file restore failed", "hash", hash, "error", err)
 			// Record the failed restore in history.
-			_ = s.repo.RecordRestore(ctx, db.RestoreRecord{
+			_ = repo.RecordRestore(ctx, db.RestoreRecord{
 				Blake3Hash:   hash,
 				FileName:     filepath.Base(filePath),
 				SourceBackup: "webui",
@@ -1626,7 +1643,18 @@ func (s *Server) handleAPIClientsList(w http.ResponseWriter, r *http.Request) {
 
 	fmt.Fprint(w, `<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">`)
 	for _, ci := range clients {
+		// Derive online/offline from the heartbeat timestamp directly so the
+		// UI reflects a dropped connection within one poll cycle (~5 s) rather
+		// than waiting up to 30 s for the registry background checker.
+		// Treat clients whose LastSeen is more than 90 s ago as offline,
+		// matching the registry's default offlineThreshold.
+		const clientOfflineThreshold = 90 * time.Second
 		isOffline := ci.Status != "online"
+		if !isOffline && !ci.LastSeen.IsZero() {
+			if time.Since(ci.LastSeen) > clientOfflineThreshold {
+				isOffline = true
+			}
+		}
 		borderClass := "border-gray-200 dark:border-gray-700"
 		if isOffline {
 			borderClass = "border-amber-400 dark:border-amber-500"
@@ -1634,18 +1662,41 @@ func (s *Server) handleAPIClientsList(w http.ResponseWriter, r *http.Request) {
 
 		lastSeen := "never"
 		if !ci.LastSeen.IsZero() {
-			lastSeen = ci.LastSeen.Format("2006-01-02 15:04:05")
+			lastSeen = ci.LastSeen.Local().Format("2006-01-02 15:04:05")
 		}
 		lastBackup := "never"
 		if !ci.LastBackup.IsZero() {
-			lastBackup = ci.LastBackup.Format("2006-01-02 15:04:05")
+			lastBackup = ci.LastBackup.Local().Format("2006-01-02 15:04:05")
 		}
 
 		watcherStatus := "Stopped"
 		watcherColor := "text-gray-500"
-		if ci.WatcherActive {
+		// Only show the watcher as running if the client is actually online.
+		// An offline client cannot have an active watcher.
+		if ci.WatcherActive && !isOffline {
 			watcherStatus = "Running"
 			watcherColor = "text-green-600 dark:text-green-400"
+		}
+
+		clientStatus := "Idle"
+		clientStatusColor := "text-gray-500"
+		clientStatusDetail := ""
+		if !isOffline && s.clientConnector != nil {
+			// Query client status with a very short timeout.
+			ctx, cancel := context.WithTimeout(r.Context(), 500*time.Millisecond)
+			status, err := s.clientConnector.GetClientStatus(ctx, ci.ClientID)
+			cancel()
+			if err == nil && status != nil {
+				if status.Status == "running" {
+					clientStatus = "Running"
+					clientStatusColor = "text-blue-600 dark:text-blue-400 font-semibold"
+					if status.FilesProcessed > 0 {
+						clientStatusDetail = fmt.Sprintf(" (%d files, %s)", status.FilesProcessed, formatSize(status.BytesTransferred))
+					} else {
+						clientStatusDetail = " (starting...)"
+					}
+				}
+			}
 		}
 
 		// Card start
@@ -1668,6 +1719,11 @@ func (s *Server) handleAPIClientsList(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, `<p><span class="font-medium">Last seen:</span> %s</p>`, lastSeen)
 		fmt.Fprintf(w, `<p><span class="font-medium">Last backup:</span> %s</p>`, lastBackup)
 		fmt.Fprintf(w, `<p><span class="font-medium">Watcher:</span> <span class="%s">%s</span></p>`, watcherColor, watcherStatus)
+		if clientStatus == "Running" {
+			fmt.Fprintf(w, `<p><span class="font-medium">Status:</span> <span class="inline-flex items-center %s"><span class="w-2 h-2 rounded-full bg-blue-500 animate-pulse mr-1"></span>%s%s</span></p>`, clientStatusColor, clientStatus, clientStatusDetail)
+		} else {
+			fmt.Fprintf(w, `<p><span class="font-medium">Status:</span> <span class="%s">%s</span></p>`, clientStatusColor, clientStatus)
+		}
 		fmt.Fprint(w, `</div>`)
 
 		// Action buttons
@@ -1678,7 +1734,11 @@ func (s *Server) handleAPIClientsList(w http.ResponseWriter, r *http.Request) {
 			disabledClass = "opacity-50 cursor-not-allowed"
 		}
 		fmt.Fprint(w, `<div class="flex flex-wrap gap-2 pt-2 border-t border-gray-100 dark:border-gray-700">`)
-		fmt.Fprintf(w, `<button hx-post="/api/clients/%s/backup" hx-swap="none" class="text-xs px-2.5 py-1.5 rounded border border-blue-200 dark:border-blue-700 text-blue-700 dark:text-blue-300 %s"%s>Trigger Backup</button>`, ci.ClientID, disabledClass, disabledAttr)
+		if clientStatus == "Running" {
+			fmt.Fprintf(w, `<button hx-post="/api/clients/%s/backup/stop" hx-swap="none" class="text-xs px-2.5 py-1.5 rounded border border-red-200 dark:border-red-700 text-red-700 dark:text-red-300 hover:bg-red-50 dark:hover:bg-gray-700 cursor-pointer">Stop Backup</button>`, ci.ClientID)
+		} else {
+			fmt.Fprintf(w, `<button hx-post="/api/clients/%s/backup" hx-swap="none" class="text-xs px-2.5 py-1.5 rounded border border-blue-200 dark:border-blue-700 text-blue-700 dark:text-blue-300 %s"%s>Trigger Backup</button>`, ci.ClientID, disabledClass, disabledAttr)
+		}
 		fmt.Fprintf(w, `<button hx-post="/api/clients/%s/watcher/start" hx-swap="none" class="text-xs px-2.5 py-1.5 rounded border border-green-200 dark:border-green-700 text-green-700 dark:text-green-300 %s"%s>Start Watcher</button>`, ci.ClientID, disabledClass, disabledAttr)
 		fmt.Fprintf(w, `<button hx-post="/api/clients/%s/watcher/stop" hx-swap="none" class="text-xs px-2.5 py-1.5 rounded border border-red-200 dark:border-red-700 text-red-700 dark:text-red-300 %s"%s>Stop Watcher</button>`, ci.ClientID, disabledClass, disabledAttr)
 		fmt.Fprint(w, `</div>`)
@@ -1893,4 +1953,42 @@ func writeJSONError(w http.ResponseWriter, message string, statusCode int) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
 	json.NewEncoder(w).Encode(map[string]string{"error": message})
+}
+
+// getRepoForClient returns a db.Repository for the specified clientID.
+// If clientID is "local", "server", or empty, it returns the server's own database.
+// Otherwise, it opens the SQLite database file for that client inside the clients/ directory.
+func (s *Server) getRepoForClient(ctx context.Context, clientID string) (db.Repository, func(), error) {
+	if clientID == "" || clientID == "local" || clientID == "server" {
+		return s.repo, func() {}, nil
+	}
+
+	var dbDir string
+	if s.fullCfg != nil {
+		dbDir = filepath.Dir(s.fullCfg.Database.Path)
+	} else if s.configPath != "" {
+		cfg, err := config.Load(s.configPath)
+		if err == nil {
+			dbDir = filepath.Dir(cfg.Database.Path)
+		}
+	}
+	if dbDir == "" {
+		dbDir = "."
+	}
+	dbPath := filepath.Join(dbDir, "clients", clientID+".db")
+
+	if _, err := os.Stat(dbPath); os.IsNotExist(err) {
+		return nil, nil, fmt.Errorf("client %q database copy not found on server", clientID)
+	}
+
+	repo, err := db.NewRepository(dbPath, false)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to open client database copy: %w", err)
+	}
+
+	closeFunc := func() {
+		_ = repo.Close()
+	}
+
+	return repo, closeFunc, nil
 }

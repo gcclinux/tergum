@@ -143,13 +143,20 @@ func TestGenerateCerts_ServerCertProperties(t *testing.T) {
 
 	// Check ExtKeyUsage
 	hasServerAuth := false
+	hasClientAuth := false
 	for _, usage := range cert.ExtKeyUsage {
 		if usage == x509.ExtKeyUsageServerAuth {
 			hasServerAuth = true
 		}
+		if usage == x509.ExtKeyUsageClientAuth {
+			hasClientAuth = true
+		}
 	}
 	if !hasServerAuth {
 		t.Error("server cert missing ServerAuth ExtKeyUsage")
+	}
+	if !hasClientAuth {
+		t.Error("server cert missing ClientAuth ExtKeyUsage")
 	}
 }
 

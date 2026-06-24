@@ -6,6 +6,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
+	"os"
 
 	"github.com/gcclinux/tergum/internal/config"
 	tlspkg "github.com/gcclinux/tergum/internal/tls"
@@ -32,9 +33,18 @@ func LoadClientTLS(cfg *config.Config) (*tls.Config, string, error) {
 	}
 
 	// Extract the Common Name from the client certificate to use as clientID.
-	clientID, err := extractCN(cfg.TLS.Cert, cfg.TLS.Key)
+	cn, err := extractCN(cfg.TLS.Cert, cfg.TLS.Key)
 	if err != nil {
 		return nil, "", fmt.Errorf("extract client identity: %w", err)
+	}
+
+	clientID := cn
+	if cn == "Tergum Client" {
+		if cfg.Node.Hostname != "" {
+			clientID = cfg.Node.Hostname
+		} else if h, err := os.Hostname(); err == nil && h != "" {
+			clientID = h
+		}
 	}
 
 	return tlsCfg, clientID, nil

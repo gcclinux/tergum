@@ -159,17 +159,24 @@ func (r *Registry) loadClients() error {
 		}
 
 		ci.WatcherActive = watcherActive == 1
+		// Parse timestamps, handling both legacy local-time and current UTC storage.
 		if lastSeen != nil {
-			t, _ := time.Parse(time.DateTime, *lastSeen)
-			ci.LastSeen = t
+			ci.LastSeen = parseDBTime(*lastSeen)
 		}
 		if lastBackup != nil {
-			t, _ := time.Parse(time.DateTime, *lastBackup)
-			ci.LastBackup = t
+			ci.LastBackup = parseDBTime(*lastBackup)
+		}
+
+		// If the client was persisted as "online" but its last heartbeat is
+		// older than the offline threshold, correct the status immediately so
+		// the UI shows the right state from the very first poll.
+		if ci.Status == "online" && !ci.LastSeen.IsZero() {
+			if time.Since(ci.LastSeen) > r.offlineThreshold {
+				ci.Status = "offline"
+			}
 		}
 		if registeredAt != nil {
-			t, _ := time.Parse(time.DateTime, *registeredAt)
-			ci.RegisteredAt = t
+			ci.RegisteredAt = parseDBTime(*registeredAt)
 		}
 		if fullCron != "" || autoCron != "" {
 			ci.Schedule = &ScheduleConfig{
@@ -194,8 +201,30 @@ func (r *Registry) loadClients() error {
 		}
 		ci.MissedBackups = missed
 		r.clients[ci.ClientID] = ci
+
+		// Re-persist to normalise any legacy local-time values to UTC
+		// and write the corrected offline status back to the database.
+		_ = r.persistClientLocked(ci)
 	}
 	return nil
+}
+
+// parseDBTime parses a datetime string from the database.
+// New records are stored as RFC3339 ("2026-06-24T20:17:54Z") which includes
+// timezone info and is always unambiguous.
+// Legacy records were stored as plain datetime strings in local time
+// ("2026-06-24 21:17:54"). For those, we fall back to time.Local so
+// that e.g. a BST-stored time is correctly interpreted as BST, not UTC.
+func parseDBTime(s string) time.Time {
+	// Try RFC3339 first — unambiguous timezone.
+	if t, err := time.Parse(time.RFC3339, s); err == nil {
+		return t
+	}
+	// Legacy format: stored without timezone in local time.
+	if t, err := time.ParseInLocation(time.DateTime, s, time.Local); err == nil {
+		return t
+	}
+	return time.Time{}
 }
 
 // loadMissedBackups retrieves unresolved missed schedules for a client.
@@ -507,12 +536,14 @@ func (r *Registry) ResolveMissedBackups(clientID string) ([]MissedBackup, error)
 // Must be called while holding r.mu.
 func (r *Registry) persistClientLocked(ci *ClientInfo) error {
 	var lastSeen, lastBackup *string
+	// Store timestamps as RFC3339 UTC ("2006-01-02T15:04:05Z") so the
+	// timezone is unambiguous when loaded back by parseDBTime.
 	if !ci.LastSeen.IsZero() {
-		v := ci.LastSeen.Format(time.DateTime)
+		v := ci.LastSeen.UTC().Format(time.RFC3339)
 		lastSeen = &v
 	}
 	if !ci.LastBackup.IsZero() {
-		v := ci.LastBackup.Format(time.DateTime)
+		v := ci.LastBackup.UTC().Format(time.RFC3339)
 		lastBackup = &v
 	}
 
@@ -527,7 +558,7 @@ func (r *Registry) persistClientLocked(ci *ClientInfo) error {
 		autoCron = ci.Schedule.AutoBackupCron
 	}
 
-	registeredAt := ci.RegisteredAt.Format(time.DateTime)
+	registeredAt := ci.RegisteredAt.UTC().Format(time.RFC3339)
 
 	_, err := r.db.Exec(
 		`INSERT INTO client_registry (client_id, address, status, last_seen, last_backup,

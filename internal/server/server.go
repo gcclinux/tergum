@@ -504,6 +504,7 @@ func (s *Server) startClient(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("connect to server: %w", err)
 	}
+	serverClient.SetClientID(clientID)
 
 	// Determine this client's advertised address for the server to call back.
 	hostname := s.cfg.Node.Hostname

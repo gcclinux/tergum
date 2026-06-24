@@ -591,6 +591,7 @@ type restoreData struct {
 	NodeRole string
 	NavItems []NavItem
 	Jobs     []backupJobView
+	Clients  []string
 }
 
 type configData struct {
@@ -801,6 +802,13 @@ func (s *Server) handleRestore(w http.ResponseWriter, r *http.Request) {
 		NodeRole: s.nodeRole(),
 		NavItems: FilterNavItems(s.nodeRole()),
 		Jobs:     []backupJobView{},
+		Clients:  []string{},
+	}
+
+	if s.clientRegistry != nil {
+		for _, c := range s.clientRegistry.ListClients() {
+			data.Clients = append(data.Clients, c.ClientID)
+		}
 	}
 
 	if s.repo != nil {

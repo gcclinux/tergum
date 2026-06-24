@@ -11,6 +11,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 )
 
@@ -20,6 +21,7 @@ type ClientConfig struct {
 	MaxBackoff     time.Duration // default 30s
 	BackoffFactor  float64       // default 2.0
 	MaxRetries     int           // default 5
+	ClientID       string
 }
 
 // DefaultClientConfig returns a ClientConfig with default values.
@@ -55,6 +57,19 @@ type TergumClient struct {
 	command proto.CommandServiceClient
 	data    proto.DataServiceClient
 	config  ClientConfig
+}
+
+// SetClientID sets the client identifier used in request metadata.
+func (c *TergumClient) SetClientID(id string) {
+	c.config.ClientID = id
+}
+
+// contextWithMetadata appends the client ID to the outgoing context metadata.
+func (c *TergumClient) contextWithMetadata(ctx context.Context) context.Context {
+	if c.config.ClientID != "" {
+		return metadata.AppendToOutgoingContext(ctx, "client-id", c.config.ClientID)
+	}
+	return ctx
 }
 
 // NewTergumClient creates a TergumClient from existing gRPC connections.
@@ -116,6 +131,7 @@ func (c *TergumClient) DataClient() proto.DataServiceClient {
 
 // TriggerBackup sends a backup request to the server.
 func (c *TergumClient) TriggerBackup(ctx context.Context, level proto.BackupLevel, clientID, initiatedBy string) (*proto.BackupResponse, error) {
+	ctx = c.contextWithMetadata(ctx)
 	var resp *proto.BackupResponse
 	err := c.withRetry(ctx, func() error {
 		var e error
@@ -131,6 +147,7 @@ func (c *TergumClient) TriggerBackup(ctx context.Context, level proto.BackupLeve
 
 // StopBackup stops an in-progress backup.
 func (c *TergumClient) StopBackup(ctx context.Context, backupID, clientID string) (*proto.StopResponse, error) {
+	ctx = c.contextWithMetadata(ctx)
 	var resp *proto.StopResponse
 	err := c.withRetry(ctx, func() error {
 		var e error
@@ -145,6 +162,7 @@ func (c *TergumClient) StopBackup(ctx context.Context, backupID, clientID string
 
 // GetStatus queries the current operation status.
 func (c *TergumClient) GetStatus(ctx context.Context, clientID string) (*proto.StatusResponse, error) {
+	ctx = c.contextWithMetadata(ctx)
 	var resp *proto.StatusResponse
 	err := c.withRetry(ctx, func() error {
 		var e error
@@ -158,6 +176,7 @@ func (c *TergumClient) GetStatus(ctx context.Context, clientID string) (*proto.S
 
 // Ping checks server health.
 func (c *TergumClient) Ping(ctx context.Context) (*proto.PingResponse, error) {
+	ctx = c.contextWithMetadata(ctx)
 	var resp *proto.PingResponse
 	err := c.withRetry(ctx, func() error {
 		var e error
@@ -169,6 +188,7 @@ func (c *TergumClient) Ping(ctx context.Context) (*proto.PingResponse, error) {
 
 // ListBackups queries backup history.
 func (c *TergumClient) ListBackups(ctx context.Context, clientID string, limit int32) (*proto.ListBackupsResponse, error) {
+	ctx = c.contextWithMetadata(ctx)
 	var resp *proto.ListBackupsResponse
 	err := c.withRetry(ctx, func() error {
 		var e error
@@ -183,6 +203,7 @@ func (c *TergumClient) ListBackups(ctx context.Context, clientID string, limit i
 
 // DeleteFromBackup deletes backup entries.
 func (c *TergumClient) DeleteFromBackup(ctx context.Context, req *proto.DeleteRequest) (*proto.DeleteResponse, error) {
+	ctx = c.contextWithMetadata(ctx)
 	var resp *proto.DeleteResponse
 	err := c.withRetry(ctx, func() error {
 		var e error
@@ -194,6 +215,7 @@ func (c *TergumClient) DeleteFromBackup(ctx context.Context, req *proto.DeleteRe
 
 // GetRetention queries retention policies.
 func (c *TergumClient) GetRetention(ctx context.Context, clientID string) (*proto.RetentionResponse, error) {
+	ctx = c.contextWithMetadata(ctx)
 	var resp *proto.RetentionResponse
 	err := c.withRetry(ctx, func() error {
 		var e error
@@ -207,6 +229,7 @@ func (c *TergumClient) GetRetention(ctx context.Context, clientID string) (*prot
 
 // StartWatcher sends a start watcher request to the target.
 func (c *TergumClient) StartWatcher(ctx context.Context, clientID string) (*proto.WatcherResponse, error) {
+	ctx = c.contextWithMetadata(ctx)
 	var resp *proto.WatcherResponse
 	err := c.withRetry(ctx, func() error {
 		var e error
@@ -220,6 +243,7 @@ func (c *TergumClient) StartWatcher(ctx context.Context, clientID string) (*prot
 
 // StopWatcher sends a stop watcher request to the target.
 func (c *TergumClient) StopWatcher(ctx context.Context, clientID string) (*proto.WatcherResponse, error) {
+	ctx = c.contextWithMetadata(ctx)
 	var resp *proto.WatcherResponse
 	err := c.withRetry(ctx, func() error {
 		var e error
@@ -233,6 +257,7 @@ func (c *TergumClient) StopWatcher(ctx context.Context, clientID string) (*proto
 
 // RegisterClient registers this client with the server.
 func (c *TergumClient) RegisterClient(ctx context.Context, clientID, address string) (*proto.RegisterResponse, error) {
+	ctx = c.contextWithMetadata(ctx)
 	var resp *proto.RegisterResponse
 	err := c.withRetry(ctx, func() error {
 		var e error
@@ -250,12 +275,14 @@ func (c *TergumClient) RegisterClient(ctx context.Context, clientID, address str
 // Upload returns a streaming client for uploading file chunks.
 // Streaming RPCs are not retried — the caller manages the stream lifecycle.
 func (c *TergumClient) Upload(ctx context.Context) (proto.DataService_UploadClient, error) {
+	ctx = c.contextWithMetadata(ctx)
 	return c.data.Upload(ctx)
 }
 
 // Download returns a streaming client for downloading file chunks.
 // Streaming RPCs are not retried — the caller manages the stream lifecycle.
 func (c *TergumClient) Download(ctx context.Context, hash, clientID string) (proto.DataService_DownloadClient, error) {
+	ctx = c.contextWithMetadata(ctx)
 	return c.data.Download(ctx, &proto.RestoreRequest{
 		Blake3Hash: hash,
 		ClientId:   clientID,
@@ -265,11 +292,13 @@ func (c *TergumClient) Download(ctx context.Context, hash, clientID string) (pro
 // SyncDatabase returns a streaming client for database sync.
 // Streaming RPCs are not retried — the caller manages the stream lifecycle.
 func (c *TergumClient) SyncDatabase(ctx context.Context) (proto.DataService_SyncDatabaseClient, error) {
+	ctx = c.contextWithMetadata(ctx)
 	return c.data.SyncDatabase(ctx)
 }
 
 // ExchangeManifest sends a manifest and receives the diff of needed files.
 func (c *TergumClient) ExchangeManifest(ctx context.Context, manifest *proto.Manifest) (*proto.ManifestDiff, error) {
+	ctx = c.contextWithMetadata(ctx)
 	var resp *proto.ManifestDiff
 	err := c.withRetry(ctx, func() error {
 		var e error

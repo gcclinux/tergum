@@ -240,6 +240,7 @@ func generateServerCert(caCert *x509.Certificate, caKey ed25519.PrivateKey, host
 		KeyUsage:  x509.KeyUsageDigitalSignature,
 		ExtKeyUsage: []x509.ExtKeyUsage{
 			x509.ExtKeyUsageServerAuth,
+			x509.ExtKeyUsageClientAuth,
 		},
 		DNSNames:    dnsNames,
 		IPAddresses: ipAddresses,
@@ -277,6 +278,7 @@ func generateClientCert(caCert *x509.Certificate, caKey ed25519.PrivateKey) ([]b
 		KeyUsage:  x509.KeyUsageDigitalSignature,
 		ExtKeyUsage: []x509.ExtKeyUsage{
 			x509.ExtKeyUsageClientAuth,
+			x509.ExtKeyUsageServerAuth,
 		},
 	}
 

@@ -13,6 +13,7 @@ import (
 	versionPkg "github.com/gcclinux/tergum/internal/version"
 	"github.com/google/uuid"
 	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/peer"
 )
 
@@ -298,7 +299,9 @@ func (s *CommandServer) RegisterClient(ctx context.Context, req *proto.RegisterR
 	clientID := req.ClientId
 	// Prefer the certificate CN as the authoritative client identity when available.
 	if cn, err := clientIDFromContext(ctx); err == nil && cn != "" {
-		clientID = cn
+		if cn != "Tergum Client" {
+			clientID = cn
+		}
 	}
 
 	if clientID == "" {
@@ -325,24 +328,32 @@ func (s *CommandServer) RegisterClient(ctx context.Context, req *proto.RegisterR
 }
 
 // clientIDFromContext extracts the client identity from the mTLS peer
-// certificate Common Name (CN). Returns empty string if TLS info is unavailable.
+// certificate Common Name (CN) or gRPC metadata. Returns empty string if TLS info is unavailable.
 func clientIDFromContext(ctx context.Context) (string, error) {
-	p, ok := peer.FromContext(ctx)
-	if !ok {
-		return "", fmt.Errorf("no peer info in context")
+	cn := ""
+	if p, ok := peer.FromContext(ctx); ok {
+		if tlsInfo, ok := p.AuthInfo.(credentials.TLSInfo); ok && len(tlsInfo.State.PeerCertificates) > 0 {
+			cn = tlsInfo.State.PeerCertificates[0].Subject.CommonName
+		}
 	}
 
-	tlsInfo, ok := p.AuthInfo.(credentials.TLSInfo)
-	if !ok {
-		return "", fmt.Errorf("no TLS info in peer")
+	// If CN is set and is not the generic "Tergum Client", it is the authoritative ID.
+	if cn != "" && cn != "Tergum Client" {
+		return cn, nil
 	}
 
-	if len(tlsInfo.State.PeerCertificates) == 0 {
-		return "", fmt.Errorf("no peer certificates")
+	// Fallback to client-id metadata if the CN is generic "Tergum Client" or missing.
+	if md, ok := metadata.FromIncomingContext(ctx); ok {
+		if ids := md.Get("client-id"); len(ids) > 0 && ids[0] != "" {
+			return ids[0], nil
+		}
 	}
 
-	cn := tlsInfo.State.PeerCertificates[0].Subject.CommonName
-	return cn, nil
+	if cn != "" {
+		return cn, nil
+	}
+
+	return "", fmt.Errorf("no client identity found")
 }
 
 // Ensure CommandServer satisfies the interface at compile time.
