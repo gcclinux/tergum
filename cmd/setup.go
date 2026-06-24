@@ -125,8 +125,16 @@ func runGenerateCertsOnly() error {
 	configDir := config.DefaultConfigDir()
 	certsDir := filepath.Join(configDir, "certs")
 
+	var hosts []string
+	if ips, err := getLocalIPs(); err == nil {
+		hosts = append(hosts, ips...)
+	}
+	if h, err := os.Hostname(); err == nil && h != "" {
+		hosts = append(hosts, h)
+	}
+
 	mgr := tls.NewManager()
-	if err := mgr.GenerateCerts(certsDir); err != nil {
+	if err := mgr.GenerateCerts(certsDir, hosts...); err != nil {
 		return fmt.Errorf("certificate generation failed: %w", err)
 	}
 
@@ -203,8 +211,19 @@ func runInteractiveSetup(wiz *setupWizard) error {
 	generateCerts := wiz.promptYesNo("Generate TLS certificates?", true)
 
 	if generateCerts {
+		var hosts []string
+		if ips, err := getLocalIPs(); err == nil {
+			hosts = append(hosts, ips...)
+		}
+		if h, err := os.Hostname(); err == nil && h != "" {
+			hosts = append(hosts, h)
+		}
+		if serverAddress != "" {
+			hosts = append(hosts, serverAddress)
+		}
+
 		mgr := tls.NewManager()
-		if err := mgr.GenerateCerts(certsDir); err != nil {
+		if err := mgr.GenerateCerts(certsDir, hosts...); err != nil {
 			return fmt.Errorf("certificate generation failed: %w", err)
 		}
 		fmt.Fprintf(wiz.writer, "Certificates generated in %s\n", certsDir)

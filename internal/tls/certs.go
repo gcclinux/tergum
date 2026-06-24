@@ -20,7 +20,8 @@ import (
 // CertManager generates and loads TLS certificates for mutual TLS.
 type CertManager interface {
 	// GenerateCerts creates CA, server, and client certificates with Ed25519 keys.
-	GenerateCerts(outputDir string) error
+	// Optional hosts can be provided to be added to the server certificate's Subject Alternative Names.
+	GenerateCerts(outputDir string, hosts ...string) error
 	// LoadServerTLS returns a TLS config for the server requiring client certs.
 	LoadServerTLS(caPath, certPath, keyPath string) (*tls.Config, error)
 	// LoadClientTLS returns a TLS config for the client trusting the CA.
@@ -38,7 +39,8 @@ func NewManager() CertManager {
 // GenerateCerts creates a CA, server certificate, and client certificate, all
 // using Ed25519 keys. Output files: ca.crt, ca.key, server.crt, server.key,
 // client.crt, client.key in PEM format.
-func (m *Manager) GenerateCerts(outputDir string) error {
+// Optional hosts can be provided to be added to the server certificate's Subject Alternative Names.
+func (m *Manager) GenerateCerts(outputDir string, hosts ...string) error {
 	if err := os.MkdirAll(outputDir, 0700); err != nil {
 		return fmt.Errorf("create output directory: %w", err)
 	}
@@ -50,7 +52,7 @@ func (m *Manager) GenerateCerts(outputDir string) error {
 	}
 
 	// Generate server certificate signed by CA
-	serverCertBytes, serverKey, err := generateServerCert(caCert, caKey)
+	serverCertBytes, serverKey, err := generateServerCert(caCert, caKey, hosts...)
 	if err != nil {
 		return fmt.Errorf("generate server cert: %w", err)
 	}
@@ -183,8 +185,8 @@ func generateCA() (ed25519.PrivateKey, *x509.Certificate, []byte, error) {
 }
 
 // generateServerCert creates a server certificate signed by the CA.
-// Includes SANs: localhost, 127.0.0.1. Validity: 1 year.
-func generateServerCert(caCert *x509.Certificate, caKey ed25519.PrivateKey) ([]byte, ed25519.PrivateKey, error) {
+// Includes SANs: localhost, 127.0.0.1, plus any additional hosts. Validity: 1 year.
+func generateServerCert(caCert *x509.Certificate, caKey ed25519.PrivateKey, hosts ...string) ([]byte, ed25519.PrivateKey, error) {
 	pub, priv, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
 		return nil, nil, err
@@ -193,6 +195,38 @@ func generateServerCert(caCert *x509.Certificate, caKey ed25519.PrivateKey) ([]b
 	serial, err := randomSerial()
 	if err != nil {
 		return nil, nil, err
+	}
+
+	dnsNames := []string{"localhost"}
+	ipAddresses := []net.IP{net.IPv4(127, 0, 0, 1)}
+
+	for _, host := range hosts {
+		if host == "" {
+			continue
+		}
+		if ip := net.ParseIP(host); ip != nil {
+			found := false
+			for _, existingIP := range ipAddresses {
+				if existingIP.Equal(ip) {
+					found = true
+					break
+				}
+			}
+			if !found {
+				ipAddresses = append(ipAddresses, ip)
+			}
+		} else {
+			found := false
+			for _, existingDNS := range dnsNames {
+				if existingDNS == host {
+					found = true
+					break
+				}
+			}
+			if !found {
+				dnsNames = append(dnsNames, host)
+			}
+		}
 	}
 
 	template := &x509.Certificate{
@@ -207,8 +241,8 @@ func generateServerCert(caCert *x509.Certificate, caKey ed25519.PrivateKey) ([]b
 		ExtKeyUsage: []x509.ExtKeyUsage{
 			x509.ExtKeyUsageServerAuth,
 		},
-		DNSNames:    []string{"localhost"},
-		IPAddresses: []net.IP{net.IPv4(127, 0, 0, 1)},
+		DNSNames:    dnsNames,
+		IPAddresses: ipAddresses,
 	}
 
 	certBytes, err := x509.CreateCertificate(rand.Reader, template, caCert, pub, caKey)
