@@ -9,6 +9,30 @@ import (
 	"testing"
 )
 
+func TestMain(m *testing.M) {
+	// Stub getLocalIPs to return a predictable address
+	getLocalIPs = func() ([]string, error) {
+		return []string{"192.168.1.150"}, nil
+	}
+	os.Setenv("TERGUM_PASSPHRASE", "testpassphrase")
+
+	// Isolate tests from the user's real home/config directory
+	tmpDir, err := os.MkdirTemp("", "tergum-test-*")
+	if err == nil {
+		os.Setenv("APPDATA", tmpDir)
+		os.Setenv("USERPROFILE", tmpDir)
+		os.Setenv("HOME", tmpDir)
+	}
+
+	code := m.Run()
+
+	if tmpDir != "" {
+		os.RemoveAll(tmpDir)
+	}
+
+	os.Exit(code)
+}
+
 func TestSetupGenerateCertsFlag(t *testing.T) {
 	// Save existing certs if present so we don't destroy user data.
 	defaultCertsDir := filepath.Join(defaultConfigDirForTest(), "certs")
@@ -90,7 +114,7 @@ func TestSetupWizardPromptChoice(t *testing.T) {
 	input := strings.NewReader("server\n")
 
 	wiz := newSetupWizard(input, &output)
-	result := wiz.promptChoice("Choose role", []string{"client", "server", "both"}, "client")
+	result := wiz.promptChoice("Choose role", []string{"client", "server", "hybrid"}, "client")
 
 	if result != "server" {
 		t.Errorf("expected 'server', got %q", result)
@@ -102,7 +126,7 @@ func TestSetupWizardPromptChoiceInvalid(t *testing.T) {
 	input := strings.NewReader("invalid\n")
 
 	wiz := newSetupWizard(input, &output)
-	result := wiz.promptChoice("Choose role", []string{"client", "server", "both"}, "client")
+	result := wiz.promptChoice("Choose role", []string{"client", "server", "hybrid"}, "client")
 
 	if result != "client" {
 		t.Errorf("expected 'client' (default), got %q", result)
@@ -139,13 +163,16 @@ func TestSetupWizardPromptYesNo(t *testing.T) {
 }
 
 func TestBuildConfig(t *testing.T) {
-	cfg := buildConfig("client", "192.168.1.5", "/tmp/storage", "/tmp/certs", "/tmp/config", true)
+	cfg := buildConfig("client", "192.168.1.5", "192.168.1.10", "/tmp/storage", "/tmp/certs", "/tmp/config", true)
 
 	if cfg.Node.Role != "client" {
 		t.Errorf("expected role 'client', got %q", cfg.Node.Role)
 	}
 	if cfg.Server.Address != "192.168.1.5" {
 		t.Errorf("expected address '192.168.1.5', got %q", cfg.Server.Address)
+	}
+	if cfg.Node.Hostname != "192.168.1.10" {
+		t.Errorf("expected hostname '192.168.1.10', got %q", cfg.Node.Hostname)
 	}
 	if cfg.Server.CommandPort != 7400 {
 		t.Errorf("expected command port 7400, got %d", cfg.Server.CommandPort)
@@ -166,7 +193,7 @@ func TestBuildConfig(t *testing.T) {
 }
 
 func TestBuildConfigServerRole(t *testing.T) {
-	cfg := buildConfig("server", "", "/var/lib/tergum/storage", "/etc/tergum/certs", "/etc/tergum", true)
+	cfg := buildConfig("server", "", "", "/var/lib/tergum/storage", "/etc/tergum/certs", "/etc/tergum", true)
 
 	if cfg.Node.Role != "server" {
 		t.Errorf("expected role 'server', got %q", cfg.Node.Role)
@@ -184,7 +211,7 @@ func TestBuildConfigServerRole(t *testing.T) {
 }
 
 func TestBuildConfigNoCerts(t *testing.T) {
-	cfg := buildConfig("client", "localhost", "/tmp/storage", "/tmp/certs", "/tmp/config", false)
+	cfg := buildConfig("client", "localhost", "", "/tmp/storage", "/tmp/certs", "/tmp/config", false)
 
 	if cfg.TLS.CACert != "" {
 		t.Errorf("expected empty TLS paths when certs not generated, got CA: %q", cfg.TLS.CACert)
@@ -198,7 +225,7 @@ func TestWriteConfigTOML(t *testing.T) {
 	tmpDir := t.TempDir()
 	configPath := filepath.Join(tmpDir, "subdir", "tergum.toml")
 
-	cfg := buildConfig("client", "localhost", "/tmp/storage", "/tmp/certs", tmpDir, true)
+	cfg := buildConfig("client", "localhost", "", "/tmp/storage", "/tmp/certs", tmpDir, true)
 	err := writeConfigTOML(configPath, cfg)
 	if err != nil {
 		t.Fatalf("writeConfigTOML failed: %v", err)
@@ -237,7 +264,8 @@ func TestInteractiveSetupRequiresPassphrase(t *testing.T) {
 	}
 
 	// Provide inputs for all prompts but leave passphrase empty
-	input := strings.NewReader("client\nlocalhost\n\nn\n\n")
+	// role=client, clientIPchoice=1, serverAddress=localhost, generateCerts=n, passphrase=
+	input := strings.NewReader("client\n1\nlocalhost\nn\n\n")
 	var output bytes.Buffer
 
 	wiz := newSetupWizard(input, &output)
@@ -261,7 +289,8 @@ func TestInteractiveSetupShortPassphrase(t *testing.T) {
 	}
 
 	// Provide all prompts with a too-short passphrase
-	input := strings.NewReader("client\nlocalhost\n\nn\nshort\n")
+	// role=client, clientIPchoice=1, serverAddress=localhost, generateCerts=n, passphrase=short
+	input := strings.NewReader("client\n1\nlocalhost\nn\nshort\n")
 	var output bytes.Buffer
 
 	wiz := newSetupWizard(input, &output)
@@ -284,14 +313,46 @@ func TestInteractiveSetupFullFlow(t *testing.T) {
 		t.Setenv("HOME", tmpDir)
 	}
 
-	// Provide all required inputs:
-	// role=client, server_address=localhost, storage_path=<tmpdir>/storage, generate_certs=n, passphrase=mysecretpass123
+	// Provide all required inputs for client role (no storage path prompted):
+	// role=client, clientIPchoice=1, server_address=localhost, generate_certs=n, passphrase=mysecretpass123
 	// include paths: (empty = scan home), scan home=y
 	// exclude patterns: use defaults=y, additional=(empty)
 	// watcher: n
 	// schedule: (empty), (empty)
+	inputs := "client\n1\nlocalhost\nn\nmysecretpass123\n\ny\ny\n\nn\n\n\n"
+	input := strings.NewReader(inputs)
+	var output bytes.Buffer
+
+	wiz := newSetupWizard(input, &output)
+	err := runInteractiveSetup(wiz)
+
+	if err != nil {
+		t.Fatalf("interactive setup failed: %v", err)
+	}
+
+	// Verify output contains completion message
+	if !strings.Contains(output.String(), "Setup complete") {
+		t.Error("expected completion message in output")
+	}
+}
+
+func TestInteractiveSetupHybridFlow(t *testing.T) {
+	tmpDir := t.TempDir()
+	if os.PathSeparator == '\\' {
+		t.Setenv("APPDATA", tmpDir)
+		t.Setenv("USERPROFILE", tmpDir)
+	} else {
+		t.Setenv("HOME", tmpDir)
+	}
+
 	storagePath := filepath.Join(tmpDir, "storage")
-	inputs := fmt.Sprintf("client\nlocalhost\n%s\nn\nmysecretpass123\n\ny\ny\n\nn\n\n\n", storagePath)
+	// Provide all required inputs for hybrid role (storage path is prompted):
+	// role=hybrid, server_address=localhost, storage_path=storagePath, generate_certs=n, passphrase=mysecretpass123
+	// include paths: (empty = scan home), scan home=y
+	// exclude patterns: use defaults=y, additional=(empty)
+	// watcher: n
+	// schedule: (empty), (empty)
+	inputs := fmt.Sprintf("hybrid\nlocalhost\n%s\nn\nmysecretpass123\n\ny\ny\n\nn\n\n\n", storagePath)
 	input := strings.NewReader(inputs)
 	var output bytes.Buffer
 
@@ -354,10 +415,8 @@ func TestInteractiveSetupExistingConfig(t *testing.T) {
 		t.Setenv("HOME", tmpDir)
 	}
 
-	storagePath := filepath.Join(tmpDir, "storage")
-
 	// Phase 1: Initial Setup
-	inputs1 := fmt.Sprintf("client\nlocalhost\n%s\nn\nmysecretpass123\n\ny\ny\n\nn\n\n\n", storagePath)
+	inputs1 := "client\n1\nlocalhost\nn\nmysecretpass123\n\ny\ny\n\nn\n\n\n"
 	var output1 bytes.Buffer
 	wiz1 := newSetupWizard(strings.NewReader(inputs1), &output1)
 	if err := runInteractiveSetup(wiz1); err != nil {
@@ -373,8 +432,8 @@ func TestInteractiveSetupExistingConfig(t *testing.T) {
 	originalSalt, _ := os.ReadFile(saltPath)
 
 	// Phase 2: Rerun setup, choose NOT to overwrite, verify correct passphrase
-	// inputs: role, server, storage, certs, overwrite=n, passphrase=mysecretpass123
-	inputs2 := fmt.Sprintf("client\nlocalhost\n%s\nn\nn\nmysecretpass123\n\ny\ny\n\nn\n\n\n", storagePath)
+	// inputs: role, clientIPchoice, server, certs, overwrite=n, passphrase=mysecretpass123
+	inputs2 := "client\n1\nlocalhost\nn\nn\nmysecretpass123\n\ny\ny\n\nn\n\n\n"
 	var output2 bytes.Buffer
 	wiz2 := newSetupWizard(strings.NewReader(inputs2), &output2)
 	if err := runInteractiveSetup(wiz2); err != nil {
@@ -388,8 +447,8 @@ func TestInteractiveSetupExistingConfig(t *testing.T) {
 	}
 
 	// Phase 3: Rerun setup, choose NOT to overwrite, enter WRONG passphrase, do NOT retry
-	// inputs: role, server, storage, certs, overwrite=n, passphrase=wrongpass, retry=n
-	inputs3 := fmt.Sprintf("client\nlocalhost\n%s\nn\nn\nwrongpass\nn\n", storagePath)
+	// inputs: role, clientIPchoice, server, certs, overwrite=n, passphrase=wrongpass, retry=n
+	inputs3 := "client\n1\nlocalhost\nn\nn\nwrongpass\nn\n"
 	var output3 bytes.Buffer
 	wiz3 := newSetupWizard(strings.NewReader(inputs3), &output3)
 	err := runInteractiveSetup(wiz3)

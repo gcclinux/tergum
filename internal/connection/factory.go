@@ -12,7 +12,7 @@ import (
 
 // NewServerConnection creates the appropriate ServerConnection based on the node role.
 //   - role "client" → connects to the remote server via gRPC and returns a RemoteServerConnection
-//   - role "both"   → returns a LocalServerConnection using the local CAS storage directory
+//   - role "hybrid" → returns a LocalServerConnection using the local CAS storage directory
 //   - role "server" → returns an error (server nodes do not initiate backups)
 func NewServerConnection(cfg *config.Config) (backup.ServerConnection, error) {
 	switch cfg.Node.Role {
@@ -39,7 +39,7 @@ func NewServerConnection(cfg *config.Config) (backup.ServerConnection, error) {
 
 		return tergumgrpc.NewRemoteServerConnection(client.DataClient(), clientID), nil
 
-	case "both":
+	case "hybrid":
 		return &backup.LocalServerConnection{
 			StorageDir: cfg.StorageDir(),
 		}, nil
@@ -54,7 +54,7 @@ func NewServerConnection(cfg *config.Config) (backup.ServerConnection, error) {
 
 // NewDataSource creates the appropriate DataSource for restore operations based on the node role.
 //   - role "client" → connects to the remote server via gRPC and returns a RemoteDataSource
-//   - role "both"   → returns a LocalDataSource using the local CAS storage directory
+//   - role "hybrid" → returns a LocalDataSource using the local CAS storage directory
 //   - role "server" → returns an error (server nodes do not initiate restores)
 func NewDataSource(cfg *config.Config) (restore.DataSource, error) {
 	switch cfg.Node.Role {
@@ -81,7 +81,7 @@ func NewDataSource(cfg *config.Config) (restore.DataSource, error) {
 
 		return tergumgrpc.NewRemoteDataSource(client.DataClient(), clientID), nil
 
-	case "both":
+	case "hybrid":
 		return &restore.LocalDataSource{
 			StorageDir: cfg.StorageDir(),
 		}, nil

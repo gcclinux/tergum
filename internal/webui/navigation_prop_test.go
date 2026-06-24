@@ -15,7 +15,7 @@ import (
 func TestProperty_NavigationRoleFiltering(t *testing.T) {
 	rapid.Check(t, func(rt *rapid.T) {
 		// Generate a random role from the valid set.
-		role := rapid.SampledFrom([]string{"client", "server", "both"}).Draw(rt, "role")
+		role := rapid.SampledFrom([]string{"client", "server", "hybrid"}).Draw(rt, "role")
 
 		// Call the function under test.
 		items := FilterNavItems(role)
@@ -62,7 +62,7 @@ func TestProperty_NavigationRoleFiltering(t *testing.T) {
 				}
 			}
 
-		case "both":
+		case "hybrid":
 			// All items should be present (10 total).
 			allPaths := []string{"/", "/backups", "/restore", "/config", "/paths", "/retention", "/watchers", "/activity", "/clients", "/metrics"}
 			for _, p := range allPaths {

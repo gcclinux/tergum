@@ -300,7 +300,7 @@ func openRepo() (db.Repository, func(), error) {
 		return nil, nil, err
 	}
 
-	repo, err := db.NewRepository(cfg.Database.Path, cfg.Node.Role == "server" || cfg.Node.Role == "both")
+	repo, err := db.NewRepository(cfg.Database.Path, cfg.Node.Role == "server" || cfg.Node.Role == "hybrid")
 	if err != nil {
 		return nil, nil, fmt.Errorf("cannot open database: %w", err)
 	}

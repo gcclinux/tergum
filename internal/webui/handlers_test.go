@@ -54,7 +54,7 @@ func TestRenderFragment_HTMXRequest_ReturnsContentOnly(t *testing.T) {
 
 	s.renderFragment(w, req, "dashboard", dashboardData{
 		Title:    "Dashboard",
-		NodeRole: "both",
+		NodeRole: "hybrid",
 		Version:  "3.0.0",
 		Uptime:   "1h",
 	})
@@ -93,7 +93,7 @@ func TestRenderFragment_FullPageRequest_ReturnsShell(t *testing.T) {
 
 	s.renderFragment(w, req, "dashboard", dashboardData{
 		Title:    "Dashboard",
-		NodeRole: "both",
+		NodeRole: "hybrid",
 		Version:  "3.0.0",
 		Uptime:   "1h",
 	})

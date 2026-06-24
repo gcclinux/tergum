@@ -144,9 +144,22 @@ func runBackup(cmd *cobra.Command, args []string) error {
 	}
 
 	// Generate a client ID.
-	hostname, _ := os.Hostname()
-	if hostname == "" {
-		hostname = "local"
+	var clientID string
+	if cfg.Node.Role == "client" {
+		_, id, err := connection.LoadClientTLS(cfg)
+		if err == nil && id != "" {
+			clientID = id
+		}
+	}
+	if clientID == "" {
+		if cfg.Node.Hostname != "" {
+			clientID = cfg.Node.Hostname
+		} else {
+			clientID, _ = os.Hostname()
+			if clientID == "" {
+				clientID = "local"
+			}
+		}
 	}
 
 	fmt.Printf("Starting %s backup...\n", level)
@@ -157,7 +170,7 @@ func runBackup(cmd *cobra.Command, args []string) error {
 	// Run backup.
 	result, err := engine.RunBackup(ctx, backup.BackupRequest{
 		Level:       backupLevel,
-		ClientID:    hostname,
+		ClientID:    clientID,
 		InitiatedBy: "cli",
 	})
 	if err != nil {

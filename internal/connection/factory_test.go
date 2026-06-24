@@ -8,9 +8,9 @@ import (
 	"github.com/gcclinux/tergum/internal/restore"
 )
 
-func TestNewServerConnection_RoleBoth(t *testing.T) {
+func TestNewServerConnection_RoleHybrid(t *testing.T) {
 	cfg := &config.Config{}
-	cfg.Node.Role = "both"
+	cfg.Node.Role = "hybrid"
 	cfg.Backup.StoragePath = "/tmp/test-storage"
 
 	conn, err := NewServerConnection(cfg)
@@ -86,9 +86,9 @@ func TestNewServerConnection_UnknownRole(t *testing.T) {
 	}
 }
 
-func TestNewDataSource_RoleBoth(t *testing.T) {
+func TestNewDataSource_RoleHybrid(t *testing.T) {
 	cfg := &config.Config{}
-	cfg.Node.Role = "both"
+	cfg.Node.Role = "hybrid"
 	cfg.Backup.StoragePath = "/tmp/test-storage"
 
 	ds, err := NewDataSource(cfg)

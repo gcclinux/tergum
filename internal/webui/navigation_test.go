@@ -44,8 +44,8 @@ func TestFilterNavItems_ServerRole(t *testing.T) {
 	assertNoItem(t, items, "/watchers")
 }
 
-func TestFilterNavItems_BothRole(t *testing.T) {
-	items := FilterNavItems("both")
+func TestFilterNavItems_HybridRole(t *testing.T) {
+	items := FilterNavItems("hybrid")
 
 	// All items should be present
 	assertHasItem(t, items, "/")
@@ -61,7 +61,7 @@ func TestFilterNavItems_BothRole(t *testing.T) {
 
 	// Should have all 10 items
 	if len(items) != 10 {
-		t.Errorf("expected 10 items for role 'both', got %d", len(items))
+		t.Errorf("expected 10 items for role 'hybrid', got %d", len(items))
 	}
 }
 
@@ -84,7 +84,7 @@ func TestFilterNavItems_EmptyRole(t *testing.T) {
 }
 
 func TestFilterNavItems_PreservesOrder(t *testing.T) {
-	items := FilterNavItems("both")
+	items := FilterNavItems("hybrid")
 
 	expected := []string{"/", "/backups", "/restore", "/config", "/paths", "/retention", "/watchers", "/activity", "/clients", "/metrics"}
 	if len(items) != len(expected) {
@@ -98,7 +98,7 @@ func TestFilterNavItems_PreservesOrder(t *testing.T) {
 }
 
 func TestFilterNavItems_ItemsHaveLabelsAndIcons(t *testing.T) {
-	items := FilterNavItems("both")
+	items := FilterNavItems("hybrid")
 	for _, item := range items {
 		if item.Label == "" {
 			t.Errorf("item %q has empty label", item.Path)

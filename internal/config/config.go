@@ -203,15 +203,15 @@ func (c *Config) StorageDir() string {
 func (c *Config) Validate() error {
 	var errs []string
 
-	// node.role must be one of "client", "server", "both"
+	// node.role must be one of "client", "server", "hybrid"
 	switch c.Node.Role {
-	case "client", "server", "both":
+	case "client", "server", "hybrid":
 		// valid
 	default:
-		errs = append(errs, fmt.Sprintf("node.role must be one of \"client\", \"server\", \"both\"; got %q", c.Node.Role))
+		errs = append(errs, fmt.Sprintf("node.role must be one of \"client\", \"server\", \"hybrid\"; got %q", c.Node.Role))
 	}
 
-	// server.address is required when role is "client" or "both" (need server to connect to)
+	// server.address is required when role is "client" or "hybrid" (need server to connect to)
 	if c.Node.Role == "client" {
 		if c.Server.Address == "" {
 			errs = append(errs, "server.address is required when node.role is \"client\"")

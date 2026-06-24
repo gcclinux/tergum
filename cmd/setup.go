@@ -7,8 +7,10 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/BurntSushi/toml"
@@ -146,21 +148,53 @@ func runInteractiveSetup(wiz *setupWizard) error {
 	fmt.Fprintln(wiz.writer)
 
 	// 1. Role selection
-	role := wiz.promptChoice("Node role", []string{"client", "server", "both"}, "client")
+	role := wiz.promptChoice("Node role", []string{"client", "server", "hybrid"}, "client")
 
-	// 2. Server address (if client or both)
+	// 2. Client IP/Hostname (if role is client)
+	var clientHostname string
+	if role == "client" {
+		ips, err := getLocalIPs()
+		defaultHost, _ := os.Hostname()
+		if defaultHost == "" {
+			defaultHost = "localhost"
+		}
+		if err == nil && len(ips) > 0 {
+			fmt.Fprintln(wiz.writer, "\nLocal IP addresses found:")
+			for i, ip := range ips {
+				fmt.Fprintf(wiz.writer, "  [%d] %s\n", i+1, ip)
+			}
+			fmt.Fprintf(wiz.writer, "  [%d] Use hostname: %s\n", len(ips)+1, defaultHost)
+
+			choiceStr := wiz.prompt("Select the client IP address/hostname to advertise to the server", "1")
+			choice, err := strconv.Atoi(choiceStr)
+			if err == nil && choice >= 1 && choice <= len(ips) {
+				clientHostname = ips[choice-1]
+			} else if err == nil && choice == len(ips)+1 {
+				clientHostname = defaultHost
+			} else {
+				clientHostname = choiceStr
+			}
+		} else {
+			clientHostname = wiz.prompt("Client IP address or hostname to advertise to the server", defaultHost)
+		}
+	}
+
+	// 2b. Server address (if client or hybrid)
 	var serverAddress string
-	if role == "client" || role == "both" {
+	if role == "client" || role == "hybrid" {
 		serverAddress = wiz.prompt("Server address (hostname or IP)", "localhost")
 	}
 
 	// 3. Storage path
-	defaultStorage := defaultStoragePath(role)
-	storagePath := wiz.prompt("Storage path", defaultStorage)
+	var storagePath string
+	if role == "server" || role == "hybrid" {
+		defaultStorage := defaultStoragePath(role)
+		storagePath = wiz.prompt("Storage path", defaultStorage)
 
-	// Ensure storage path exists
-	if err := os.MkdirAll(storagePath, 0700); err != nil {
-		return fmt.Errorf("cannot create storage path %q: %w", storagePath, err)
+		// Ensure storage path exists
+		if err := os.MkdirAll(storagePath, 0700); err != nil {
+			return fmt.Errorf("cannot create storage path %q: %w", storagePath, err)
+		}
 	}
 
 	// 4. Certificate generation
@@ -390,7 +424,7 @@ func runInteractiveSetup(wiz *setupWizard) error {
 	autoBackupCron := wiz.prompt("Auto/incremental backup cron (empty for none)", "")
 
 	// 10. Write TOML configuration file
-	cfg := buildConfig(role, serverAddress, storagePath, certsDir, configDir, generateCerts)
+	cfg := buildConfig(role, serverAddress, clientHostname, storagePath, certsDir, configDir, generateCerts)
 	cfg.Watcher.Enabled = watcherEnabled
 	cfg.Scheduler.FullBackupCron = fullBackupCron
 	cfg.Scheduler.AutoBackupCron = autoBackupCron
@@ -438,7 +472,11 @@ func runInteractiveSetup(wiz *setupWizard) error {
 	fmt.Fprintf(wiz.writer, "Configuration written to %s\n", configPath)
 	fmt.Fprintln(wiz.writer)
 	fmt.Fprintln(wiz.writer, "Setup complete! Next steps:")
-	fmt.Fprintln(wiz.writer, "  tergum server    — start the server (required for backups)")
+	if role == "client" {
+		fmt.Fprintln(wiz.writer, "  tergum client    — start the client daemon (required for backups)")
+	} else {
+		fmt.Fprintln(wiz.writer, "  tergum server    — start the server (required for backups)")
+	}
 	fmt.Fprintln(wiz.writer, "  tergum backup    — run a manual backup")
 	fmt.Fprintln(wiz.writer, "  tergum paths list — view configured paths")
 
@@ -461,7 +499,7 @@ func runInteractiveSetup(wiz *setupWizard) error {
 
 // defaultStoragePath returns a reasonable default storage path based on role and platform.
 func defaultStoragePath(role string) string {
-	if role == "server" || role == "both" {
+	if role == "server" || role == "hybrid" {
 		switch {
 		case isWindows():
 			return filepath.Join(os.Getenv("PROGRAMDATA"), "tergum", "storage")
@@ -478,12 +516,12 @@ func isWindows() bool {
 }
 
 // buildConfig constructs a Config struct from wizard answers.
-func buildConfig(role, serverAddress, storagePath, certsDir, configDir string, hasCerts bool) *config.Config {
+func buildConfig(role, serverAddress, clientHostname, storagePath, certsDir, configDir string, hasCerts bool) *config.Config {
 	cfg := &config.Config{}
 
 	// Node
 	cfg.Node.Role = role
-	cfg.Node.Hostname = ""
+	cfg.Node.Hostname = clientHostname
 
 	// Server
 	if serverAddress != "" {
@@ -498,7 +536,7 @@ func buildConfig(role, serverAddress, storagePath, certsDir, configDir string, h
 	// TLS
 	if hasCerts {
 		cfg.TLS.CACert = filepath.Join(certsDir, "ca.crt")
-		if role == "server" || role == "both" {
+		if role == "server" || role == "hybrid" {
 			cfg.TLS.Cert = filepath.Join(certsDir, "server.crt")
 			cfg.TLS.Key = filepath.Join(certsDir, "server.key")
 		} else {
@@ -527,8 +565,8 @@ func buildConfig(role, serverAddress, storagePath, certsDir, configDir string, h
 	cfg.Watcher.OngoingBackup = true
 	cfg.Watcher.BatchIntervalMinutes = 5
 
-	// WebUI (server/both only)
-	if role == "server" || role == "both" {
+	// WebUI (server/hybrid only)
+	if role == "server" || role == "hybrid" {
 		cfg.WebUI.Enabled = true
 	}
 	cfg.WebUI.Port = 7480
@@ -562,4 +600,21 @@ func writeConfigTOML(path string, cfg *config.Config) error {
 
 	encoder := toml.NewEncoder(f)
 	return encoder.Encode(cfg)
+}
+
+// getLocalIPs returns all non-loopback IPv4 addresses found on local network interfaces.
+var getLocalIPs = func() ([]string, error) {
+	addrs, err := net.InterfaceAddrs()
+	if err != nil {
+		return nil, err
+	}
+	var ips []string
+	for _, addr := range addrs {
+		if ipnet, ok := addr.(*net.IPNet); ok && !ipnet.IP.IsLoopback() {
+			if ipnet.IP.To4() != nil {
+				ips = append(ips, ipnet.IP.String())
+			}
+		}
+	}
+	return ips, nil
 }

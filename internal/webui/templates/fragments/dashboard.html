@@ -68,7 +68,7 @@
         </div>
 
         <!-- Active Clients Card (polls every 10s, hidden when Node_Role is "client") -->
-        {{if or (eq .NodeRole "server") (eq .NodeRole "both")}}
+        {{if or (eq .NodeRole "server") (eq .NodeRole "hybrid")}}
         <div id="card-clients" class="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-4"
              hx-get="/api/dashboard/clients" hx-trigger="load, every 10s" hx-swap="innerHTML">
             <div class="animate-pulse space-y-3">

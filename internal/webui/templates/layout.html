@@ -14,15 +14,15 @@
             <span class="text-lg font-bold">Tergum</span>
             {{if eq .NodeRole "server"}}<span class="inline-block px-2 py-0.5 text-xs font-semibold rounded-full bg-green-100 text-green-800">server</span>{{end}}
             {{if eq .NodeRole "client"}}<span class="inline-block px-2 py-0.5 text-xs font-semibold rounded-full bg-blue-100 text-blue-800">client</span>{{end}}
-            {{if eq .NodeRole "both"}}<span class="inline-block px-2 py-0.5 text-xs font-semibold rounded-full bg-gray-200 text-gray-700">both</span>{{end}}
+            {{if eq .NodeRole "hybrid"}}<span class="inline-block px-2 py-0.5 text-xs font-semibold rounded-full bg-gray-200 text-gray-700">hybrid</span>{{end}}
         </div>
         <div class="flex items-center">
             <a href="/" class="p-4">Dashboard</a>
-            {{if or (eq .NodeRole "client") (eq .NodeRole "both")}}<a href="/backups" class="p-4">Backups</a>{{end}}
-            {{if or (eq .NodeRole "client") (eq .NodeRole "both")}}<a href="/restore" class="p-4">Restore</a>{{end}}
+            {{if or (eq .NodeRole "client") (eq .NodeRole "hybrid")}}<a href="/backups" class="p-4">Backups</a>{{end}}
+            {{if or (eq .NodeRole "client") (eq .NodeRole "hybrid")}}<a href="/restore" class="p-4">Restore</a>{{end}}
             <a href="/config" class="p-4">Config</a>
             <a href="/retention" class="p-4">Retention</a>
-            {{if or (eq .NodeRole "client") (eq .NodeRole "both")}}<a href="/watchers" class="p-4">Watchers</a>{{end}}
+            {{if or (eq .NodeRole "client") (eq .NodeRole "hybrid")}}<a href="/watchers" class="p-4">Watchers</a>{{end}}
             <a href="/activity" class="p-4">Activity</a>
             {{if eq .NodeRole "server"}}<a href="/clients" class="p-4">Clients</a>{{end}}
             <a href="/metrics" class="p-4">Metrics</a>

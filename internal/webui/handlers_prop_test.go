@@ -50,75 +50,75 @@ func TestProperty_FragmentVsFullResponse(t *testing.T) {
 		case "dashboard":
 			data = dashboardData{
 				Title:    "Dashboard",
-				NodeRole: "both",
-				NavItems: FilterNavItems("both"),
+				NodeRole: "hybrid",
+				NavItems: FilterNavItems("hybrid"),
 				Version:  "3.0.0",
 				Uptime:   "1h",
 			}
 		case "backups":
 			data = backupsData{
 				Title:    "Backups",
-				NodeRole: "both",
-				NavItems: FilterNavItems("both"),
+				NodeRole: "hybrid",
+				NavItems: FilterNavItems("hybrid"),
 				Jobs:     []backupJobView{},
 			}
 		case "restore":
 			data = restoreData{
 				Title:    "Restore",
-				NodeRole: "both",
-				NavItems: FilterNavItems("both"),
+				NodeRole: "hybrid",
+				NavItems: FilterNavItems("hybrid"),
 			}
 		case "config":
 			data = configData{
 				Title:    "Config",
-				NodeRole: "both",
-				NavItems: FilterNavItems("both"),
+				NodeRole: "hybrid",
+				NavItems: FilterNavItems("hybrid"),
 				Config:   &config.Config{},
 			}
 		case "paths":
 			data = pathsData{
 				Title:    "Paths",
-				NodeRole: "both",
-				NavItems: FilterNavItems("both"),
+				NodeRole: "hybrid",
+				NavItems: FilterNavItems("hybrid"),
 			}
 		case "retention":
 			data = retentionData{
 				Title:    "Retention",
-				NodeRole: "both",
-				NavItems: FilterNavItems("both"),
+				NodeRole: "hybrid",
+				NavItems: FilterNavItems("hybrid"),
 				Policies: []retentionPolicyView{},
 			}
 		case "watchers":
 			data = watchersData{
 				Title:          "Watchers",
-				NodeRole:       "both",
-				NavItems:       FilterNavItems("both"),
+				NodeRole:       "hybrid",
+				NavItems:       FilterNavItems("hybrid"),
 				WatcherEnabled: true,
 				WatcherRunning: true,
 			}
 		case "activity":
 			data = activityData{
 				Title:    "Activity",
-				NodeRole: "both",
-				NavItems: FilterNavItems("both"),
+				NodeRole: "hybrid",
+				NavItems: FilterNavItems("hybrid"),
 			}
 		case "clients":
 			data = clientsData{
 				Title:    "Clients",
-				NodeRole: "both",
-				NavItems: FilterNavItems("both"),
+				NodeRole: "hybrid",
+				NavItems: FilterNavItems("hybrid"),
 			}
 		case "metrics":
 			data = metricsData{
 				Title:    "Metrics",
-				NodeRole: "both",
-				NavItems: FilterNavItems("both"),
+				NodeRole: "hybrid",
+				NavItems: FilterNavItems("hybrid"),
 			}
 		default:
 			data = dashboardData{
 				Title:    strings.Title(fragment),
-				NodeRole: "both",
-				NavItems: FilterNavItems("both"),
+				NodeRole: "hybrid",
+				NavItems: FilterNavItems("hybrid"),
 			}
 		}
 

@@ -32,7 +32,7 @@ var rootCmd = &cobra.Command{
 	Long: `Tergum v3.0 is an encrypted, deduplicated backup system with gRPC streaming,
 mutual TLS authentication, policy-based retention, and real-time file watching.
 
-A single binary acts as client, server, or both depending on the subcommand
+A single binary acts as client, server, or hybrid depending on the subcommand
 and node role configuration.`,
 	SilenceUsage:  true,
 	SilenceErrors: true,
@@ -45,6 +45,7 @@ func init() {
 
 	rootCmd.AddCommand(newSetupCmd())
 	rootCmd.AddCommand(newServerCmd())
+	rootCmd.AddCommand(newClientCmd())
 	rootCmd.AddCommand(newAdminCmd())
 	rootCmd.AddCommand(newBackupCmd())
 	rootCmd.AddCommand(newRestoreCmd())

@@ -34,14 +34,14 @@ func TestProperty_PartialConfigDefaultsApplied(t *testing.T) {
 		// Determine role
 		var role string
 		if includeNode {
-			role = rapid.SampledFrom([]string{"client", "server", "both"}).Draw(rt, "role")
+			role = rapid.SampledFrom([]string{"client", "server", "hybrid"}).Draw(rt, "role")
 			tomlContent += fmt.Sprintf("[node]\nrole = %q\n\n", role)
 		} else {
 			role = "client" // default
 		}
 
 		// Determine if we need server.address for validation to pass
-		needsServerAddr := (role == "client" || role == "both")
+		needsServerAddr := (role == "client" || role == "hybrid")
 
 		if includeServer {
 			// Generate random valid server section
@@ -50,7 +50,7 @@ func TestProperty_PartialConfigDefaultsApplied(t *testing.T) {
 			addr := rapid.SampledFrom([]string{"10.0.0.1", "192.168.1.5", "myserver.local"}).Draw(rt, "serverAddr")
 			tomlContent += fmt.Sprintf("[server]\naddress = %q\ncommand_port = %d\ndata_port = %d\n\n", addr, cmdPort, dataPort)
 		} else if needsServerAddr {
-			// Must provide server.address for client/both role to pass validation
+			// Must provide server.address for client/hybrid role to pass validation
 			tomlContent += "[server]\naddress = \"192.168.1.100\"\n\n"
 			includeServer = true // mark as included so we don't check defaults
 		}
@@ -198,7 +198,7 @@ func TestProperty_InvalidConfigReturnsConfigError(t *testing.T) {
 			// Invalid role
 			invalidRole := rapid.StringMatching(`[a-z]{3,10}`).Draw(rt, "invalidRole")
 			// Ensure it's not a valid role
-			if invalidRole == "client" || invalidRole == "server" || invalidRole == "both" {
+			if invalidRole == "client" || invalidRole == "server" || invalidRole == "hybrid" {
 				invalidRole = "invalid_role"
 			}
 			tomlContent = fmt.Sprintf("[node]\nrole = %q\n\n[server]\naddress = \"10.0.0.1\"\n", invalidRole)

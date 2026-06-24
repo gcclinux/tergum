@@ -242,7 +242,7 @@ Starts in role-aware mode based on [node].role in config:
     retention engine, scheduler, client registry
   - role "client": client CommandService (7400), heartbeat to server,
     file watcher (if enabled), accepts remote triggers
-  - role "both": full local server (same as "server" without client registry)
+  - role "hybrid": full local server (same as "server" without client registry)
 
 Graceful shutdown on SIGTERM/SIGINT.
 ```
@@ -1189,7 +1189,7 @@ Location: `~/.config/tergum/tergum.toml`
 
 ```toml
 [node]
-role = "both"
+role = "hybrid"
 
 [server]
 address = "localhost"

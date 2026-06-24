@@ -20,7 +20,7 @@ func TestWatchSubcommands(t *testing.T) {
 	configPath := filepath.Join(tmpDir, "tergum.toml")
 
 	// Write an initial config file where watcher is disabled
-	cfg := buildConfig("client", "localhost", filepath.Join(tmpDir, "storage"), filepath.Join(tmpDir, "certs"), tmpDir, false)
+	cfg := buildConfig("client", "localhost", "", filepath.Join(tmpDir, "storage"), filepath.Join(tmpDir, "certs"), tmpDir, false)
 	cfg.Watcher.Enabled = false
 	if err := writeConfigTOML(configPath, cfg); err != nil {
 		t.Fatalf("failed to write initial config: %v", err)

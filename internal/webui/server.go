@@ -541,13 +541,13 @@ func (s *Server) renderTemplate(w http.ResponseWriter, page string, data any) {
 	}
 }
 
-// nodeRole returns the configured node role, defaulting to "both" when
+// nodeRole returns the configured node role, defaulting to "hybrid" when
 // fullCfg is nil (e.g., when running via `tergum admin`).
 func (s *Server) nodeRole() string {
 	if s.fullCfg != nil && s.fullCfg.Node.Role != "" {
 		return s.fullCfg.Node.Role
 	}
-	return "both"
+	return "hybrid"
 }
 
 // Page data types.

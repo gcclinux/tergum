@@ -11,12 +11,11 @@ import (
 	"github.com/gcclinux/tergum/internal/server"
 )
 
-func newServerCmd() *cobra.Command {
+func newClientCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "server",
-		Short: "Start the Tergum server",
-		Long: `Starts gRPC services (ports 7400, 7401), metrics (7490), retention engine,
-and scheduler. Handles graceful shutdown on SIGTERM/SIGINT (exit code 10).`,
+		Use:   "client",
+		Short: "Start the Tergum client daemon",
+		Long:  `Starts the Tergum client daemon, registering with the server and enabling automated backups.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfgPath, _ := cmd.Flags().GetString("config")
 
@@ -25,8 +24,8 @@ and scheduler. Handles graceful shutdown on SIGTERM/SIGINT (exit code 10).`,
 				return err
 			}
 
-			if cfg.Node.Role == "client" {
-				return fmt.Errorf("cannot start server on a node configured with the 'client' role. Use 'tergum client' instead")
+			if cfg.Node.Role != "client" {
+				return fmt.Errorf("cannot start client daemon on a node configured with the %q role. Use 'tergum server' instead", cfg.Node.Role)
 			}
 
 			if err := cfg.Validate(); err != nil {
