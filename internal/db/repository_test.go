@@ -141,6 +141,62 @@ func TestFindByPath(t *testing.T) {
 	}
 }
 
+func TestSearchBackupFiles(t *testing.T) {
+	repo := newTestRepo(t, false)
+	ctx := context.Background()
+
+	// Create two jobs.
+	repo.CreateJob(ctx, model.BackupJob{
+		BackupID: "job-s1", Level: "FULL", ClientID: "c1", StartedAt: time.Now(), Status: model.JobCompleted,
+	})
+	repo.CreateJob(ctx, model.BackupJob{
+		BackupID: "job-s2", Level: "FULL", ClientID: "c1", StartedAt: time.Now(), Status: model.JobCompleted,
+	})
+
+	now := time.Now().UTC().Truncate(time.Second)
+	entries := []model.BackupEntry{
+		{BackupID: "job-s1", Blake3Hash: "h1", FileName: "important.txt", FilePath: "/docs/important.txt", FileSize: 100, OS: "linux", BackupDate: now},
+		{BackupID: "job-s1", Blake3Hash: "h2", FileName: "notes.txt", FilePath: "/docs/notes.txt", FileSize: 100, OS: "linux", BackupDate: now},
+		{BackupID: "job-s2", Blake3Hash: "h3", FileName: "important.txt", FilePath: "/docs/important.txt", FileSize: 200, OS: "linux", BackupDate: now},
+	}
+	for _, e := range entries {
+		repo.InsertBackupEntry(ctx, e)
+	}
+
+	// Search "important" in job-s1 should yield 1 result.
+	results1, err := repo.SearchBackupFiles(ctx, "job-s1", "important")
+	if err != nil {
+		t.Fatalf("SearchBackupFiles: %v", err)
+	}
+	if len(results1) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results1))
+	}
+	if results1[0].BackupID != "job-s1" || results1[0].Blake3Hash != "h1" {
+		t.Errorf("unexpected entry returned: %+v", results1[0])
+	}
+
+	// Search "important" in job-s2 should yield 1 result (h3).
+	results2, err := repo.SearchBackupFiles(ctx, "job-s2", "important")
+	if err != nil {
+		t.Fatalf("SearchBackupFiles: %v", err)
+	}
+	if len(results2) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results2))
+	}
+	if results2[0].BackupID != "job-s2" || results2[0].Blake3Hash != "h3" {
+		t.Errorf("unexpected entry returned: %+v", results2[0])
+	}
+
+	// Search "txt" in job-s1 should yield 2 results.
+	results3, err := repo.SearchBackupFiles(ctx, "job-s1", "txt")
+	if err != nil {
+		t.Fatalf("SearchBackupFiles: %v", err)
+	}
+	if len(results3) != 2 {
+		t.Fatalf("expected 2 results, got %d", len(results3))
+	}
+}
+
 func TestCountHashReferences(t *testing.T) {
 	repo := newTestRepo(t, false)
 	ctx := context.Background()

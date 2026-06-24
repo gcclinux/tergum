@@ -122,6 +122,9 @@ func (m *mockRepository) FindByHash(ctx context.Context, hash string) ([]model.B
 func (m *mockRepository) FindByPath(ctx context.Context, pattern string) ([]model.BackupEntry, error) {
 	return nil, nil
 }
+func (m *mockRepository) SearchBackupFiles(ctx context.Context, backupID string, pattern string) ([]model.BackupEntry, error) {
+	return nil, nil
+}
 func (m *mockRepository) CountHashReferences(ctx context.Context, hash string) (int64, error) {
 	return 0, nil
 }

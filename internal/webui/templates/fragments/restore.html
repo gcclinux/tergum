@@ -1,30 +1,5 @@
 {{define "content"}}
 <div class="space-y-6">
-    <!-- Search Files Across Backups -->
-    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6">
-        <h2 class="text-base font-semibold text-gray-800 dark:text-gray-100 mb-4">Search Files</h2>
-        <div class="flex items-center gap-3 mb-4">
-            <input type="text"
-                   name="query"
-                   placeholder="Search by file path..."
-                   class="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm transition-colors duration-150"
-                   hx-get="/api/restore/search"
-                   hx-trigger="keyup changed delay:300ms"
-                   hx-target="#search-results"
-                   hx-swap="innerHTML"
-                   hx-indicator="#search-spinner" />
-            <div id="search-spinner" class="htmx-indicator">
-                <svg class="animate-spin h-5 w-5 text-blue-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
-                </svg>
-            </div>
-        </div>
-        <div id="search-results" class="overflow-x-auto">
-            <p class="text-gray-500 dark:text-gray-400 italic text-sm">Type to search for files across all backups...</p>
-        </div>
-    </div>
-
     <!-- Available Backups for Browsing (auto-refresh every 30s) -->
     <div class="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6">
         <div class="flex items-center justify-between mb-4">
@@ -46,24 +21,39 @@
         </div>
     </div>
 
-    <!-- Browse Backup Files -->
-    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6">
+    <!-- Browse/Search/Restore Backup Files -->
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6" x-data="{ backupID: '' }">
         <h2 class="text-base font-semibold text-gray-800 dark:text-gray-100 mb-4">Browse Backup Files</h2>
         <div class="flex items-center gap-3 mb-4">
             <label class="text-sm text-gray-600 dark:text-gray-400 whitespace-nowrap">Backup ID:</label>
             <input type="text"
                    id="browse-backup-id"
                    name="backup_id"
+                   x-model="backupID"
                    placeholder="Enter or select a backup ID..."
                    class="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm font-mono transition-colors duration-150" />
             <button id="browse-btn"
-                    class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors duration-150"
+                    :disabled="!backupID.trim()"
+                    class="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium rounded-lg transition-colors duration-150"
                     hx-get="/api/restore/files"
                     hx-include="[name='backup_id']"
                     hx-target="#backup-files"
                     hx-swap="innerHTML"
                     hx-indicator="#files-spinner">
                 Browse
+            </button>
+            <button id="search-btn"
+                    type="button"
+                    onclick="toggleSearchInput()"
+                    class="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white text-sm font-medium rounded-lg transition-colors duration-150">
+                Search
+            </button>
+            <button id="restore-all-btn"
+                    type="button"
+                    :disabled="!backupID.trim()"
+                    onclick="runRestoreAll()"
+                    class="px-4 py-2 bg-green-600 hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium rounded-lg transition-colors duration-150">
+                Restore All
             </button>
             <div id="files-spinner" class="htmx-indicator">
                 <svg class="animate-spin h-5 w-5 text-blue-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
@@ -72,20 +62,27 @@
                 </svg>
             </div>
         </div>
-        <div id="backup-files" class="overflow-x-auto">
-            <p class="text-sm text-gray-500 dark:text-gray-400 italic">Select a backup above or enter a Backup ID to browse its files...</p>
-        </div>
-    </div>
 
-    <!-- Restore Jobs -->
-    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6">
-        <h2 class="text-base font-semibold text-gray-800 dark:text-gray-100 mb-4">Recent Restore Jobs</h2>
-        <div id="restore-jobs" hx-get="/api/restore/jobs" hx-trigger="load, every 10s" hx-swap="innerHTML">
-            <!-- Skeleton loader for restore jobs -->
-            <div class="animate-pulse space-y-3">
-                <div class="h-10 w-full bg-gray-200 dark:bg-gray-700 rounded"></div>
-                <div class="h-10 w-full bg-gray-200 dark:bg-gray-700 rounded"></div>
+        <!-- Search Input Field (Hidden by default, shown below Backup ID when 'Search' is clicked) -->
+        <div id="backup-search-container" class="hidden mb-4 p-4 bg-gray-50 dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700">
+            <div class="flex items-center gap-3">
+                <label class="text-sm text-gray-600 dark:text-gray-400 whitespace-nowrap">Search Query:</label>
+                <input type="text"
+                       id="backup-search-query"
+                       name="query"
+                       placeholder="Search files (searches all backups if Backup ID is empty)..."
+                       class="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm transition-colors duration-150"
+                       hx-get="/api/restore/search"
+                       hx-include="[name='backup_id']"
+                       hx-trigger="keyup changed delay:300ms"
+                       hx-target="#backup-files"
+                       hx-swap="innerHTML"
+                       hx-indicator="#files-spinner" />
             </div>
+        </div>
+
+        <div id="backup-files" class="overflow-x-auto">
+            <p class="text-sm text-gray-500 dark:text-gray-400 italic">Select a backup above or enter a Backup ID to browse/search/restore...</p>
         </div>
     </div>
 </div>
@@ -95,11 +92,43 @@ function selectBackup(backupID) {
     var input = document.getElementById('browse-backup-id');
     if (input) {
         input.value = backupID;
-        var btn = document.getElementById('browse-btn');
-        if (btn) {
-            btn.click();
+        input.dispatchEvent(new Event('input'));
+        // Hide search container by default when selecting a new backup
+        var searchContainer = document.getElementById('backup-search-container');
+        if (searchContainer) {
+            searchContainer.classList.add('hidden');
+        }
+        // Clear previous files list
+        var backupFiles = document.getElementById('backup-files');
+        if (backupFiles) {
+            backupFiles.innerHTML = '<p class="text-sm text-gray-500 dark:text-gray-400 italic">Select a backup above or enter a Backup ID to browse/search/restore...</p>';
         }
     }
+}
+
+function toggleSearchInput() {
+    var container = document.getElementById('backup-search-container');
+    if (container) {
+        if (container.classList.contains('hidden')) {
+            container.classList.remove('hidden');
+            var qInput = document.getElementById('backup-search-query');
+            if (qInput) {
+                qInput.value = '';
+                qInput.focus();
+            }
+        } else {
+            container.classList.add('hidden');
+        }
+    }
+}
+
+function runRestoreAll() {
+    var input = document.getElementById('browse-backup-id');
+    if (!input || !input.value.trim()) {
+        alert('Please enter or select a Backup ID first.');
+        return;
+    }
+    restoreBackup(input.value.trim());
 }
 
 function restoreFile(hash, filePath) {

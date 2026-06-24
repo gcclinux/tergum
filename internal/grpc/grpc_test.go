@@ -381,6 +381,9 @@ func (m *mockRepo) FindByHash(ctx context.Context, hash string) ([]model.BackupE
 func (m *mockRepo) FindByPath(ctx context.Context, pattern string) ([]model.BackupEntry, error) {
 	return nil, nil
 }
+func (m *mockRepo) SearchBackupFiles(ctx context.Context, backupID string, pattern string) ([]model.BackupEntry, error) {
+	return nil, nil
+}
 func (m *mockRepo) CountHashReferences(ctx context.Context, hash string) (int64, error) {
 	return 0, nil
 }

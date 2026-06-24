@@ -202,7 +202,7 @@ func (s *Server) handleAPIBackupsHistory(w http.ResponseWriter, r *http.Request)
 	// Build the table rows as JSON data for Alpine.js pagination and sorting.
 	fmt.Fprint(w, `<div x-data="{
 		page: 1,
-		perPage: 20,
+		perPage: 10,
 		sortCol: 'started',
 		sortDir: 'desc',
 		get totalPages() { return Math.ceil(this.rows.length / this.perPage); },
@@ -533,11 +533,20 @@ func (s *Server) handleAPIRestoreSearch(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	// Search by path pattern.
-	pattern := "%" + query + "%"
-	entries, err := s.repo.FindByPath(r.Context(), pattern)
+	backupID := strings.TrimSpace(r.URL.Query().Get("backup_id"))
+	var entries []model.BackupEntry
+	var err error
+
+	if backupID != "" {
+		entries, err = s.repo.SearchBackupFiles(r.Context(), backupID, query)
+	} else {
+		// Search by path pattern across all backups (fallback/legacy)
+		pattern := "%" + query + "%"
+		entries, err = s.repo.FindByPath(r.Context(), pattern)
+	}
+
 	if err != nil {
-		s.logger.Error("restore search failed", "error", err)
+		s.logger.Error("restore search failed", "error", err, "backup_id", backupID)
 		fmt.Fprint(w, `<p class="text-red-500">Search failed.</p>`)
 		return
 	}
@@ -584,25 +593,37 @@ func (s *Server) handleAPIRestoreBackups(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	jobs, err := s.repo.ListJobs(r.Context(), db.JobFilter{Limit: 20})
+	jobs, err := s.repo.ListJobs(r.Context(), db.JobFilter{Limit: 100})
 	if err != nil || len(jobs) == 0 {
 		fmt.Fprint(w, `<p class="text-gray-500 dark:text-gray-400 italic">No backups found.</p>`)
 		return
 	}
 
-	w.Header().Set("Content-Type", "text/html")
-	fmt.Fprint(w, `<table class="w-full text-sm text-left">`)
-	fmt.Fprint(w, `<thead class="border-b border-gray-200 dark:border-gray-700 text-xs uppercase text-gray-500 dark:text-gray-400">`)
-	fmt.Fprint(w, `<tr>`)
-	fmt.Fprint(w, `<th class="px-4 py-3 font-medium text-left">Backup ID</th>`)
-	fmt.Fprint(w, `<th class="px-4 py-3 font-medium text-left">Date</th>`)
-	fmt.Fprint(w, `<th class="px-4 py-3 font-medium text-right">Files</th>`)
-	fmt.Fprint(w, `<th class="px-4 py-3 font-medium text-center">Status</th>`)
-	fmt.Fprint(w, `<th class="px-4 py-3 font-medium text-center">Actions</th>`)
-	fmt.Fprint(w, `</tr></thead>`)
-	fmt.Fprint(w, `<tbody>`)
+	var activeJobs []model.BackupJob
 	for _, j := range jobs {
+		if j.FileCount > 0 {
+			activeJobs = append(activeJobs, j)
+		}
+	}
+	if len(activeJobs) == 0 {
+		fmt.Fprint(w, `<p class="text-gray-500 dark:text-gray-400 italic">No backups found.</p>`)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/html")
+	fmt.Fprint(w, `<div x-data="{
+		page: 1,
+		perPage: 10,
+		get totalPages() { return Math.ceil(this.rows.length / this.perPage); },
+		get pagedRows() {
+			let start = (this.page - 1) * this.perPage;
+			return this.rows.slice(start, start + this.perPage);
+		},
+		rows: [`)
+
+	for i, j := range activeJobs {
 		date := j.StartedAt.Format("2006-01-02 15:04")
+		statusStr := string(j.Status)
 		statusClass := "bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200"
 		switch j.Status {
 		case model.JobCompleted:
@@ -613,17 +634,49 @@ func (s *Server) handleAPIRestoreBackups(w http.ResponseWriter, r *http.Request)
 			statusClass = "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300"
 		}
 
-		fmt.Fprintf(w, `<tr class="border-b border-gray-100 dark:border-gray-700/50 hover:bg-gray-50 dark:hover:bg-gray-750 transition-colors">`)
-		fmt.Fprintf(w, `<td class="px-4 py-3 font-mono text-xs text-gray-700 dark:text-gray-300 break-all">%s</td>`, j.BackupID)
-		fmt.Fprintf(w, `<td class="px-4 py-3 text-gray-700 dark:text-gray-300 whitespace-nowrap">%s</td>`, date)
-		fmt.Fprintf(w, `<td class="px-4 py-3 text-right text-gray-700 dark:text-gray-300">%d</td>`, j.FileCount)
-		fmt.Fprintf(w, `<td class="px-4 py-3 text-center"><span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium %s">%s</span></td>`, statusClass, string(j.Status))
-		fmt.Fprintf(w, `<td class="px-4 py-3 text-center">`)
-		fmt.Fprintf(w, `<button onclick="selectBackup('%s')" class="px-3 py-1 bg-blue-600 hover:bg-blue-700 dark:bg-blue-600 dark:hover:bg-blue-500 text-white text-xs font-semibold rounded transition-colors shadow-sm">Select</button>`, j.BackupID)
-		fmt.Fprintf(w, `</td>`)
-		fmt.Fprintf(w, `</tr>`)
+		if i > 0 {
+			fmt.Fprint(w, `,`)
+		}
+		fmt.Fprintf(w, `{id:'%s',date:'%s',files:%d,status:'%s',statusClass:'%s'}`,
+			j.BackupID, date, j.FileCount, statusStr, statusClass)
 	}
+
+	fmt.Fprint(w, `]
+	}" x-init="page = 1">`)
+
+	fmt.Fprint(w, `<table class="w-full text-sm text-left">`)
+	fmt.Fprint(w, `<thead class="border-b border-gray-200 dark:border-gray-700 text-xs uppercase text-gray-500 dark:text-gray-400">`)
+	fmt.Fprint(w, `<tr>`)
+	fmt.Fprint(w, `<th class="px-4 py-3 font-medium text-left">Backup ID</th>`)
+	fmt.Fprint(w, `<th class="px-4 py-3 font-medium text-left">Date</th>`)
+	fmt.Fprint(w, `<th class="px-4 py-3 font-medium text-right">Files</th>`)
+	fmt.Fprint(w, `<th class="px-4 py-3 font-medium text-center">Status</th>`)
+	fmt.Fprint(w, `<th class="px-4 py-3 font-medium text-center">Actions</th>`)
+	fmt.Fprint(w, `</tr></thead>`)
+	fmt.Fprint(w, `<tbody>`)
+
+	fmt.Fprint(w, `<template x-for="row in pagedRows" :key="row.id">`)
+	fmt.Fprint(w, `<tr class="border-b border-gray-100 dark:border-gray-700/50 hover:bg-gray-50 dark:hover:bg-gray-750 transition-colors">`)
+	fmt.Fprint(w, `<td class="px-4 py-3 font-mono text-xs text-gray-700 dark:text-gray-300 break-all" x-text="row.id"></td>`)
+	fmt.Fprint(w, `<td class="px-4 py-3 text-gray-700 dark:text-gray-300 whitespace-nowrap" x-text="row.date"></td>`)
+	fmt.Fprint(w, `<td class="px-4 py-3 text-right text-gray-700 dark:text-gray-300" x-text="row.files"></td>`)
+	fmt.Fprint(w, `<td class="px-4 py-3 text-center"><span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium" :class="row.statusClass" x-text="row.status"></span></td>`)
+	fmt.Fprint(w, `<td class="px-4 py-3 text-center">`)
+	fmt.Fprint(w, `<button @click="selectBackup(row.id)" class="px-3 py-1 bg-blue-600 hover:bg-blue-700 dark:bg-blue-600 dark:hover:bg-blue-500 text-white text-xs font-semibold rounded transition-colors shadow-sm">Select</button>`)
+	fmt.Fprint(w, `</td>`)
+	fmt.Fprint(w, `</tr>`)
+	fmt.Fprint(w, `</template>`)
 	fmt.Fprint(w, `</tbody></table>`)
+
+	// Pagination controls
+	fmt.Fprint(w, `<div class="flex items-center justify-between mt-4 pt-4 border-t border-gray-200 dark:border-gray-700" x-show="totalPages > 1">`)
+	fmt.Fprint(w, `<p class="text-sm text-gray-600 dark:text-gray-400">Page <span x-text="page"></span> of <span x-text="totalPages"></span></p>`)
+	fmt.Fprint(w, `<div class="flex gap-2">`)
+	fmt.Fprint(w, `<button @click="page = Math.max(1, page - 1)" :disabled="page <= 1" class="px-3 py-1 text-sm rounded border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed">Previous</button>`)
+	fmt.Fprint(w, `<button @click="page = Math.min(totalPages, page + 1)" :disabled="page >= totalPages" class="px-3 py-1 text-sm rounded border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed">Next</button>`)
+	fmt.Fprint(w, `</div></div>`)
+
+	fmt.Fprint(w, `</div>`)
 }
 
 // handleAPIDashboard handles GET /api/dashboard — returns dashboard stats as JSON for HTMX.

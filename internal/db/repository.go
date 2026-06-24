@@ -57,6 +57,7 @@ type Repository interface {
 	GetManifest(ctx context.Context, backupID string) ([]model.ManifestEntry, error)
 	FindByHash(ctx context.Context, hash string) ([]model.BackupEntry, error)
 	FindByPath(ctx context.Context, pattern string) ([]model.BackupEntry, error)
+	SearchBackupFiles(ctx context.Context, backupID string, pattern string) ([]model.BackupEntry, error)
 	CountHashReferences(ctx context.Context, hash string) (int64, error)
 	DeleteEntries(ctx context.Context, filter DeleteFilter) (int64, error)
 	QueryEntries(ctx context.Context, filter DeleteFilter) ([]model.BackupEntry, error)
@@ -375,6 +376,20 @@ func (r *SQLiteRepository) FindByPath(ctx context.Context, pattern string) ([]mo
 	defer rows.Close()
 	return scanBackupEntries(rows)
 }
+
+// SearchBackupFiles returns all backup entries matching the given LIKE pattern within a specific backup ID.
+func (r *SQLiteRepository) SearchBackupFiles(ctx context.Context, backupID string, pattern string) ([]model.BackupEntry, error) {
+	rows, err := r.db.QueryContext(ctx,
+		`SELECT `+backupColumns()+` FROM backups WHERE backup_id = ? AND file_path LIKE ?`,
+		backupID, "%"+pattern+"%",
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return scanBackupEntries(rows)
+}
+
 
 // CountHashReferences returns the number of entries referencing the given hash.
 func (r *SQLiteRepository) CountHashReferences(ctx context.Context, hash string) (int64, error) {

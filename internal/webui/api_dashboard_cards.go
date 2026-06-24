@@ -1,6 +1,7 @@
 package webui
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"sort"
@@ -280,21 +281,63 @@ func (s *Server) handleAPIDashboardActivity(w http.ResponseWriter, r *http.Reque
 		return items[i].Timestamp.After(items[j].Timestamp)
 	})
 
-	// Limit to 10
+	// Limit to 10 max recent items
 	if len(items) > 10 {
 		items = items[:10]
 	}
 
-	fmt.Fprint(w, `<div class="space-y-3">`)
-	for _, item := range items {
-		fmt.Fprintf(w, `<div class="flex items-center gap-3 py-2 border-b border-gray-100 dark:border-gray-700 last:border-0">`)
-		fmt.Fprintf(w, `<span class="text-base">%s</span>`, item.Icon)
-		fmt.Fprintf(w, `<div class="flex-1 min-w-0">`)
-		fmt.Fprint(w, item.HtmlContent)
-		fmt.Fprintf(w, `</div>`)
-		fmt.Fprintf(w, `<span class="text-xs font-medium px-2 py-0.5 rounded-full %s">%s</span>`, item.StatusColor, item.Status)
-		fmt.Fprintf(w, `</div>`)
+	type clientActivityItem struct {
+		Icon   string `json:"icon"`
+		Html   string `json:"html"`
+		Status string `json:"status"`
+		Color  string `json:"color"`
 	}
+
+	var jsonItems []clientActivityItem
+	for _, item := range items {
+		jsonItems = append(jsonItems, clientActivityItem{
+			Icon:   item.Icon,
+			Html:   item.HtmlContent,
+			Status: item.Status,
+			Color:  item.StatusColor,
+		})
+	}
+
+	jsonData, err := json.Marshal(jsonItems)
+	if err != nil {
+		fmt.Fprint(w, `<p class="text-sm text-red-500">Failed to render activity.</p>`)
+		return
+	}
+
+	fmt.Fprintf(w, `<div x-data='{
+		page: 1,
+		perPage: 5,
+		get totalPages() { return Math.ceil(this.rows.length / this.perPage); },
+		get pagedRows() {
+			let start = (this.page - 1) * this.perPage;
+			return this.rows.slice(start, start + this.perPage);
+		},
+		rows: %s
+	}' x-init="page = 1">`, string(jsonData))
+
+	fmt.Fprint(w, `<div class="space-y-3">`)
+	fmt.Fprint(w, `<template x-for="row in pagedRows">`)
+	fmt.Fprint(w, `<div class="flex items-center gap-3 py-2 border-b border-gray-100 dark:border-gray-700 last:border-0">`)
+	fmt.Fprint(w, `<span class="text-base" x-text="row.icon"></span>`)
+	fmt.Fprint(w, `<div class="flex-1 min-w-0" x-html="row.html"></div>`)
+	fmt.Fprint(w, `<span class="text-xs font-medium px-2 py-0.5 rounded-full" :class="row.color" x-text="row.status"></span>`)
+	fmt.Fprint(w, `</div>`)
+	fmt.Fprint(w, `</template>`)
+	fmt.Fprint(w, `</div>`)
+
+	// Pagination controls
+	fmt.Fprint(w, `<div class="flex items-center justify-between mt-4 pt-4 border-t border-gray-200 dark:border-gray-700" x-show="totalPages > 1">`)
+	fmt.Fprint(w, `<p class="text-xs text-gray-500 dark:text-gray-400">Page <span x-text="page"></span> of <span x-text="totalPages"></span></p>`)
+	fmt.Fprint(w, `<div class="flex gap-2">`)
+	fmt.Fprint(w, `<button @click="page = Math.max(1, page - 1)" :disabled="page <= 1" class="px-2 py-0.5 text-xs rounded border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed">Previous</button>`)
+	fmt.Fprint(w, `<button @click="page = Math.min(totalPages, page + 1)" :disabled="page >= totalPages" class="px-2 py-0.5 text-xs rounded border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed">Next</button>`)
+	fmt.Fprint(w, `</div></div>`)
+
 	fmt.Fprint(w, `</div>`)
 }
 
