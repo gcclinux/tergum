@@ -444,27 +444,16 @@
             events: [],
             loading: true,
             connected: true,
-            maxEvents: 200,
-            _eventCounter: 0,
+            maxEvents: 1000,
+            levelFilter: 'ALL',
+            searchQuery: '',
+            autoScroll: true,
 
             init() {
                 this.fetchHistory();
 
-                this._sseHandler = (e) => this.handleSSEEvent(e.detail);
-                document.body.addEventListener('sse-activity', this._sseHandler);
-
-                const eventTypes = [
-                    'backup_started', 'backup_completed', 'backup_failed', 'backup_progress',
-                    'backup_progress_clear', 'backup_stopped',
-                    'retention_run', 'client_connected', 'client_disconnected',
-                    'watcher_started', 'watcher_stopped', 'restore_started', 'restore_completed'
-                ];
-                this._sseHandlers = {};
-                eventTypes.forEach(type => {
-                    const handler = (e) => this.handleSSEEvent(e.detail);
-                    this._sseHandlers[type] = handler;
-                    document.body.addEventListener('sse-' + type, handler);
-                });
+                this._consoleLogHandler = (e) => this.handleConsoleLog(e.detail);
+                document.body.addEventListener('sse-console_log', this._consoleLogHandler);
 
                 this._connectHandler = () => { this.connected = true; };
                 this._disconnectHandler = () => { this.connected = false; };
@@ -479,18 +468,14 @@
             },
 
             destroy() {
-                document.body.removeEventListener('sse-activity', this._sseHandler);
+                document.body.removeEventListener('sse-console_log', this._consoleLogHandler);
                 document.body.removeEventListener('sse-connected', this._connectHandler);
                 document.body.removeEventListener('sse-disconnected', this._disconnectHandler);
                 document.body.removeEventListener('sse-reconnected', this._reconnectHandler);
-                if (this._sseHandlers) {
-                    Object.keys(this._sseHandlers).forEach(type => {
-                        document.body.removeEventListener('sse-' + type, this._sseHandlers[type]);
-                    });
-                }
             },
 
             async fetchHistory() {
+                this.loading = true;
                 try {
                     const resp = await fetch('/api/activity/recent?format=json');
                     if (resp.ok) {
@@ -498,11 +483,10 @@
                         if (contentType.includes('application/json')) {
                             const data = await resp.json();
                             if (Array.isArray(data)) {
-                                const existingIds = new Set(this.events.map(e => e.id));
-                                const newEvents = data
-                                    .filter(e => !existingIds.has(e.id))
-                                    .map(e => ({ ...e, id: e.id || this.generateId() }));
-                                this.events = [...newEvents, ...this.events].slice(0, this.maxEvents);
+                                this.events = data;
+                                if (this.autoScroll) {
+                                    this.$nextTick(() => this.scrollToBottom());
+                                }
                             }
                         }
                     }
@@ -510,46 +494,59 @@
                 this.loading = false;
             },
 
-            handleSSEEvent(data) {
-                if (!data || !data.type || !data.message) return;
+            handleConsoleLog(data) {
+                if (!data || !data.message) return;
 
-                // Remove all progress entries when backup finishes.
-                if (data.type === 'backup_progress_clear') {
-                    this.events = this.events.filter(e => e.type !== 'backup_progress');
-                    return;
-                }
+                if (this.events.some(e => e.id === data.id)) return;
 
-                const event = {
-                    id: this.generateId(),
-                    type: data.type,
+                const newEvent = {
+                    id: data.id,
+                    level: data.resource || 'INFO',
                     message: data.message,
-                    timestamp: data.timestamp || new Date().toISOString(),
-                    resource: data.resource || ''
+                    timestamp: data.timestamp
                 };
 
-                this.events.unshift(event);
-
+                this.events.push(newEvent);
                 if (this.events.length > this.maxEvents) {
-                    this.events = this.events.slice(0, this.maxEvents);
+                    this.events.shift();
+                }
+
+                if (this.autoScroll) {
+                    this.$nextTick(() => this.scrollToBottom());
                 }
             },
 
-            generateId() {
-                this._eventCounter++;
-                return 'evt-' + Date.now() + '-' + this._eventCounter;
+            get filteredLogs() {
+                return this.events.filter(log => {
+                    if (this.levelFilter !== 'ALL' && log.level !== this.levelFilter) {
+                        return false;
+                    }
+                    if (this.searchQuery) {
+                        const query = this.searchQuery.toLowerCase();
+                        return log.message.toLowerCase().includes(query);
+                    }
+                    return true;
+                });
             },
 
-            formatTime(timestamp) {
-                if (!timestamp) return '';
-                const date = new Date(timestamp);
-                const now = new Date();
-                const diffMs = now - date;
-                const diffSec = Math.floor(diffMs / 1000);
+            clearConsole() {
+                this.events = [];
+            },
 
-                if (diffSec < 60) return 'just now';
-                if (diffSec < 3600) return Math.floor(diffSec / 60) + 'm ago';
-                if (diffSec < 86400) return Math.floor(diffSec / 3600) + 'h ago';
-                return date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            copyConsole() {
+                const text = this.filteredLogs.map(log => log.message).join('\n');
+                navigator.clipboard.writeText(text).then(() => {
+                    Alpine.store('app').addToast('info', 'Console logs copied to clipboard');
+                }).catch(() => {
+                    Alpine.store('app').addToast('error', 'Failed to copy to clipboard');
+                });
+            },
+
+            scrollToBottom() {
+                const container = this.$refs.logContainer;
+                if (container) {
+                    container.scrollTop = container.scrollHeight;
+                }
             }
         }));
 
@@ -754,8 +751,8 @@
                 try {
                     const data = JSON.parse(event.data);
                     if (data.type && data.message) {
-                        // Don't show toast for progress_clear events
-                        if (data.type !== 'backup_progress_clear') {
+                        // Don't show toast for progress_clear or console_log events
+                        if (data.type !== 'backup_progress_clear' && data.type !== 'console_log') {
                             const toastType = data.type.includes('failed') ? 'error' :
                                                data.type.includes('warning') ? 'warning' : 'info';
                             Alpine.store('app').addToast(toastType, data.message);

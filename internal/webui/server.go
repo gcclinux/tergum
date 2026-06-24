@@ -15,6 +15,7 @@ import (
 	"github.com/gcclinux/tergum/internal/config"
 	"github.com/gcclinux/tergum/internal/db"
 	"github.com/gcclinux/tergum/internal/model"
+	"github.com/gcclinux/tergum/internal/observe"
 	registryPkg "github.com/gcclinux/tergum/internal/registry"
 	"github.com/gcclinux/tergum/internal/version"
 )
@@ -183,6 +184,18 @@ func NewServer(cfg config.WebUIConfig, username, password string, opts ...Server
 
 	// Create SSE broker.
 	broker := NewSSEBroker(100)
+
+	// Subscribe to console logs from the observe package and publish them to SSE.
+	observe.RegisterLogListener(func(line string) {
+		parsed := parseLogLine(line, 0)
+		broker.Publish(ActivityEvent{
+			ID:        parsed.ID,
+			Type:      "console_log",
+			Message:   parsed.Message,
+			Timestamp: time.Now(),
+			Resource:  parsed.Level,
+		})
+	})
 
 	// Create auth middleware.
 	auth := NewAuthMiddleware(username, hashedPwd, sessions)

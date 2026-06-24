@@ -2,12 +2,16 @@ package webui
 
 import (
 	"context"
+	"encoding/json"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/gcclinux/tergum/internal/config"
+	"github.com/gcclinux/tergum/internal/observe"
 )
 
 func testConfig() config.WebUIConfig {
@@ -279,5 +283,49 @@ func TestServer_NotFound(t *testing.T) {
 
 	if w.Code != http.StatusNotFound {
 		t.Errorf("expected 404, got %d", w.Code)
+	}
+}
+
+func TestServer_ActivityLogJSON_Warning(t *testing.T) {
+	cfg := testConfig()
+	srv, err := NewServer(cfg, "admin", "secret123")
+	if err != nil {
+		t.Fatalf("NewServer() error = %v", err)
+	}
+
+	handler := srv.routes()
+
+	_ = observe.SetupLogging("info", "text")
+
+	testWarnMsg := "failed to hash file, skipping C:/Users/ricardo/Documents/My Music"
+	slog.Warn(testWarnMsg)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/activity/recent?format=json", nil)
+	req.SetBasicAuth("admin", "secret123")
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+
+	var res []map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &res); err != nil {
+		t.Fatalf("failed to parse json: %v, body: %s", err, w.Body.String())
+	}
+
+	found := false
+	for _, item := range res {
+		msg, _ := item["message"].(string)
+		level, _ := item["level"].(string)
+		if strings.Contains(msg, testWarnMsg) {
+			found = true
+			if level != "WARN" {
+				t.Errorf("expected level to be WARN, got %s", level)
+			}
+		}
+	}
+	if !found {
+		t.Errorf("expected to find warning msg %q in JSON api response, response: %s", testWarnMsg, w.Body.String())
 	}
 }

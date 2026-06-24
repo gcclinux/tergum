@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -293,4 +295,46 @@ func containsCheck(s, substr string) bool {
 		}
 	}
 	return false
+}
+
+func TestLogWriterAndHistory(t *testing.T) {
+	err := SetupLogging("info", "text")
+	if err != nil {
+		t.Fatalf("failed to setup logging: %v", err)
+	}
+
+	initialHistory := GetLogHistory()
+
+	var listenerCalled bool
+	var listenerMsg string
+	RegisterLogListener(func(line string) {
+		listenerCalled = true
+		listenerMsg = line
+	})
+
+	testMsg := "hello world test log line"
+	slog.Info(testMsg)
+
+	history := GetLogHistory()
+	if len(history) <= len(initialHistory) {
+		t.Errorf("expected history length to increase, got %d", len(history))
+	}
+
+	found := false
+	for _, line := range history {
+		if strings.Contains(line, testMsg) {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected to find message %q in history, history: %v", testMsg, history)
+	}
+
+	if !listenerCalled {
+		t.Error("expected log listener to be called")
+	}
+	if !strings.Contains(listenerMsg, testMsg) {
+		t.Errorf("expected listener message to contain %q, got %q", testMsg, listenerMsg)
+	}
 }

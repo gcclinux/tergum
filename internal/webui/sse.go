@@ -19,6 +19,7 @@ type ActivityEvent struct {
 
 // ssePayload is the JSON structure sent to SSE clients.
 type ssePayload struct {
+	ID        string `json:"id,omitempty"`
 	Type      string `json:"type"`
 	Message   string `json:"message"`
 	Timestamp string `json:"timestamp"`
@@ -159,6 +160,7 @@ func (b *SSEBroker) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				fmt.Fprintf(w, "id: %s\n", event.ID)
 			}
 			payload := ssePayload{
+				ID:        event.ID,
 				Type:      event.Type,
 				Message:   event.Message,
 				Timestamp: event.Timestamp.Format(time.RFC3339),

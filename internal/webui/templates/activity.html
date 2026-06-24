@@ -1,14 +1,14 @@
 {{template "header" .}}
-<h1 class="text-lg font-bold p-4">Activity Log</h1>
-<div class="bg-white rounded shadow p-4 m-4">
-    <h2 class="font-bold mb-2">Real-time Events</h2>
-    <div id="live-events" class="max-h-64 overflow-y-auto border rounded p-3 bg-gray-50 text-sm font-mono">
+<h1 class="text-lg font-bold p-4 text-gray-900 dark:text-white">Activity Log</h1>
+<div class="bg-white dark:bg-gray-800 rounded shadow p-4 m-4 border border-gray-200 dark:border-gray-700">
+    <h2 class="font-bold mb-2 text-gray-800 dark:text-gray-200">Real-time Console Output</h2>
+    <div id="live-events" class="max-h-64 overflow-y-auto border border-gray-200 dark:border-gray-700 rounded p-3 bg-gray-950 text-xs font-mono text-gray-300">
         <p class="text-gray-500 italic" id="sse-status">Connecting...</p>
     </div>
 </div>
-<div class="bg-white rounded shadow p-4 m-4">
-    <h2 class="font-bold mb-2">Recent Activity</h2>
-    <div hx-get="/api/activity/recent" hx-trigger="load, every 30s" hx-swap="innerHTML">
+<div class="bg-white dark:bg-gray-800 rounded shadow p-4 m-4 border border-gray-200 dark:border-gray-700">
+    <h2 class="font-bold mb-2 text-gray-800 dark:text-gray-200">Console Log History</h2>
+    <div hx-get="/api/activity/recent" hx-trigger="load, every 15s" hx-swap="innerHTML">
         <p class="text-gray-500 italic text-sm">Loading...</p>
     </div>
 </div>
@@ -20,21 +20,33 @@
     var es = new EventSource('/api/activity/stream');
 
     es.onopen = function() {
-        status.textContent = 'Connected — waiting for events...';
+        status.textContent = 'Connected — waiting for console logs...';
     };
 
     es.onmessage = function(event) {
-        var line = document.createElement('div');
-        line.className = 'py-1 border-b border-gray-200';
-        var now = new Date().toLocaleTimeString();
-        line.textContent = '[' + now + '] ' + event.data;
-        log.insertBefore(line, log.firstChild);
-        // Remove status placeholder.
-        if (status) { status.remove(); status = null; }
-        // Keep max 100 entries.
-        while (log.children.length > 100) {
-            log.removeChild(log.lastChild);
-        }
+        try {
+            var data = JSON.parse(event.data);
+            if (data.type !== 'console_log') return; // only display console log lines here
+
+            var line = document.createElement('div');
+            line.style.padding = '0';
+            line.style.color = '#e5e7eb';
+            if (data.resource === 'ERROR') line.style.color = '#f87171';
+            else if (data.resource === 'WARN') line.style.color = '#fbbf24';
+            else if (data.resource === 'DEBUG') line.style.color = '#c084fc';
+            
+            line.style.whiteSpace = 'pre-wrap';
+            line.style.wordBreak = 'break-all';
+            line.textContent = data.message;
+                             
+            log.insertBefore(line, log.firstChild);
+            // Remove status placeholder.
+            if (status) { status.remove(); status = null; }
+            // Keep max 200 entries.
+            while (log.children.length > 200) {
+                log.removeChild(log.lastChild);
+            }
+        } catch(e) {}
     };
 
     es.onerror = function() {

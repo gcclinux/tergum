@@ -4,19 +4,21 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"html"
 	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
-	"sort"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/gcclinux/tergum/internal/config"
 	cryptoPkg "github.com/gcclinux/tergum/internal/crypto"
 	"github.com/gcclinux/tergum/internal/db"
 	"github.com/gcclinux/tergum/internal/model"
+	"github.com/gcclinux/tergum/internal/observe"
 	registryPkg "github.com/gcclinux/tergum/internal/registry"
 	"github.com/gcclinux/tergum/internal/restore"
 )
@@ -734,166 +736,88 @@ func (s *Server) handleAPIActivityRecent(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	if s.repo == nil {
-		fmt.Fprint(w, `<p style="color:#9ca3af; font-style:italic;">Database not available.</p>`)
+	rawLogs := observe.GetLogHistory()
+	if len(rawLogs) == 0 {
+		w.Header().Set("Content-Type", "text/html")
+		fmt.Fprint(w, `<p style="color:#9ca3af; font-style:italic; font-family:monospace; font-size:12px;">No console output logs.</p>`)
 		return
 	}
 
 	w.Header().Set("Content-Type", "text/html")
-
-	// Get recent backup jobs.
-	jobs, err := s.repo.ListJobs(r.Context(), db.JobFilter{Limit: 50})
-	if err != nil {
-		fmt.Fprint(w, `<p style="color:#dc2626;">Failed to load activity.</p>`)
-		return
-	}
-
-	// Get recent restores.
-	restores, _ := s.repo.ListRestoreHistory(r.Context(), 50)
-
-	if len(jobs) == 0 && len(restores) == 0 {
-		fmt.Fprint(w, `<p style="color:#9ca3af; font-style:italic;">No recent activity.</p>`)
-		return
-	}
-
-	// Build a unified activity list sorted by time (newest first).
-	type activityRow struct {
-		Timestamp time.Time
-		Icon      string
-		Type      string
-		Status    string
-		StatusClr string
-		Date      string
-		Details   string
-		Files     string
-		Size      string
-		Duration  string
-	}
-
-	var rows []activityRow
-
-	for _, j := range jobs {
-		icon := "🔵"
-		switch j.Status {
-		case model.JobCompleted:
-			icon = "✅"
-		case model.JobFailed:
-			icon = "❌"
-		case model.JobStopped:
-			icon = "⏹️"
-		case model.JobRunning:
-			icon = "🔄"
+	fmt.Fprint(w, `<div style="background-color:#090d16; color:#d1d5db; font-family:monospace; font-size:12px; padding:16px; border-radius:8px; max-height:500px; overflow-y:auto; line-height:1.6; border:1px solid #1f2937;">`)
+	for i, raw := range rawLogs {
+		parsed := parseLogLine(raw, i)
+		color := "#9ca3af" // default info
+		switch parsed.Level {
+		case "ERROR":
+			color = "#f87171" // red
+		case "WARN":
+			color = "#fbbf24" // amber
+		case "DEBUG":
+			color = "#c084fc" // purple
+		case "INFO":
+			color = "#e5e7eb" // light gray
 		}
-
-		duration := "-"
-		if j.FinishedAt != nil {
-			duration = j.FinishedAt.Sub(j.StartedAt).Round(time.Second).String()
-		} else if j.Status == model.JobRunning {
-			duration = time.Since(j.StartedAt).Round(time.Second).String()
-		}
-
-		rows = append(rows, activityRow{
-			Timestamp: j.StartedAt,
-			Icon:      icon,
-			Type:      "Backup " + j.Level,
-			Status:    string(j.Status),
-			StatusClr: "#4b5563",
-			Date:      j.StartedAt.Format("2006-01-02 15:04:05"),
-			Details:   j.BackupID,
-			Files:     fmt.Sprintf("%d", j.FileCount),
-			Size:      formatSize(j.BytesNew),
-			Duration:  duration,
-		})
+		fmt.Fprintf(w, `<div style="color:%s; white-space:pre-wrap; word-break:break-all;">%s</div>`, color, html.EscapeString(parsed.Message))
 	}
-
-	for _, rec := range restores {
-		icon := "📥"
-		status := "success"
-		statusClr := "#059669"
-		if !rec.Success {
-			icon = "❌"
-			status = "failed"
-			statusClr = "#dc2626"
-		}
-
-		rows = append(rows, activityRow{
-			Timestamp: rec.RestoredAt,
-			Icon:      icon,
-			Type:      "Restore",
-			Status:    status,
-			StatusClr: statusClr,
-			Date:      rec.RestoredAt.Format("2006-01-02 15:04:05"),
-			Details:   rec.FileName,
-			Files:     "1",
-			Size:      "-",
-			Duration:  "-",
-		})
-	}
-
-	// Sort newest first.
-	sort.Slice(rows, func(i, j int) bool {
-		return rows[i].Timestamp.After(rows[j].Timestamp)
-	})
-
-	fmt.Fprint(w, `<table style="width:100%; border-collapse:collapse; font-size:13px; font-family:monospace;">`)
-	fmt.Fprint(w, `<thead><tr style="border-bottom:2px solid #e5e7eb; text-transform:uppercase; font-size:11px; color:#6b7280;">`)
-	fmt.Fprint(w, `<th style="padding:10px 16px; text-align:left; width:4%;"></th>`)
-	fmt.Fprint(w, `<th style="padding:10px 16px; text-align:left; width:10%;">Type</th>`)
-	fmt.Fprint(w, `<th style="padding:10px 16px; text-align:left; width:10%;">Status</th>`)
-	fmt.Fprint(w, `<th style="padding:10px 16px; text-align:left; width:16%;">Date</th>`)
-	fmt.Fprint(w, `<th style="padding:10px 16px; text-align:left; width:32%;">Details</th>`)
-	fmt.Fprint(w, `<th style="padding:10px 16px; text-align:right; width:8%;">Files</th>`)
-	fmt.Fprint(w, `<th style="padding:10px 16px; text-align:right; width:10%;">Size</th>`)
-	fmt.Fprint(w, `<th style="padding:10px 16px; text-align:right; width:10%;">Duration</th>`)
-	fmt.Fprint(w, `</tr></thead><tbody>`)
-
-	for _, row := range rows {
-		fmt.Fprintf(w, `<tr style="border-bottom:1px solid #f3f4f6;">`)
-		fmt.Fprintf(w, `<td style="padding:8px 16px;">%s</td>`, row.Icon)
-		fmt.Fprintf(w, `<td style="padding:8px 16px; color:#4b5563;">%s</td>`, row.Type)
-		fmt.Fprintf(w, `<td style="padding:8px 16px; color:%s;">%s</td>`, row.StatusClr, row.Status)
-		fmt.Fprintf(w, `<td style="padding:8px 16px; color:#4b5563; white-space:nowrap;">%s</td>`, row.Date)
-		fmt.Fprintf(w, `<td style="padding:8px 16px; color:#9ca3af; font-size:11px;">%s</td>`, row.Details)
-		fmt.Fprintf(w, `<td style="padding:8px 16px; text-align:right; color:#4b5563;">%s</td>`, row.Files)
-		fmt.Fprintf(w, `<td style="padding:8px 16px; text-align:right; color:#4b5563;">%s</td>`, row.Size)
-		fmt.Fprintf(w, `<td style="padding:8px 16px; text-align:right; color:#4b5563;">%s</td>`, row.Duration)
-		fmt.Fprintf(w, `</tr>`)
-	}
-	fmt.Fprint(w, `</tbody></table>`)
+	fmt.Fprint(w, `</div>`)
 }
 
-// handleAPIActivityRecentJSON returns recent activity as a JSON array for the Activity page Alpine component.
+// handleAPIActivityRecentJSON returns recent console logs as a JSON array for the Activity page Alpine component.
 func (s *Server) handleAPIActivityRecentJSON(w http.ResponseWriter, r *http.Request) {
-	type jsonEvent struct {
-		ID        string `json:"id"`
-		Type      string `json:"type"`
-		Message   string `json:"message"`
-		Timestamp string `json:"timestamp"`
-		Resource  string `json:"resource,omitempty"`
+	rawLogs := observe.GetLogHistory()
+	events := make([]jsonLogLine, 0, len(rawLogs))
+	for i, raw := range rawLogs {
+		parsed := parseLogLine(raw, i)
+		events = append(events, parsed)
 	}
 
-	// First try SSE broker history (real-time events).
-	if s.broker != nil {
-		history := s.broker.History()
-		events := make([]jsonEvent, 0, len(history))
-		for i := len(history) - 1; i >= 0; i-- {
-			h := history[i]
-			events = append(events, jsonEvent{
-				ID:        h.ID,
-				Type:      h.Type,
-				Message:   h.Message,
-				Timestamp: h.Timestamp.Format(time.RFC3339),
-				Resource:  h.Resource,
-			})
-		}
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(events)
-		return
-	}
-
-	// Fallback: empty array if no broker.
 	w.Header().Set("Content-Type", "application/json")
-	fmt.Fprint(w, "[]")
+	json.NewEncoder(w).Encode(events)
+}
+
+var logIDCounter uint64
+
+type jsonLogLine struct {
+	ID        string `json:"id"`
+	Level     string `json:"level"`
+	Message   string `json:"message"`
+	Timestamp string `json:"timestamp"`
+}
+
+func parseLogLine(raw string, index int) jsonLogLine {
+	rawClean := strings.TrimSpace(raw)
+	level := "INFO"
+
+	if strings.Contains(rawClean, "level=WARN") || strings.Contains(rawClean, `"level":"WARN"`) {
+		level = "WARN"
+	} else if strings.Contains(rawClean, "level=ERROR") || strings.Contains(rawClean, `"level":"ERROR"`) || strings.Contains(rawClean, "level=ERRO") {
+		level = "ERROR"
+	} else if strings.Contains(rawClean, "level=DEBUG") || strings.Contains(rawClean, `"level":"DEBUG"`) {
+		level = "DEBUG"
+	}
+
+	timestamp := time.Now().Format(time.RFC3339)
+	if idx := strings.Index(rawClean, "time="); idx != -1 {
+		rem := rawClean[idx+5:]
+		if endIdx := strings.Index(rem, " "); endIdx != -1 {
+			timestamp = rem[:endIdx]
+		} else {
+			timestamp = rem
+		}
+	} else if idx := strings.Index(rawClean, `"time":"`); idx != -1 {
+		rem := rawClean[idx+8:]
+		if endIdx := strings.Index(rem, `"`); endIdx != -1 {
+			timestamp = rem[:endIdx]
+		}
+	}
+
+	return jsonLogLine{
+		ID:        fmt.Sprintf("log-%d-%d-%d", time.Now().UnixNano(), atomic.AddUint64(&logIDCounter, 1), index),
+		Level:     level,
+		Message:   rawClean,
+		Timestamp: timestamp,
+	}
 }
 
 // handleAPIWatcherControl handles POST /api/watcher/start and /api/watcher/stop.
