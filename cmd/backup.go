@@ -3,6 +3,9 @@ package cmd
 import (
 	"bufio"
 	"context"
+	"crypto/tls"
+	"crypto/x509"
+	"database/sql"
 	"encoding/hex"
 	"fmt"
 	"os"
@@ -16,8 +19,15 @@ import (
 	"github.com/gcclinux/tergum/internal/connection"
 	"github.com/gcclinux/tergum/internal/crypto"
 	"github.com/gcclinux/tergum/internal/db"
+	grpcpkg "github.com/gcclinux/tergum/internal/grpc"
+	"github.com/gcclinux/tergum/internal/grpc/proto"
 	"github.com/gcclinux/tergum/internal/model"
+	"github.com/gcclinux/tergum/internal/registry"
+	tlsPkg "github.com/gcclinux/tergum/internal/tls"
 	"github.com/spf13/cobra"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
+	_ "modernc.org/sqlite"
 )
 
 func newBackupCmd() *cobra.Command {
@@ -29,12 +39,18 @@ func newBackupCmd() *cobra.Command {
 	}
 
 	cmd.Flags().StringP("level", "l", "auto", "backup level: auto, full")
+	cmd.Flags().StringP("client", "c", "", "trigger backup on a remote client ID (server-side only)")
 
 	return cmd
 }
 
 func runBackup(cmd *cobra.Command, args []string) error {
 	level, _ := cmd.Flags().GetString("level")
+	targetClientID, _ := cmd.Flags().GetString("client")
+
+	if targetClientID != "" {
+		return runRemoteClientBackup(targetClientID, level)
+	}
 
 	// Load configuration.
 	cfg, err := config.Load(cfgFile)
@@ -266,4 +282,94 @@ func parseMaxFileSize(s string) int64 {
 		return 10 * 1024 * 1024 * 1024
 	}
 	return val * multiplier
+}
+
+// runRemoteClientBackup triggers a backup on a remote client ID.
+func runRemoteClientBackup(clientID string, level string) error {
+	cfg, err := config.Load(cfgFile)
+	if err != nil {
+		return fmt.Errorf("loading config: %w", err)
+	}
+
+	// Open registry database.
+	dbConn, err := sql.Open("sqlite", cfg.Database.Path+"?_busy_timeout=5000&_journal_mode=WAL")
+	if err != nil {
+		return fmt.Errorf("opening registry database: %w", err)
+	}
+	defer dbConn.Close()
+
+	reg, err := registry.New(registry.Config{
+		DB: dbConn,
+	})
+	if err != nil {
+		return fmt.Errorf("loading client registry: %w", err)
+	}
+
+	ci := reg.GetClient(clientID)
+	if ci == nil {
+		return fmt.Errorf("client %q not found in registry", clientID)
+	}
+	if ci.Status != "online" {
+		return fmt.Errorf("client %q is offline (last seen: %v)", clientID, ci.LastSeen)
+	}
+
+	// Load client TLS credentials.
+	tlsMgr := tlsPkg.NewManager()
+	clientTLS, err := tlsMgr.LoadClientTLS(cfg.TLS.CACert, cfg.TLS.Cert, cfg.TLS.Key)
+	if err != nil {
+		return fmt.Errorf("loading client TLS credentials: %w", err)
+	}
+
+	// Clone and configure TLS to skip hostname verification but keep CA validation.
+	tlsCfg := clientTLS.Clone()
+	tlsCfg.InsecureSkipVerify = true
+	tlsCfg.VerifyConnection = func(cs tls.ConnectionState) error {
+		opts := x509.VerifyOptions{
+			Roots:         clientTLS.RootCAs,
+			CurrentTime:   time.Now(),
+			Intermediates: x509.NewCertPool(),
+		}
+		for _, cert := range cs.PeerCertificates[1:] {
+			opts.Intermediates.AddCert(cert)
+		}
+		_, err := cs.PeerCertificates[0].Verify(opts)
+		return err
+	}
+
+	creds := credentials.NewTLS(tlsCfg)
+	conn, err := grpc.NewClient(ci.Address, grpc.WithTransportCredentials(creds))
+	if err != nil {
+		return fmt.Errorf("connecting to client %s at %s: %w", clientID, ci.Address, err)
+	}
+	defer conn.Close()
+
+	client := grpcpkg.NewTergumClient(conn, conn, grpcpkg.ClientConfig{
+		MaxRetries: 3,
+	})
+
+	var protoLevel proto.BackupLevel
+	switch strings.ToLower(level) {
+	case "full":
+		protoLevel = proto.BackupLevel_FULL
+	default:
+		protoLevel = proto.BackupLevel_AUTO
+	}
+
+	fmt.Printf("Triggering remote %s backup on client %s (%s)...\n", level, clientID, ci.Address)
+
+	resp, err := client.TriggerBackup(context.Background(), protoLevel, clientID, "cli-admin")
+	if err != nil {
+		return fmt.Errorf("trigger backup failed: %w", err)
+	}
+
+	printOutput(
+		map[string]interface{}{
+			"status":    resp.Status,
+			"backup_id": resp.BackupId,
+			"message":   resp.Message,
+		},
+		fmt.Sprintf("Backup started successfully!\nBackup ID: %s\nStatus: %s\nMessage: %s", resp.BackupId, resp.Status, resp.Message),
+	)
+
+	return nil
 }

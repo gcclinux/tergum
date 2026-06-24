@@ -3,8 +3,10 @@ package webui
 import (
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"fmt"
 	"log/slog"
+	"time"
 
 	grpcpkg "github.com/gcclinux/tergum/internal/grpc"
 	"github.com/gcclinux/tergum/internal/grpc/proto"
@@ -158,7 +160,25 @@ func (c *RemoteClientConnector) connectToClient(clientID string) (*grpcpkg.Tergu
 	}
 
 	// Connect to the client's command port using mTLS.
-	creds := credentials.NewTLS(c.tlsCfg)
+	// Since client certificates might be copied from the server and lack IP/hostname SANs
+	// matching their dynamic IPs in the registry, we skip hostname validation but
+	// strictly verify the CA signature manually.
+	tlsCfg := c.tlsCfg.Clone()
+	tlsCfg.InsecureSkipVerify = true
+	tlsCfg.VerifyConnection = func(cs tls.ConnectionState) error {
+		opts := x509.VerifyOptions{
+			Roots:         c.tlsCfg.RootCAs,
+			CurrentTime:   time.Now(),
+			Intermediates: x509.NewCertPool(),
+		}
+		for _, cert := range cs.PeerCertificates[1:] {
+			opts.Intermediates.AddCert(cert)
+		}
+		_, err := cs.PeerCertificates[0].Verify(opts)
+		return err
+	}
+
+	creds := credentials.NewTLS(tlsCfg)
 	conn, err := grpc.NewClient(ci.Address, grpc.WithTransportCredentials(creds))
 	if err != nil {
 		return nil, fmt.Errorf("connect to client %s at %s: %w", clientID, ci.Address, err)
