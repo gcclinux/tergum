@@ -721,7 +721,7 @@ $env:TERGUM_PASSPHRASE="mypass"; .\tergum.exe restore "important.docx"
 Because Tergum uses secure client-side encryption, the master decryption keys are derived from the client's own `TERGUM_PASSPHRASE` and are never stored on the server. There are two ways to restore remote client data:
 
 #### Method 1: Client-Side Restore (Recommended)
-Log in to the remote client machine and run the restore command. The client daemon connects to the server to download backup blobs and decrypts them locally.
+Log in to the remote client machine and run the restore command. The client daemon connects to the server to download backup blobs and decrypts them locally. **Files will be restored directly onto the remote client's filesystem.**
 
 **Example (Linux / macOS Client):**
 ```bash
@@ -736,7 +736,7 @@ $env:TERGUM_PASSPHRASE="clientpassphrase"; .\tergum.exe restore "*.docx" --dest 
 ```
 
 #### Method 2: Server-Side Restore
-Alternatively, you can run the restore command directly on the server machine using the `--client` flag. You can separate the query using the `--path` (or `-p`) flag to avoid parser issues with positional arguments. Because backups are encrypted, you must provide the remote client's `TERGUM_PASSPHRASE`. If the client has a custom salt, copy it to the server's client configuration directory as `<configDir>/clients/<client_id>.salt`.
+Alternatively, you can run the restore command directly on the server machine using the `--client` flag. You can separate the query using the `--path` (or `-p`) flag to avoid parser issues with positional arguments. Because backups are encrypted, you must provide the remote client's `TERGUM_PASSPHRASE`. **Files will be restored onto the server's local filesystem** (this is useful if the client machine is offline or destroyed and you need to recover its files onto the server). If the client has a custom salt, copy it to the server's client configuration directory as `<configDir>/clients/<client_id>.salt`.
 
 **Example (Linux / macOS Server):**
 ```bash

@@ -152,6 +152,13 @@ func (e *BackupEngine) RunBackup(ctx context.Context, req BackupRequest) (*Backu
 		}
 		_ = e.repo.UpdateJob(ctx, backupID, update)
 		if e.config.DatabasePath != "" {
+			if cp, ok := e.repo.(interface {
+				Checkpoint(context.Context) error
+			}); ok {
+				if err := cp.Checkpoint(ctx); err != nil {
+					slog.Warn("database checkpoint failed before sync", "error", err)
+				}
+			}
 			if err := e.server.SyncDatabase(ctx, e.config.DatabasePath); err != nil {
 				slog.Warn("database sync failed during job finalization", "status", status, "error", err)
 			}

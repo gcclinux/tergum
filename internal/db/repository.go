@@ -1009,3 +1009,10 @@ func (r *SQLiteRepository) SetConfig(ctx context.Context, key, value string) err
 	)
 	return err
 }
+
+// Checkpoint runs PRAGMA wal_checkpoint(TRUNCATE) to flush WAL to the main DB file.
+func (r *SQLiteRepository) Checkpoint(ctx context.Context) error {
+	_, err := r.db.ExecContext(ctx, "PRAGMA wal_checkpoint(TRUNCATE)")
+	return err
+}
+

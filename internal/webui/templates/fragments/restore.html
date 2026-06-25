@@ -17,6 +17,14 @@
             </div>
             <span class="text-xs text-gray-400 dark:text-gray-500">Auto-refreshes every 30s</span>
         </div>
+        <div id="remote-restore-warning" class="hidden mb-4 p-4 bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 rounded-lg text-sm text-blue-800 dark:text-blue-200">
+             <strong>Remote Client Selected:</strong> Direct restores from this WebUI dashboard are not available for remote clients due to client-side encryption keys.
+             <div class="mt-2 space-y-1">
+                 <p>• <strong>To restore directly on the client machine (Recommended):</strong> Log in to the client and run: <br/><code class="bg-blue-100 dark:bg-blue-900/60 px-2 py-0.5 rounded font-mono text-xs text-gray-900 dark:text-gray-100">tergum restore "query" --dest /path</code></p>
+                 <p>• <strong>To recover files back to this server (e.g., if the client is offline/destroyed):</strong> Run the restore command from the server's CLI: <br/><code class="bg-blue-100 dark:bg-blue-900/60 px-2 py-0.5 rounded font-mono text-xs text-gray-900 dark:text-gray-100">tergum restore --client <span class="remote-client-name"></span> --path "query" --dest /path</code></p>
+             </div>
+        </div>
+
         <div id="restore-backups" class="overflow-x-auto"
              hx-get="/api/restore/backups"
              hx-include="[name='client_id']"
@@ -216,5 +224,29 @@ function restoreBackup(backupId) {
         }
     });
 }
+
+(function() {
+    var clientSelect = document.getElementById('restore-client-select');
+    var warningDiv = document.getElementById('remote-restore-warning');
+    var clientNameSpans = document.querySelectorAll('.remote-client-name');
+    
+    function updateWarning() {
+        if (!clientSelect || !warningDiv) return;
+        var val = clientSelect.value;
+        if (val && val !== 'local' && val !== 'server') {
+            warningDiv.classList.remove('hidden');
+            clientNameSpans.forEach(function(span) {
+                span.textContent = val;
+            });
+        } else {
+            warningDiv.classList.add('hidden');
+        }
+    }
+    
+    if (clientSelect) {
+        clientSelect.addEventListener('change', updateWarning);
+        updateWarning(); // run once initially
+    }
+})();
 </script>
 {{end}}

@@ -373,10 +373,12 @@ func loadRestoreMasterKey(cfg *config.Config, clientID string, dbSalt []byte) ([
 	}
 
 	// Verify derived master key against key_verify if it exists
-	verifyPath := filepath.Join(configDir, "key_verify")
-	if verifyData, err := os.ReadFile(verifyPath); err == nil {
-		if ok, err := enc.VerifyMasterKey(masterKey, string(verifyData)); err != nil || !ok {
-			return nil, fmt.Errorf("invalid passphrase: key verification failed")
+	if clientID == "" {
+		verifyPath := filepath.Join(configDir, "key_verify")
+		if verifyData, err := os.ReadFile(verifyPath); err == nil {
+			if ok, err := enc.VerifyMasterKey(masterKey, string(verifyData)); err != nil || !ok {
+				return nil, fmt.Errorf("invalid passphrase: key verification failed")
+			}
 		}
 	}
 
