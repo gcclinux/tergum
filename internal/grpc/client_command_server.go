@@ -13,6 +13,7 @@ import (
 	"github.com/gcclinux/tergum/internal/db"
 	"github.com/gcclinux/tergum/internal/grpc/proto"
 	"github.com/gcclinux/tergum/internal/model"
+	"github.com/gcclinux/tergum/internal/scheduler"
 	versionPkg "github.com/gcclinux/tergum/internal/version"
 	"github.com/gcclinux/tergum/internal/watcher"
 	"google.golang.org/grpc/codes"
@@ -36,7 +37,12 @@ type ClientCommandServer struct {
 	masterKey  []byte
 
 	// Watcher instance for server-initiated watcher control.
-	watcher watcher.Watcher
+	// May be nil on startup if watcher was disabled in config; created on-demand via factory.
+	watcher        watcher.Watcher
+	watcherFactory WatcherFactory  // creates a watcher + ongoing backup on demand
+	ongoingBackup  *scheduler.OngoingBackup
+	watchCtx       context.Context
+	watchCancel    context.CancelFunc
 
 	// Tracking fields for status and ping responses.
 	version   string
@@ -46,15 +52,22 @@ type ClientCommandServer struct {
 	activeBackupID string
 }
 
+// WatcherFactory is a function that creates and starts a file watcher together with
+// its associated OngoingBackup processor. It is called on-demand when the server
+// issues a StartWatcher command but no watcher was running yet.
+type WatcherFactory func(ctx context.Context) (watcher.Watcher, *scheduler.OngoingBackup, error)
+
 // ClientCommandServerConfig holds configuration for the ClientCommandServer.
 type ClientCommandServerConfig struct {
-	ServerConn backup.ServerConnection
-	Repo       db.Repository
-	Encryptor  *crypto.AESEncryptor
-	Cfg        *config.Config
-	MasterKey  []byte
-	Version    string
-	Watcher    watcher.Watcher
+	ServerConn     backup.ServerConnection
+	Repo           db.Repository
+	Encryptor      *crypto.AESEncryptor
+	Cfg            *config.Config
+	MasterKey      []byte
+	Version        string
+	Watcher        watcher.Watcher          // pre-started watcher (optional)
+	OngoingBackup  *scheduler.OngoingBackup // pre-started ongoing backup (optional)
+	WatcherFactory WatcherFactory           // factory for on-demand watcher creation
 }
 
 // NewClientCommandServer creates a new ClientCommandServer with the given configuration.
@@ -65,14 +78,16 @@ func NewClientCommandServer(cfg ClientCommandServerConfig) *ClientCommandServer 
 	}
 
 	return &ClientCommandServer{
-		serverConn: cfg.ServerConn,
-		repo:       cfg.Repo,
-		encryptor:  cfg.Encryptor,
-		cfg:        cfg.Cfg,
-		masterKey:  cfg.MasterKey,
-		watcher:    cfg.Watcher,
-		version:    version,
-		startedAt:  time.Now(),
+		serverConn:     cfg.ServerConn,
+		repo:           cfg.Repo,
+		encryptor:      cfg.Encryptor,
+		cfg:            cfg.Cfg,
+		masterKey:      cfg.MasterKey,
+		watcher:        cfg.Watcher,
+		ongoingBackup:  cfg.OngoingBackup,
+		watcherFactory: cfg.WatcherFactory,
+		version:        version,
+		startedAt:      time.Now(),
 	}
 }
 
@@ -223,42 +238,76 @@ func (s *ClientCommandServer) Ping(ctx context.Context, req *proto.PingRequest) 
 }
 
 // StartWatcher starts the local file watcher on this client node.
-// If no watcher is configured, it returns an error.
-// If the watcher is already running, it returns a success message indicating it's already active.
+// If a watcher is already configured and running, returns success immediately.
+// If no watcher exists yet (e.g. watcher was disabled in config), creates one
+// on-demand using the WatcherFactory so the administrator can enable it remotely.
 func (s *ClientCommandServer) StartWatcher(ctx context.Context, req *proto.WatcherRequest) (*proto.WatcherResponse, error) {
-	if s.watcher == nil {
-		return &proto.WatcherResponse{
-			Success: false,
-			Message: "no watcher configured on this client",
-		}, nil
-	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
-	ws := s.watcher.Status()
-	if ws.Running {
+	// Already running — nothing to do.
+	if s.watcher != nil && s.watcher.Status().Running {
 		return &proto.WatcherResponse{
 			Success: true,
 			Message: "watcher is already running",
 		}, nil
 	}
 
-	if err := s.watcher.Start(context.Background()); err != nil {
-		slog.Error("failed to start watcher via server command", "error", err)
+	// If we have a pre-existing (stopped) watcher, restart it.
+	if s.watcher != nil {
+		s.watchCtx, s.watchCancel = context.WithCancel(context.Background())
+		if err := s.watcher.Start(s.watchCtx); err != nil {
+			s.watchCancel()
+			s.watchCtx, s.watchCancel = nil, nil
+			slog.Error("failed to restart watcher via server command", "error", err)
+			return &proto.WatcherResponse{
+				Success: false,
+				Message: fmt.Sprintf("failed to start watcher: %v", err),
+			}, nil
+		}
+		slog.Info("watcher restarted via server command", "client_id", req.ClientId)
 		return &proto.WatcherResponse{
-			Success: false,
-			Message: fmt.Sprintf("failed to start watcher: %v", err),
+			Success: true,
+			Message: "watcher started successfully",
 		}, nil
 	}
 
-	slog.Info("watcher started via server command", "client_id", req.ClientId)
+	// No watcher at all — try to create one on-demand via the factory.
+	if s.watcherFactory == nil {
+		return &proto.WatcherResponse{
+			Success: false,
+			Message: "no include paths configured — add paths with 'tergum paths add <dir>' then retry",
+		}, nil
+	}
+
+	s.watchCtx, s.watchCancel = context.WithCancel(context.Background())
+	fw, ongoing, err := s.watcherFactory(s.watchCtx)
+	if err != nil {
+		s.watchCancel()
+		s.watchCtx, s.watchCancel = nil, nil
+		slog.Error("failed to create watcher on-demand via server command", "error", err)
+		return &proto.WatcherResponse{
+			Success: false,
+			Message: fmt.Sprintf("failed to create watcher: %v", err),
+		}, nil
+	}
+
+	s.watcher = fw
+	s.ongoingBackup = ongoing
+	slog.Info("watcher created and started on-demand via server command", "client_id", req.ClientId)
 	return &proto.WatcherResponse{
 		Success: true,
-		Message: "watcher started successfully",
+		Message: "watcher created and started successfully",
 	}, nil
 }
 
 // StopWatcher stops the local file watcher on this client node.
 // If no watcher is configured or it's not running, returns a success response.
+// Also stops the associated OngoingBackup processor if one is running.
 func (s *ClientCommandServer) StopWatcher(ctx context.Context, req *proto.WatcherRequest) (*proto.WatcherResponse, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	if s.watcher == nil {
 		return &proto.WatcherResponse{
 			Success: true,
@@ -272,6 +321,18 @@ func (s *ClientCommandServer) StopWatcher(ctx context.Context, req *proto.Watche
 			Success: true,
 			Message: "watcher is not running",
 		}, nil
+	}
+
+	// Stop the ongoing backup processor first (it drains the watcher channel).
+	if s.ongoingBackup != nil {
+		s.ongoingBackup.Stop()
+		s.ongoingBackup = nil
+	}
+
+	// Cancel the watch context to signal all goroutines.
+	if s.watchCancel != nil {
+		s.watchCancel()
+		s.watchCtx, s.watchCancel = nil, nil
 	}
 
 	if err := s.watcher.Stop(); err != nil {

@@ -3,6 +3,9 @@ package cmd
 import (
 	"bufio"
 	"context"
+	"crypto/tls"
+	"crypto/x509"
+	"database/sql"
 	"encoding/hex"
 	"fmt"
 	"os"
@@ -17,9 +20,16 @@ import (
 	"github.com/gcclinux/tergum/internal/connection"
 	"github.com/gcclinux/tergum/internal/crypto"
 	"github.com/gcclinux/tergum/internal/db"
+	grpcpkg "github.com/gcclinux/tergum/internal/grpc"
+	"github.com/gcclinux/tergum/internal/grpc/proto"
+	"github.com/gcclinux/tergum/internal/registry"
 	"github.com/gcclinux/tergum/internal/scheduler"
+	tlsPkg "github.com/gcclinux/tergum/internal/tls"
 	"github.com/gcclinux/tergum/internal/watcher"
 	"github.com/spf13/cobra"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
+	_ "modernc.org/sqlite"
 )
 
 func newWatchCmd() *cobra.Command {
@@ -43,6 +53,8 @@ The watcher batches stable files into backup jobs at a configurable interval
 	cmd.AddCommand(newWatchAddCmd())
 	cmd.AddCommand(newWatchRemoveCmd())
 	cmd.AddCommand(newWatchListCmd())
+	cmd.AddCommand(newWatchStartCmd())
+	cmd.AddCommand(newWatchStopCmd())
 
 	return cmd
 }
@@ -386,7 +398,6 @@ func newWatchListCmd() *cobra.Command {
 			}
 
 			sort.Strings(excludes)
-
 			if jsonOut {
 				printOutput(map[string]interface{}{
 					"watch_exclusions": excludes,
@@ -403,4 +414,119 @@ func newWatchListCmd() *cobra.Command {
 			return nil
 		},
 	}
+}
+
+func newWatchStartCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "start [client_id]",
+		Short: "Start the file watcher on a remote client (server-side only)",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runRemoteClientWatcherControl(args[0], true)
+		},
+	}
+}
+
+func newWatchStopCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "stop [client_id]",
+		Short: "Stop the file watcher on a remote client (server-side only)",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runRemoteClientWatcherControl(args[0], false)
+		},
+	}
+}
+
+func runRemoteClientWatcherControl(clientID string, start bool) error {
+	cfg, err := config.Load(cfgFile)
+	if err != nil {
+		return fmt.Errorf("loading config: %w", err)
+	}
+
+	// Open registry database.
+	dbConn, err := sql.Open("sqlite", cfg.Database.Path+"?_busy_timeout=5000&_journal_mode=WAL")
+	if err != nil {
+		return fmt.Errorf("opening registry database: %w", err)
+	}
+	defer dbConn.Close()
+
+	reg, err := registry.New(registry.Config{
+		DB: dbConn,
+	})
+	if err != nil {
+		return fmt.Errorf("loading client registry: %w", err)
+	}
+
+	ci := reg.GetClient(clientID)
+	if ci == nil {
+		return fmt.Errorf("client %q not found in registry", clientID)
+	}
+	if ci.Status != "online" {
+		return fmt.Errorf("client %q is offline (last seen: %v)", clientID, ci.LastSeen)
+	}
+
+	// Load client TLS credentials.
+	tlsMgr := tlsPkg.NewManager()
+	clientTLS, err := tlsMgr.LoadClientTLS(cfg.TLS.CACert, cfg.TLS.Cert, cfg.TLS.Key)
+	if err != nil {
+		return fmt.Errorf("loading client TLS credentials: %w", err)
+	}
+
+	// Clone and configure TLS to skip hostname verification but keep CA validation.
+	tlsCfg := clientTLS.Clone()
+	tlsCfg.InsecureSkipVerify = true
+	tlsCfg.VerifyConnection = func(cs tls.ConnectionState) error {
+		opts := x509.VerifyOptions{
+			Roots:         clientTLS.RootCAs,
+			CurrentTime:   time.Now(),
+			Intermediates: x509.NewCertPool(),
+		}
+		for _, cert := range cs.PeerCertificates[1:] {
+			opts.Intermediates.AddCert(cert)
+		}
+		_, err := cs.PeerCertificates[0].Verify(opts)
+		return err
+	}
+
+	creds := credentials.NewTLS(tlsCfg)
+	conn, err := grpc.NewClient(ci.Address, grpc.WithTransportCredentials(creds))
+	if err != nil {
+		return fmt.Errorf("connecting to client %s at %s: %w", clientID, ci.Address, err)
+	}
+	defer conn.Close()
+
+	client := grpcpkg.NewTergumClient(conn, conn, grpcpkg.ClientConfig{
+		MaxRetries: 3,
+	})
+
+	var resp *proto.WatcherResponse
+	var actionStr string
+	if start {
+		actionStr = "starting"
+		fmt.Printf("Starting remote file watcher on client %s (%s)...\n", clientID, ci.Address)
+		resp, err = client.StartWatcher(context.Background(), clientID)
+	} else {
+		actionStr = "stopping"
+		fmt.Printf("Stopping remote file watcher on client %s (%s)...\n", clientID, ci.Address)
+		resp, err = client.StopWatcher(context.Background(), clientID)
+	}
+
+	if err != nil {
+		return fmt.Errorf("%s remote watcher failed: %w", actionStr, err)
+	}
+
+	printOutput(
+		map[string]interface{}{
+			"success": resp.Success,
+			"message": resp.Message,
+		},
+		fmt.Sprintf("Watcher operation completed: success=%v, message=%s", resp.Success, resp.Message),
+	)
+
+	if !resp.Success {
+		return fmt.Errorf("operation failed: %s", resp.Message)
+	}
+
+	return nil
 }

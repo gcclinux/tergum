@@ -503,13 +503,71 @@ func (s *Server) startClient(ctx context.Context) error {
 	}
 
 	// Build the ClientCommandServer.
+	// Also build a WatcherFactory so the server admin can enable the watcher remotely
+	// even if it was disabled in the client's config at setup time.
+	batchInterval := time.Duration(s.cfg.Watcher.BatchIntervalMinutes) * time.Minute
+	if batchInterval <= 0 {
+		batchInterval = 5 * time.Minute
+	}
+
+	watcherFactory := grpcpkg.WatcherFactory(func(factoryCtx context.Context) (watcher.Watcher, *scheduler.OngoingBackup, error) {
+		// Resolve include paths from DB (picks up any paths added after startup).
+		includePaths, _ := repo.ListIncludePaths(factoryCtx)
+		if len(includePaths) == 0 {
+			includePaths = s.cfg.Client.IncludePaths
+		}
+		if len(includePaths) == 0 {
+			return nil, nil, fmt.Errorf("no include paths configured — add paths with 'tergum paths add <dir>'")
+		}
+
+		excludePatterns, _ := repo.ListExcludePatterns(factoryCtx)
+		if len(excludePatterns) == 0 {
+			excludePatterns = s.cfg.Client.ExcludePatterns
+		}
+
+		fw, fwErr := watcher.NewFileWatcher(watcher.Config{
+			DebounceMs:       s.cfg.Watcher.DebounceMs,
+			StabilitySeconds: s.cfg.Watcher.StabilitySeconds,
+			ExcludePatterns:  excludePatterns,
+			Repository:       repo,
+			IncludePaths:     includePaths,
+		})
+		if fwErr != nil {
+			return nil, nil, fmt.Errorf("create file watcher: %w", fwErr)
+		}
+
+		if startErr := fw.Start(factoryCtx); startErr != nil {
+			return nil, nil, fmt.Errorf("start file watcher: %w", startErr)
+		}
+
+		ongoing := scheduler.NewOngoingBackup(scheduler.OngoingConfig{
+			Watcher:       fw,
+			Server:        serverConn,
+			Repo:          repo,
+			Encryptor:     encryptor,
+			MasterKey:     masterKey,
+			BatchInterval: batchInterval,
+		})
+		if startErr := ongoing.Start(factoryCtx); startErr != nil {
+			_ = fw.Stop()
+			return nil, nil, fmt.Errorf("start ongoing backup: %w", startErr)
+		}
+
+		s.logger.Info("watcher created on-demand by server command",
+			"paths", len(includePaths),
+			"batch_interval", batchInterval,
+		)
+		return fw, ongoing, nil
+	})
+
 	cmdHandler := grpcpkg.NewClientCommandServer(grpcpkg.ClientCommandServerConfig{
-		ServerConn: serverConn,
-		Repo:       repo,
-		Encryptor:  encryptor,
-		Cfg:        s.cfg,
-		MasterKey:  masterKey,
-		Version:    version.Version,
+		ServerConn:     serverConn,
+		Repo:           repo,
+		Encryptor:      encryptor,
+		Cfg:            s.cfg,
+		MasterKey:      masterKey,
+		Version:        version.Version,
+		WatcherFactory: watcherFactory,
 	})
 
 	// Start gRPC server for client-side CommandService on :7400.

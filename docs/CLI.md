@@ -29,6 +29,8 @@
 | [`tergum watch run`](#tergum-watch-run) | ✅ Working | Start file watcher in the foreground |
 | [`tergum watch enable`](#tergum-watch-enable) | ✅ Working | Enable the file watcher in configuration |
 | [`tergum watch disable`](#tergum-watch-disable) | ✅ Working | Disable the file watcher in configuration |
+| [`tergum watch start`](#tergum-watch-start) | ✅ Working | Start the file watcher on a remote client (server-side only) |
+| [`tergum watch stop`](#tergum-watch-stop) | ✅ Working | Stop the file watcher on a remote client (server-side only) |
 | [`tergum version`](#tergum-version) | ✅ Working | Print version info |
 
 ---
@@ -865,6 +867,48 @@ tergum watch disable
 **PowerShell (Windows):**
 ```powershell
 .\tergum.exe watch disable
+```
+
+#### tergum watch start
+
+Start the file watcher and ongoing backup loop on a remote client from the server.
+
+```
+Usage: tergum watch start [client_id] [flags]
+
+Flags:
+  --json   Output as JSON
+```
+
+**Linux / macOS:**
+```bash
+tergum watch start 192.168.1.214
+```
+
+**PowerShell (Windows):**
+```powershell
+.\tergum.exe watch start 192.168.1.214
+```
+
+#### tergum watch stop
+
+Stop the file watcher and ongoing backup loop on a remote client from the server.
+
+```
+Usage: tergum watch stop [client_id] [flags]
+
+Flags:
+  --json   Output as JSON
+```
+
+**Linux / macOS:**
+```bash
+tergum watch stop 192.168.1.214
+```
+
+**PowerShell (Windows):**
+```powershell
+.\tergum.exe watch stop 192.168.1.214
 ```
 
 ---
