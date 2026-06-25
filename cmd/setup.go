@@ -197,7 +197,23 @@ func runInteractiveSetup(wiz *setupWizard) error {
 	// 2b. Server address (if client or hybrid)
 	var serverAddress string
 	if role == "client" || role == "hybrid" {
-		serverAddress = wiz.prompt("Server address (hostname or IP)", "localhost")
+		if role == "client" {
+			for {
+				serverAddress = wiz.prompt("Server address (hostname or IP)", "")
+				if serverAddress == "" {
+					fmt.Fprintln(wiz.writer, "Error: Server address is required for client setup.")
+					continue
+				}
+				addrLower := strings.ToLower(strings.TrimSpace(serverAddress))
+				if addrLower == "localhost" || addrLower == "127.0.0.1" || addrLower == "::1" {
+					fmt.Fprintln(wiz.writer, "Error: Server address cannot be localhost for client setup. Please specify the server's actual IP address or hostname.")
+					continue
+				}
+				break
+			}
+		} else {
+			serverAddress = wiz.prompt("Server address (hostname or IP)", "localhost")
+		}
 	}
 
 	// 3. Storage path
