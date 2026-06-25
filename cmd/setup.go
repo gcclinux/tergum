@@ -254,7 +254,6 @@ func runInteractiveSetup(wiz *setupWizard) error {
 		}
 	}
 
-
 	// 5. Encryption passphrase
 	saltPath := filepath.Join(configDir, "salt")
 	verifyPath := filepath.Join(configDir, "key_verify")
@@ -664,7 +663,6 @@ var getLocalIPs = func() ([]string, error) {
 	return ips, nil
 }
 
-
 // printManualCertInstructions prints the steps the user must follow to manually
 // copy TLS certificates from the server when automatic bootstrap is unavailable.
 func printManualCertInstructions(w io.Writer, serverAddress, certsDir string) {
@@ -747,12 +745,9 @@ func fetchCertsFromServer(wiz *setupWizard, serverAddr string, bootstrapPort int
 	fmt.Fprintln(wiz.writer, "Server CA certificate fingerprint (SHA-256):")
 	fmt.Fprintf(wiz.writer, "  %s\n", strings.Join(pairs, ":"))
 	fmt.Fprintln(wiz.writer)
-	fmt.Fprintln(wiz.writer, "Compare this fingerprint with the one shown on your server.")
-	fmt.Fprintln(wiz.writer, "You can find it in your server's startup logs/console output, or by running on the server:")
-	fmt.Fprintln(wiz.writer, "  Linux/macOS:")
-	fmt.Fprintln(wiz.writer, "    openssl x509 -in ~/.config/tergum/certs/ca.crt -fingerprint -sha256 -noout")
-	fmt.Fprintln(wiz.writer, "  Windows (PowerShell):")
-	fmt.Fprintln(wiz.writer, "    $cert = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2(\"$env:APPDATA\\tergum\\certs\\ca.crt\"); [BitConverter]::ToString($cert.GetCertHash([System.Security.Cryptography.HashAlgorithmName]::SHA256)) -replace '-', ':'")
+	fmt.Fprintln(wiz.writer, "Cross check: Compare this fingerprint with the one shown on your server.")
+	fmt.Fprintln(wiz.writer, "SERVER CMD LINUX : tergum server --get-certs")
+	fmt.Fprintln(wiz.writer, "SERVER CMD WINDOW : tergum.exe server --get-certs")
 	fmt.Fprintln(wiz.writer)
 
 	confirmed := wiz.promptYesNo("Does the fingerprint match your server's CA?", false)
