@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"crypto/tls"
 	"encoding/hex"
+	"encoding/pem"
 	"fmt"
 	"io"
 	"net"
@@ -729,8 +730,12 @@ func fetchCertsFromServer(wiz *setupWizard, serverAddr string, bootstrapPort int
 		return false, fmt.Errorf("server returned empty certificate data")
 	}
 
-	// Compute and display the SHA-256 fingerprint of the CA cert.
-	fingerprint := sha256.Sum256(resp.CACertPEM)
+	// Compute and display the SHA-256 fingerprint of the CA cert (DER bytes).
+	block, _ := pem.Decode(resp.CACertPEM)
+	if block == nil {
+		return false, fmt.Errorf("failed to decode CA certificate PEM")
+	}
+	fingerprint := sha256.Sum256(block.Bytes)
 	fingerprintHex := hex.EncodeToString(fingerprint[:])
 	// Format as colon-separated pairs for readability (like SSH).
 	var pairs []string
@@ -742,8 +747,12 @@ func fetchCertsFromServer(wiz *setupWizard, serverAddr string, bootstrapPort int
 	fmt.Fprintln(wiz.writer, "Server CA certificate fingerprint (SHA-256):")
 	fmt.Fprintf(wiz.writer, "  %s\n", strings.Join(pairs, ":"))
 	fmt.Fprintln(wiz.writer)
-	fmt.Fprintln(wiz.writer, "Compare this fingerprint with the one shown on your server:")
-	fmt.Fprintln(wiz.writer, "  openssl x509 -in ~/.config/tergum/certs/ca.crt -fingerprint -sha256 -noout")
+	fmt.Fprintln(wiz.writer, "Compare this fingerprint with the one shown on your server.")
+	fmt.Fprintln(wiz.writer, "You can find it in your server's startup logs/console output, or by running on the server:")
+	fmt.Fprintln(wiz.writer, "  Linux/macOS:")
+	fmt.Fprintln(wiz.writer, "    openssl x509 -in ~/.config/tergum/certs/ca.crt -fingerprint -sha256 -noout")
+	fmt.Fprintln(wiz.writer, "  Windows (PowerShell):")
+	fmt.Fprintln(wiz.writer, "    $cert = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2(\"$env:APPDATA\\tergum\\certs\\ca.crt\"); [BitConverter]::ToString($cert.GetCertHash([System.Security.Cryptography.HashAlgorithmName]::SHA256)) -replace '-', ':'")
 	fmt.Fprintln(wiz.writer)
 
 	confirmed := wiz.promptYesNo("Does the fingerprint match your server's CA?", false)

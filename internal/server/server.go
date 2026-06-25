@@ -4,9 +4,11 @@ package server
 
 import (
 	"context"
+	"crypto/sha256"
 	"crypto/tls"
 	"database/sql"
 	"encoding/hex"
+	"encoding/pem"
 	"fmt"
 	"log/slog"
 	"net"
@@ -232,6 +234,19 @@ func (s *Server) Start(ctx context.Context) error {
 		})
 		s.grpcBootstrap = grpc.NewServer(grpc.Creds(credentials.NewTLS(bootstrapTLS)))
 		proto.RegisterBootstrapServiceServer(s.grpcBootstrap, bootstrapSrv)
+
+		// Log the CA certificate fingerprint for clients to verify.
+		if caBytes, err := os.ReadFile(s.cfg.TLS.CACert); err == nil {
+			if block, _ := pem.Decode(caBytes); block != nil {
+				fingerprint := sha256.Sum256(block.Bytes)
+				fingerprintHex := hex.EncodeToString(fingerprint[:])
+				var pairs []string
+				for i := 0; i < len(fingerprintHex)-1; i += 2 {
+					pairs = append(pairs, fingerprintHex[i:i+2])
+				}
+				s.logger.Info("Server CA certificate fingerprint", "sha256", strings.Join(pairs, ":"))
+			}
+		}
 
 		bootstrapPort := s.cfg.Server.BootstrapPort
 		if bootstrapPort == 0 {
