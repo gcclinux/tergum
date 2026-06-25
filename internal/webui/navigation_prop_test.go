@@ -54,8 +54,11 @@ func TestProperty_NavigationRoleFiltering(t *testing.T) {
 			if !paths["/clients"] {
 				rt.Fatalf("role %q: expected /clients to be present", role)
 			}
+			if !paths["/restore"] {
+				rt.Fatalf("role %q: expected /restore to be present", role)
+			}
 			// Client-only items should be absent.
-			clientOnlyPaths := []string{"/backups", "/restore", "/paths", "/watchers"}
+			clientOnlyPaths := []string{"/backups", "/paths", "/watchers"}
 			for _, p := range clientOnlyPaths {
 				if paths[p] {
 					rt.Fatalf("role %q: expected client-only item %q to be absent", role, p)

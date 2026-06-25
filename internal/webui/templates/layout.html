@@ -19,7 +19,7 @@
         <div class="flex items-center">
             <a href="/" class="p-4">Dashboard</a>
             {{if or (eq .NodeRole "client") (eq .NodeRole "hybrid")}}<a href="/backups" class="p-4">Backups</a>{{end}}
-            {{if or (eq .NodeRole "client") (eq .NodeRole "hybrid")}}<a href="/restore" class="p-4">Restore</a>{{end}}
+            {{if or (eq .NodeRole "client") (eq .NodeRole "hybrid") (eq .NodeRole "server")}}<a href="/restore" class="p-4">Restore</a>{{end}}
             <a href="/config" class="p-4">Config</a>
             <a href="/retention" class="p-4">Retention</a>
             {{if or (eq .NodeRole "client") (eq .NodeRole "hybrid")}}<a href="/watchers" class="p-4">Watchers</a>{{end}}

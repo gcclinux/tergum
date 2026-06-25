@@ -213,19 +213,6 @@ func (s *Server) handleAPIDashboardActivity(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	jobs, err := s.repo.ListJobs(r.Context(), db.JobFilter{Limit: 10})
-	if err != nil {
-		fmt.Fprint(w, `<p class="text-sm text-red-500">Failed to load activity.</p>`)
-		return
-	}
-
-	restores, _ := s.repo.ListRestoreHistory(r.Context(), 10)
-
-	if len(jobs) == 0 && len(restores) == 0 {
-		fmt.Fprint(w, `<p class="text-sm text-gray-400 dark:text-gray-500 italic">No recent activity.</p>`)
-		return
-	}
-
 	type activityItem struct {
 		Timestamp   time.Time
 		Icon        string
@@ -236,25 +223,31 @@ func (s *Server) handleAPIDashboardActivity(w http.ResponseWriter, r *http.Reque
 
 	var items []activityItem
 
-	for _, j := range jobs {
-		icon := getStatusIcon(string(j.Status))
-		statusColor := getStatusColor(string(j.Status))
-		started := j.StartedAt.Format("Jan 02, 15:04")
-		backupIDTrunc := j.BackupID
-		if len(backupIDTrunc) > 12 {
-			backupIDTrunc = backupIDTrunc[:12]
-		}
-		htmlContent := fmt.Sprintf(`<p class="text-sm text-gray-700 dark:text-gray-300 truncate">Backup <span class="font-medium">%s</span> — %s</p><p class="text-xs text-gray-400 dark:text-gray-500">%s</p>`, j.Level, backupIDTrunc, started)
+	// 1. Local backup jobs
+	jobs, err := s.repo.ListJobs(r.Context(), db.JobFilter{Limit: 10})
+	if err == nil {
+		for _, j := range jobs {
+			icon := getStatusIcon(string(j.Status))
+			statusColor := getStatusColor(string(j.Status))
+			started := j.StartedAt.Format("Jan 02, 15:04")
+			backupIDTrunc := j.BackupID
+			if len(backupIDTrunc) > 12 {
+				backupIDTrunc = backupIDTrunc[:12]
+			}
+			htmlContent := fmt.Sprintf(`<p class="text-sm text-gray-700 dark:text-gray-300 truncate">Backup <span class="font-medium">%s</span> — %s</p><p class="text-xs text-gray-400 dark:text-gray-500">%s</p>`, j.Level, backupIDTrunc, started)
 
-		items = append(items, activityItem{
-			Timestamp:   j.StartedAt,
-			Icon:        icon,
-			HtmlContent: htmlContent,
-			Status:      string(j.Status),
-			StatusColor: statusColor,
-		})
+			items = append(items, activityItem{
+				Timestamp:   j.StartedAt,
+				Icon:        icon,
+				HtmlContent: htmlContent,
+				Status:      string(j.Status),
+				StatusColor: statusColor,
+			})
+		}
 	}
 
+	// 2. Local restores
+	restores, _ := s.repo.ListRestoreHistory(r.Context(), 10)
 	for _, rec := range restores {
 		icon := "📥"
 		status := "success"
@@ -274,6 +267,67 @@ func (s *Server) handleAPIDashboardActivity(w http.ResponseWriter, r *http.Reque
 			Status:      status,
 			StatusColor: statusColor,
 		})
+	}
+
+	// 3. Remote client backup jobs and restores
+	if s.clientRegistry != nil {
+		clients := s.clientRegistry.ListClients()
+		for _, client := range clients {
+			clientRepo, cleanup, err := s.getRepoForClient(r.Context(), client.ClientID)
+			if err != nil {
+				continue
+			}
+
+			cJobs, err := clientRepo.ListJobs(r.Context(), db.JobFilter{Limit: 10})
+			if err == nil {
+				for _, j := range cJobs {
+					icon := getStatusIcon(string(j.Status))
+					statusColor := getStatusColor(string(j.Status))
+					started := j.StartedAt.Format("Jan 02, 15:04")
+					backupIDTrunc := j.BackupID
+					if len(backupIDTrunc) > 12 {
+						backupIDTrunc = backupIDTrunc[:12]
+					}
+					htmlContent := fmt.Sprintf(`<p class="text-sm text-gray-700 dark:text-gray-300 truncate">Remote Backup <span class="font-medium">%s</span> - <span class="font-medium">%s</span></p><p class="text-xs text-gray-400 dark:text-gray-500">%s</p>`, client.ClientID, backupIDTrunc, started)
+
+					items = append(items, activityItem{
+						Timestamp:   j.StartedAt,
+						Icon:        icon,
+						HtmlContent: htmlContent,
+						Status:      string(j.Status),
+						StatusColor: statusColor,
+					})
+				}
+			}
+
+			cRestores, _ := clientRepo.ListRestoreHistory(r.Context(), 10)
+			for _, rec := range cRestores {
+				icon := "📥"
+				status := "success"
+				statusColor := "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400"
+				if !rec.Success {
+					icon = "❌"
+					status = "failed"
+					statusColor = "bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400"
+				}
+				restoredTime := rec.RestoredAt.Format("Jan 02, 15:04")
+				htmlContent := fmt.Sprintf(`<p class="text-sm text-gray-700 dark:text-gray-300 truncate">Remote Restore <span class="font-medium">%s</span> - %s</p><p class="text-xs text-gray-400 dark:text-gray-500">%s</p>`, client.ClientID, rec.FileName, restoredTime)
+
+				items = append(items, activityItem{
+					Timestamp:   rec.RestoredAt,
+					Icon:        icon,
+					HtmlContent: htmlContent,
+					Status:      status,
+					StatusColor: statusColor,
+				})
+			}
+			cleanup()
+		}
+	}
+
+	if len(items) == 0 {
+		fmt.Fprint(w, `<p class="text-sm text-gray-400 dark:text-gray-500 italic">No recent activity.</p>`)
+		return
 	}
 
 	// Sort newest first

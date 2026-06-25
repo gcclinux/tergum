@@ -151,6 +151,11 @@ func (e *BackupEngine) RunBackup(ctx context.Context, req BackupRequest) (*Backu
 			update.ErrorMessage = &errMsg
 		}
 		_ = e.repo.UpdateJob(ctx, backupID, update)
+		if e.config.DatabasePath != "" {
+			if err := e.server.SyncDatabase(ctx, e.config.DatabasePath); err != nil {
+				slog.Warn("database sync failed during job finalization", "status", status, "error", err)
+			}
+		}
 		if result != nil {
 			result.Status = status
 		}
@@ -363,15 +368,7 @@ func (e *BackupEngine) RunBackup(ctx context.Context, req BackupRequest) (*Backu
 		updateProgress()
 	}
 
-	// 8. Sync local database to server.
-	if e.config.DatabasePath != "" {
-		if err := e.server.SyncDatabase(ctx, e.config.DatabasePath); err != nil {
-			slog.Warn("database sync failed", "error", err)
-			// Non-fatal: backup data is already on server.
-		}
-	}
-
-	// 9. Update job with completion status.
+	// 8. Update job with completion status and sync database.
 	return finishJob(model.JobCompleted, result, "")
 }
 

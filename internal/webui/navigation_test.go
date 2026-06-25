@@ -36,10 +36,10 @@ func TestFilterNavItems_ServerRole(t *testing.T) {
 
 	// Server-specific items should be present
 	assertHasItem(t, items, "/clients")
+	assertHasItem(t, items, "/restore")
 
 	// Client-only items should be absent
 	assertNoItem(t, items, "/backups")
-	assertNoItem(t, items, "/restore")
 	assertNoItem(t, items, "/paths")
 	assertNoItem(t, items, "/watchers")
 }

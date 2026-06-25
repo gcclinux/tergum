@@ -264,8 +264,8 @@ func TestInteractiveSetupRequiresPassphrase(t *testing.T) {
 	}
 
 	// Provide inputs for all prompts but leave passphrase empty
-	// role=client, clientIPchoice=1, serverAddress=localhost, generateCerts=n, passphrase=
-	input := strings.NewReader("client\n1\nlocalhost\nn\n\n")
+	// role=client, clientIPchoice=1, serverAddress=192.168.1.100, generateCerts=n, passphrase=
+	input := strings.NewReader("client\n1\n192.168.1.100\nn\n\n")
 	var output bytes.Buffer
 
 	wiz := newSetupWizard(input, &output)
@@ -289,8 +289,8 @@ func TestInteractiveSetupShortPassphrase(t *testing.T) {
 	}
 
 	// Provide all prompts with a too-short passphrase
-	// role=client, clientIPchoice=1, serverAddress=localhost, generateCerts=n, passphrase=short
-	input := strings.NewReader("client\n1\nlocalhost\nn\nshort\n")
+	// role=client, clientIPchoice=1, serverAddress=192.168.1.100, generateCerts=n, passphrase=short
+	input := strings.NewReader("client\n1\n192.168.1.100\nn\nshort\n")
 	var output bytes.Buffer
 
 	wiz := newSetupWizard(input, &output)
@@ -314,12 +314,12 @@ func TestInteractiveSetupFullFlow(t *testing.T) {
 	}
 
 	// Provide all required inputs for client role (no storage path prompted):
-	// role=client, clientIPchoice=1, server_address=localhost, generate_certs=n, passphrase=mysecretpass123
+	// role=client, clientIPchoice=1, server_address=192.168.1.100, generate_certs=n, passphrase=mysecretpass123
 	// include paths: (empty = scan home), scan home=y
 	// exclude patterns: use defaults=y, additional=(empty)
 	// watcher: n
 	// schedule: (empty), (empty)
-	inputs := "client\n1\nlocalhost\nn\nmysecretpass123\n\ny\ny\n\nn\n\n\n"
+	inputs := "client\n1\n192.168.1.100\nn\nmysecretpass123\n\ny\ny\n\nn\n\n\n"
 	input := strings.NewReader(inputs)
 	var output bytes.Buffer
 
@@ -416,7 +416,7 @@ func TestInteractiveSetupExistingConfig(t *testing.T) {
 	}
 
 	// Phase 1: Initial Setup
-	inputs1 := "client\n1\nlocalhost\nn\nmysecretpass123\n\ny\ny\n\nn\n\n\n"
+	inputs1 := "client\n1\n192.168.1.100\nn\nmysecretpass123\n\ny\ny\n\nn\n\n\n"
 	var output1 bytes.Buffer
 	wiz1 := newSetupWizard(strings.NewReader(inputs1), &output1)
 	if err := runInteractiveSetup(wiz1); err != nil {
@@ -433,7 +433,7 @@ func TestInteractiveSetupExistingConfig(t *testing.T) {
 
 	// Phase 2: Rerun setup, choose NOT to overwrite, verify correct passphrase
 	// inputs: role, clientIPchoice, server, certs, overwrite=n, passphrase=mysecretpass123
-	inputs2 := "client\n1\nlocalhost\nn\nn\nmysecretpass123\n\ny\ny\n\nn\n\n\n"
+	inputs2 := "client\n1\n192.168.1.100\nn\nn\nmysecretpass123\n\ny\ny\n\nn\n\n\n"
 	var output2 bytes.Buffer
 	wiz2 := newSetupWizard(strings.NewReader(inputs2), &output2)
 	if err := runInteractiveSetup(wiz2); err != nil {
@@ -448,7 +448,7 @@ func TestInteractiveSetupExistingConfig(t *testing.T) {
 
 	// Phase 3: Rerun setup, choose NOT to overwrite, enter WRONG passphrase, do NOT retry
 	// inputs: role, clientIPchoice, server, certs, overwrite=n, passphrase=wrongpass, retry=n
-	inputs3 := "client\n1\nlocalhost\nn\nn\nwrongpass\nn\n"
+	inputs3 := "client\n1\n192.168.1.100\nn\nn\nwrongpass\nn\n"
 	var output3 bytes.Buffer
 	wiz3 := newSetupWizard(strings.NewReader(inputs3), &output3)
 	err := runInteractiveSetup(wiz3)
