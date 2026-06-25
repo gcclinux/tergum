@@ -526,6 +526,9 @@ func runInteractiveSetup(wiz *setupWizard) error {
 		for _, p := range excludePatterns {
 			_ = repo.AddExcludePattern(ctx, p)
 		}
+		if len(salt) > 0 {
+			_ = repo.SetConfig(ctx, "encryption_salt", hex.EncodeToString(salt))
+		}
 	}
 
 	fmt.Fprintln(wiz.writer)

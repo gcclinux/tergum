@@ -107,7 +107,13 @@ func runRestore(cmd *cobra.Command, args []string) error {
 	var masterKey []byte
 	var encryptor *crypto.AESEncryptor
 	if cfg.Encryption.Enabled && !listOnly {
-		key, err := loadRestoreMasterKey(cfg, clientID)
+		var dbSalt []byte
+		if saltHex, err := repo.GetConfig(ctx, "encryption_salt"); err == nil && saltHex != "" {
+			if s, err := hex.DecodeString(saltHex); err == nil {
+				dbSalt = s
+			}
+		}
+		key, err := loadRestoreMasterKey(cfg, clientID, dbSalt)
 		if err != nil {
 			return fmt.Errorf("loading encryption key: %w", err)
 		}
@@ -322,24 +328,30 @@ func resolveDestination(dest, originalPath string) string {
 }
 
 // loadRestoreMasterKey is the same key loading logic used for backup.
-func loadRestoreMasterKey(cfg *config.Config, clientID string) ([]byte, error) {
+func loadRestoreMasterKey(cfg *config.Config, clientID string, dbSalt []byte) ([]byte, error) {
 	configDir := filepath.Dir(cfg.Database.Path)
-	saltPath := filepath.Join(configDir, "salt")
-	if clientID != "" {
-		clientSaltPath := filepath.Join(configDir, "clients", clientID+".salt")
-		if _, err := os.Stat(clientSaltPath); err == nil {
-			saltPath = clientSaltPath
+	var salt []byte
+	if len(dbSalt) > 0 {
+		salt = dbSalt
+	} else {
+		saltPath := filepath.Join(configDir, "salt")
+		if clientID != "" {
+			clientSaltPath := filepath.Join(configDir, "clients", clientID+".salt")
+			if _, err := os.Stat(clientSaltPath); err == nil {
+				saltPath = clientSaltPath
+			}
 		}
-	}
 
-	saltHex, err := os.ReadFile(saltPath)
-	if err != nil {
-		return nil, fmt.Errorf("cannot read salt file %s: %w (run 'tergum setup' first)", saltPath, err)
-	}
+		saltHex, err := os.ReadFile(saltPath)
+		if err != nil {
+			return nil, fmt.Errorf("cannot read salt file %s: %w (run 'tergum setup' first)", saltPath, err)
+		}
 
-	salt, err := hex.DecodeString(strings.TrimSpace(string(saltHex)))
-	if err != nil {
-		return nil, fmt.Errorf("invalid salt file: %w", err)
+		s, err := hex.DecodeString(strings.TrimSpace(string(saltHex)))
+		if err != nil {
+			return nil, fmt.Errorf("invalid salt file: %w", err)
+		}
+		salt = s
 	}
 
 	passphrase := os.Getenv("TERGUM_PASSPHRASE")

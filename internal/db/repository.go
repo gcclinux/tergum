@@ -100,6 +100,10 @@ type Repository interface {
 	RemoveExcludePattern(ctx context.Context, pattern string) error
 	ListExcludePatterns(ctx context.Context) ([]string, error)
 
+	// Config operations
+	GetConfig(ctx context.Context, key string) (string, error)
+	SetConfig(ctx context.Context, key, value string) error
+
 	// Lifecycle
 	Close() error
 }
@@ -982,4 +986,26 @@ func scanBackupEntries(rows *sql.Rows) ([]model.BackupEntry, error) {
 		entries = append(entries, e)
 	}
 	return entries, rows.Err()
+}
+
+// GetConfig retrieves a configuration value by key.
+func (r *SQLiteRepository) GetConfig(ctx context.Context, key string) (string, error) {
+	var val string
+	err := r.db.QueryRowContext(ctx, "SELECT value FROM config WHERE key = ?", key).Scan(&val)
+	if err == sql.ErrNoRows {
+		return "", nil
+	}
+	if err != nil {
+		return "", err
+	}
+	return val, nil
+}
+
+// SetConfig sets a configuration value by key.
+func (r *SQLiteRepository) SetConfig(ctx context.Context, key, value string) error {
+	_, err := r.db.ExecContext(ctx,
+		"INSERT INTO config (key, value, updated_at) VALUES (?, ?, datetime('now')) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')",
+		key, value,
+	)
+	return err
 }
