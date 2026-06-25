@@ -39,6 +39,7 @@ Examples:
 	cmd.Flags().String("backup-id", "", "restore from a specific backup set")
 	cmd.Flags().Bool("list", false, "search and list matching files without restoring")
 	cmd.Flags().StringP("file", "f", "", "specific file path, name, or pattern to restore")
+	cmd.Flags().StringP("path", "p", "", "specific file path, name, or pattern to restore")
 	cmd.Flags().String("client", "", "client ID to restore from (server-side only)")
 
 	return cmd
@@ -50,19 +51,30 @@ func runRestore(cmd *cobra.Command, args []string) error {
 	backupID, _ := cmd.Flags().GetString("backup-id")
 	listOnly, _ := cmd.Flags().GetBool("list")
 	fileQuery, _ := cmd.Flags().GetString("file")
+	pathQuery, _ := cmd.Flags().GetString("path")
 	clientID, _ := cmd.Flags().GetString("client")
 
-	if len(args) == 0 && backupID == "" && fileQuery == "" {
-		return fmt.Errorf("provide a search query, --file, or --backup-id")
+	if len(args) == 0 && backupID == "" && fileQuery == "" && pathQuery == "" {
+		return fmt.Errorf("provide a search query, --file, --path, or --backup-id")
+	}
+
+	if fileQuery != "" && pathQuery != "" {
+		return fmt.Errorf("cannot specify both --file and --path flags")
 	}
 
 	if len(args) > 0 && fileQuery != "" {
 		return fmt.Errorf("cannot specify both a positional search query and the --file flag")
 	}
 
+	if len(args) > 0 && pathQuery != "" {
+		return fmt.Errorf("cannot specify both a positional search query and the --path flag")
+	}
+
 	query := ""
 	if fileQuery != "" {
 		query = fileQuery
+	} else if pathQuery != "" {
+		query = pathQuery
 	} else if len(args) > 0 {
 		query = args[0]
 	}

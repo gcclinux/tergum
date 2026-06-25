@@ -661,6 +661,7 @@ Flags:
       --list               Search and list matching files without restoring
       --json               Output as JSON
       --client string      Client ID to restore from (server-side only)
+  -p, --path string        Specific file path, name, or pattern to restore (alternative to query argument)
 ```
 
 **Search behavior:**
@@ -735,18 +736,18 @@ $env:TERGUM_PASSPHRASE="clientpassphrase"; .\tergum.exe restore "*.docx" --dest 
 ```
 
 #### Method 2: Server-Side Restore
-Alternatively, you can run the restore command directly on the server machine using the `--client` flag. Because backups are encrypted, you must provide the remote client's `TERGUM_PASSPHRASE`. If the client has a custom salt, copy it to the server's client configuration directory as `<configDir>/clients/<client_id>.salt`.
+Alternatively, you can run the restore command directly on the server machine using the `--client` flag. You can separate the query using the `--path` (or `-p`) flag to avoid parser issues with positional arguments. Because backups are encrypted, you must provide the remote client's `TERGUM_PASSPHRASE`. If the client has a custom salt, copy it to the server's client configuration directory as `<configDir>/clients/<client_id>.salt`.
 
 **Example (Linux / macOS Server):**
 ```bash
 # Executed on the server machine:
-TERGUM_PASSPHRASE=clientpassphrase tergum restore --client my-client "*.docx" --dest /path/to/restore
+TERGUM_PASSPHRASE=clientpassphrase tergum restore --client my-client --path "*.docx" --dest /path/to/restore
 ```
 
 **Example (PowerShell Windows Server):**
 ```powershell
 # Executed on the server machine:
-$env:TERGUM_PASSPHRASE="clientpassphrase"; .\tergum.exe restore --client my-client "*.docx" --dest C:\path\to\restore
+$env:TERGUM_PASSPHRASE="clientpassphrase"; .\tergum.exe restore --client my-client --path "*.docx" --dest C:\path\to\restore
 ```
 
 ---
