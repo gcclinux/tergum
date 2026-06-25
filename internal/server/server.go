@@ -47,8 +47,9 @@ type Server struct {
 	cfg *config.Config
 
 	// gRPC servers
-	grpcCmd  *grpc.Server
-	grpcData *grpc.Server
+	grpcCmd       *grpc.Server
+	grpcData      *grpc.Server
+	grpcBootstrap *grpc.Server
 
 	// Metrics
 	metrics *observe.MetricsServer
@@ -68,8 +69,9 @@ type Server struct {
 	registryDB *sql.DB
 
 	// Listeners (stored for shutdown)
-	cmdListener  net.Listener
-	dataListener net.Listener
+	cmdListener       net.Listener
+	dataListener      net.Listener
+	bootstrapListener net.Listener
 
 	// Lifecycle
 	logger   *slog.Logger
@@ -218,6 +220,37 @@ func (s *Server) Start(ctx context.Context) error {
 			s.logger.Error("gRPC data server error", "error", err)
 		}
 	}()
+
+	// Start bootstrap server (for client cert provisioning during setup).
+	bootstrapCertsDir := filepath.Dir(s.cfg.TLS.CACert)
+	bootstrapTLS, err := tlspkg.NewManager().LoadBootstrapServerTLS(s.cfg.TLS.Cert, s.cfg.TLS.Key)
+	if err != nil {
+		s.logger.Warn("bootstrap server TLS load failed (bootstrap disabled)", "error", err)
+	} else {
+		bootstrapSrv := grpcpkg.NewBootstrapServer(grpcpkg.BootstrapServerConfig{
+			CertsDir: bootstrapCertsDir,
+		})
+		s.grpcBootstrap = grpc.NewServer(grpc.Creds(credentials.NewTLS(bootstrapTLS)))
+		proto.RegisterBootstrapServiceServer(s.grpcBootstrap, bootstrapSrv)
+
+		bootstrapPort := s.cfg.Server.BootstrapPort
+		if bootstrapPort == 0 {
+			bootstrapPort = 7402
+		}
+		bootstrapAddr := fmt.Sprintf(":%d", bootstrapPort)
+		s.bootstrapListener, err = net.Listen("tcp", bootstrapAddr)
+		if err != nil {
+			s.logger.Warn("bootstrap server listen failed (bootstrap disabled)", "port", bootstrapPort, "error", err)
+			s.grpcBootstrap = nil
+		} else {
+			s.logger.Info("gRPC bootstrap server listening", "port", bootstrapPort)
+			go func() {
+				if err := s.grpcBootstrap.Serve(s.bootstrapListener); err != nil {
+					s.logger.Error("gRPC bootstrap server error", "error", err)
+				}
+			}()
+		}
+	}
 
 	// Start metrics server.
 	if s.cfg.Metrics.Enabled {
@@ -371,6 +404,10 @@ func (s *Server) Stop() error {
 		if s.grpcData != nil {
 			s.grpcData.GracefulStop()
 			s.logger.Info("gRPC data server stopped")
+		}
+		if s.grpcBootstrap != nil {
+			s.grpcBootstrap.GracefulStop()
+			s.logger.Info("gRPC bootstrap server stopped")
 		}
 
 		// Stop metrics server.

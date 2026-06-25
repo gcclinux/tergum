@@ -4,6 +4,8 @@ import (
 	"bufio"
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
+	"crypto/tls"
 	"encoding/hex"
 	"fmt"
 	"io"
@@ -12,13 +14,17 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/BurntSushi/toml"
 	"github.com/gcclinux/tergum/internal/config"
 	"github.com/gcclinux/tergum/internal/crypto"
 	"github.com/gcclinux/tergum/internal/db"
-	"github.com/gcclinux/tergum/internal/tls"
+	"github.com/gcclinux/tergum/internal/grpc/proto"
+	tlspkg "github.com/gcclinux/tergum/internal/tls"
 	"github.com/spf13/cobra"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 )
 
 func newSetupCmd() *cobra.Command {
@@ -133,7 +139,7 @@ func runGenerateCertsOnly() error {
 		hosts = append(hosts, h)
 	}
 
-	mgr := tls.NewManager()
+	mgr := tlspkg.NewManager()
 	if err := mgr.GenerateCerts(certsDir, hosts...); err != nil {
 		return fmt.Errorf("certificate generation failed: %w", err)
 	}
@@ -208,26 +214,45 @@ func runInteractiveSetup(wiz *setupWizard) error {
 	// 4. Certificate generation
 	configDir := config.DefaultConfigDir()
 	certsDir := filepath.Join(configDir, "certs")
-	generateCerts := wiz.promptYesNo("Generate TLS certificates?", true)
+	generateCerts := wiz.promptYesNo("Configure TLS certificates?", true)
 
 	if generateCerts {
-		var hosts []string
-		if ips, err := getLocalIPs(); err == nil {
-			hosts = append(hosts, ips...)
-		}
-		if h, err := os.Hostname(); err == nil && h != "" {
-			hosts = append(hosts, h)
-		}
-		if serverAddress != "" {
-			hosts = append(hosts, serverAddress)
-		}
+		if role == "client" && serverAddress != "" {
+			// For client nodes: the ONLY valid certs are ones signed by the server's CA.
+			// There is no useful fallback — locally-generated certs will be rejected by the server.
+			fetched, fetchErr := fetchCertsFromServer(wiz, serverAddress, 7402, certsDir)
+			if fetchErr != nil {
+				fmt.Fprintln(wiz.writer)
+				fmt.Fprintf(wiz.writer, "ERROR: Could not fetch certificates from server: %v\n", fetchErr)
+				printManualCertInstructions(wiz.writer, serverAddress, certsDir)
+				return fmt.Errorf("certificate bootstrap failed: manually copy server certs to proceed")
+			}
+			if !fetched {
+				// User declined the fingerprint confirmation.
+				fmt.Fprintln(wiz.writer)
+				fmt.Fprintln(wiz.writer, "Certificate import cancelled.")
+				printManualCertInstructions(wiz.writer, serverAddress, certsDir)
+				return fmt.Errorf("certificate bootstrap cancelled: manually copy server certs to proceed")
+			}
+			fmt.Fprintf(wiz.writer, "Certificates imported from server into %s\n", certsDir)
+		} else {
+			// Server/hybrid role: generate a full local CA + certs.
+			var hosts []string
+			if ips, err := getLocalIPs(); err == nil {
+				hosts = append(hosts, ips...)
+			}
+			if h, err := os.Hostname(); err == nil && h != "" {
+				hosts = append(hosts, h)
+			}
 
-		mgr := tls.NewManager()
-		if err := mgr.GenerateCerts(certsDir, hosts...); err != nil {
-			return fmt.Errorf("certificate generation failed: %w", err)
+			mgr := tlspkg.NewManager()
+			if err := mgr.GenerateCerts(certsDir, hosts...); err != nil {
+				return fmt.Errorf("certificate generation failed: %w", err)
+			}
+			fmt.Fprintf(wiz.writer, "Certificates generated in %s\n", certsDir)
 		}
-		fmt.Fprintf(wiz.writer, "Certificates generated in %s\n", certsDir)
 	}
+
 
 	// 5. Encryption passphrase
 	saltPath := filepath.Join(configDir, "salt")
@@ -636,4 +661,115 @@ var getLocalIPs = func() ([]string, error) {
 		}
 	}
 	return ips, nil
+}
+
+
+// printManualCertInstructions prints the steps the user must follow to manually
+// copy TLS certificates from the server when automatic bootstrap is unavailable.
+func printManualCertInstructions(w io.Writer, serverAddress, certsDir string) {
+	fmt.Fprintln(w)
+	fmt.Fprintln(w, "┌─────────────────────────────────────────────────────────────────┐")
+	fmt.Fprintln(w, "│           MANUAL CERTIFICATE SETUP REQUIRED                     │")
+	fmt.Fprintln(w, "└─────────────────────────────────────────────────────────────────┘")
+	fmt.Fprintln(w)
+	fmt.Fprintln(w, "A Tergum client MUST use certificates signed by the server's CA.")
+	fmt.Fprintln(w, "Locally-generated certificates will be rejected by the server.")
+	fmt.Fprintln(w)
+	fmt.Fprintln(w, "On your SERVER machine, find the certificate files:")
+	fmt.Fprintln(w, "  Linux/macOS : ~/.config/tergum/certs/")
+	fmt.Fprintln(w, "  Windows     : %APPDATA%\\tergum\\certs\\")
+	fmt.Fprintln(w)
+	fmt.Fprintln(w, "Copy these three files to THIS machine:")
+	fmt.Fprintf(w, "  ca.crt      → %s/ca.crt\n", certsDir)
+	fmt.Fprintf(w, "  client.crt  → %s/client.crt\n", certsDir)
+	fmt.Fprintf(w, "  client.key  → %s/client.key\n", certsDir)
+	fmt.Fprintln(w)
+	fmt.Fprintln(w, "Example using scp (run on this machine):")
+	fmt.Fprintf(w, "  scp user@%s:~/.config/tergum/certs/ca.crt     %s/ca.crt\n", serverAddress, certsDir)
+	fmt.Fprintf(w, "  scp user@%s:~/.config/tergum/certs/client.crt %s/client.crt\n", serverAddress, certsDir)
+	fmt.Fprintf(w, "  scp user@%s:~/.config/tergum/certs/client.key %s/client.key\n", serverAddress, certsDir)
+	fmt.Fprintln(w)
+	fmt.Fprintln(w, "Once copied, re-run: tergum setup")
+	fmt.Fprintln(w)
+}
+
+// fetchCertsFromServer connects to the server's BootstrapService, fetches the CA
+// certificate and a freshly-issued client certificate, shows the CA fingerprint to
+// the user for verification, and writes the cert files to certsDir on confirmation.
+//
+// Returns (true, nil) on success, (false, nil) if the user declined the fingerprint,
+// or (false, err) if the connection or cert issuance failed.
+func fetchCertsFromServer(wiz *setupWizard, serverAddr string, bootstrapPort int, certsDir string) (bool, error) {
+
+	addr := fmt.Sprintf("%s:%d", serverAddr, bootstrapPort)
+	fmt.Fprintf(wiz.writer, "Connecting to server bootstrap service at %s...\n", addr)
+
+	// Connect with InsecureSkipVerify — we have no CA cert yet.
+	// The fingerprint confirmation below is the trust anchor.
+	tlsCfg := &tls.Config{
+		InsecureSkipVerify: true, //nolint:gosec // intentional during bootstrap
+	}
+	creds := credentials.NewTLS(tlsCfg)
+	conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(creds))
+	if err != nil {
+		return false, fmt.Errorf("dial bootstrap server: %w", err)
+	}
+	defer conn.Close()
+
+	client := proto.NewBootstrapServiceClient(conn)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	resp, err := client.FetchClientCerts(ctx, &proto.BootstrapRequest{})
+	if err != nil {
+		return false, fmt.Errorf("fetch certs from server: %w", err)
+	}
+
+	if len(resp.CACertPEM) == 0 || len(resp.ClientCertPEM) == 0 || len(resp.ClientKeyPEM) == 0 {
+		return false, fmt.Errorf("server returned empty certificate data")
+	}
+
+	// Compute and display the SHA-256 fingerprint of the CA cert.
+	fingerprint := sha256.Sum256(resp.CACertPEM)
+	fingerprintHex := hex.EncodeToString(fingerprint[:])
+	// Format as colon-separated pairs for readability (like SSH).
+	var pairs []string
+	for i := 0; i < len(fingerprintHex)-1; i += 2 {
+		pairs = append(pairs, fingerprintHex[i:i+2])
+	}
+
+	fmt.Fprintln(wiz.writer)
+	fmt.Fprintln(wiz.writer, "Server CA certificate fingerprint (SHA-256):")
+	fmt.Fprintf(wiz.writer, "  %s\n", strings.Join(pairs, ":"))
+	fmt.Fprintln(wiz.writer)
+	fmt.Fprintln(wiz.writer, "Compare this fingerprint with the one shown on your server:")
+	fmt.Fprintln(wiz.writer, "  openssl x509 -in ~/.config/tergum/certs/ca.crt -fingerprint -sha256 -noout")
+	fmt.Fprintln(wiz.writer)
+
+	confirmed := wiz.promptYesNo("Does the fingerprint match your server's CA?", false)
+	if !confirmed {
+		return false, nil
+	}
+
+	// Write the cert files.
+	if err := os.MkdirAll(certsDir, 0700); err != nil {
+		return false, fmt.Errorf("create certs directory: %w", err)
+	}
+
+	files := []struct {
+		name string
+		data []byte
+	}{
+		{"ca.crt", resp.CACertPEM},
+		{"client.crt", resp.ClientCertPEM},
+		{"client.key", resp.ClientKeyPEM},
+	}
+	for _, f := range files {
+		path := filepath.Join(certsDir, f.name)
+		if err := os.WriteFile(path, f.data, 0600); err != nil {
+			return false, fmt.Errorf("write %s: %w", f.name, err)
+		}
+	}
+
+	return true, nil
 }

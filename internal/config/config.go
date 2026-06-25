@@ -37,9 +37,10 @@ type NodeConfig struct {
 
 // ServerConfig defines connection parameters for the Tergum server.
 type ServerConfig struct {
-	Address     string `toml:"address"`
-	CommandPort int    `toml:"command_port"`
-	DataPort    int    `toml:"data_port"`
+	Address       string `toml:"address"`
+	CommandPort   int    `toml:"command_port"`
+	DataPort      int    `toml:"data_port"`
+	BootstrapPort int    `toml:"bootstrap_port"`
 }
 
 // ClientConfig defines backup source paths and filters.
@@ -164,6 +165,7 @@ func applyDefaults(cfg *Config) {
 
 	cfg.Server.CommandPort = 7400
 	cfg.Server.DataPort = 7401
+	cfg.Server.BootstrapPort = 7402
 
 	cfg.Client.MaxFileSize = "10GB"
 

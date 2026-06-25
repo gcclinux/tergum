@@ -22,8 +22,13 @@ type CertManager interface {
 	// GenerateCerts creates CA, server, and client certificates with Ed25519 keys.
 	// Optional hosts can be provided to be added to the server certificate's Subject Alternative Names.
 	GenerateCerts(outputDir string, hosts ...string) error
+	// IssueClientCert generates a fresh client certificate signed by the CA at caPath/caKeyPath.
+	// Returns the PEM-encoded certificate and private key.
+	IssueClientCert(caPath, caKeyPath string) (certPEM, keyPEM []byte, err error)
 	// LoadServerTLS returns a TLS config for the server requiring client certs.
 	LoadServerTLS(caPath, certPath, keyPath string) (*tls.Config, error)
+	// LoadBootstrapServerTLS returns a TLS config for the bootstrap listener (no client cert required).
+	LoadBootstrapServerTLS(certPath, keyPath string) (*tls.Config, error)
 	// LoadClientTLS returns a TLS config for the client trusting the CA.
 	LoadClientTLS(caPath, certPath, keyPath string) (*tls.Config, error)
 }
@@ -106,6 +111,66 @@ func (m *Manager) LoadServerTLS(caPath, certPath, keyPath string) (*tls.Config, 
 		ClientCAs:    caPool,
 		MinVersion:   tls.VersionTLS13,
 	}, nil
+}
+
+// LoadBootstrapServerTLS loads the server certificate and returns a TLS config
+// for the bootstrap listener. It does NOT require client certificates, since
+// clients have no cert yet during setup.
+func (m *Manager) LoadBootstrapServerTLS(certPath, keyPath string) (*tls.Config, error) {
+	cert, err := tls.LoadX509KeyPair(certPath, keyPath)
+	if err != nil {
+		return nil, fmt.Errorf("load bootstrap server certificate: %w", err)
+	}
+
+	return &tls.Config{
+		Certificates: []tls.Certificate{cert},
+		ClientAuth:   tls.NoClientCert,
+		MinVersion:   tls.VersionTLS13,
+	}, nil
+}
+
+// IssueClientCert reads the CA certificate and key from disk, generates a fresh
+// Ed25519 client keypair, signs it with the CA, and returns PEM-encoded cert and key.
+func (m *Manager) IssueClientCert(caPath, caKeyPath string) (certPEM, keyPEM []byte, err error) {
+	// Load CA cert.
+	caPEMBytes, err := os.ReadFile(caPath)
+	if err != nil {
+		return nil, nil, fmt.Errorf("read CA cert: %w", err)
+	}
+	block, _ := pem.Decode(caPEMBytes)
+	if block == nil {
+		return nil, nil, fmt.Errorf("failed to decode CA cert PEM")
+	}
+	caCert, err := x509.ParseCertificate(block.Bytes)
+	if err != nil {
+		return nil, nil, fmt.Errorf("parse CA cert: %w", err)
+	}
+
+	// Load CA key.
+	caKeyPEMBytes, err := os.ReadFile(caKeyPath)
+	if err != nil {
+		return nil, nil, fmt.Errorf("read CA key: %w", err)
+	}
+	keyBlock, _ := pem.Decode(caKeyPEMBytes)
+	if keyBlock == nil {
+		return nil, nil, fmt.Errorf("failed to decode CA key PEM")
+	}
+	caKeyRaw, err := x509.ParsePKCS8PrivateKey(keyBlock.Bytes)
+	if err != nil {
+		return nil, nil, fmt.Errorf("parse CA key: %w", err)
+	}
+	caKey, ok := caKeyRaw.(ed25519.PrivateKey)
+	if !ok {
+		return nil, nil, fmt.Errorf("CA key is not Ed25519")
+	}
+
+	// Generate new client cert signed by CA.
+	clientCertBytes, clientKey, err := generateClientCert(caCert, caKey)
+	if err != nil {
+		return nil, nil, fmt.Errorf("generate client cert: %w", err)
+	}
+
+	return pemEncodeCert(clientCertBytes), pemEncodeKey(clientKey), nil
 }
 
 // LoadClientTLS loads certificates and returns a TLS config for the client.
