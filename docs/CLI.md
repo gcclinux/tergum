@@ -660,6 +660,7 @@ Flags:
       --backup-id string   Restore from a specific backup set
       --list               Search and list matching files without restoring
       --json               Output as JSON
+      --client string      Client ID to restore from (server-side only)
 ```
 
 **Search behavior:**
@@ -713,6 +714,39 @@ $env:TERGUM_PASSPHRASE="mypass"; .\tergum.exe restore --backup-id abc123 --dest 
 
 # Restore to original paths (in-place)
 $env:TERGUM_PASSPHRASE="mypass"; .\tergum.exe restore "important.docx"
+```
+
+**Restoring Remote Client Data:**
+Because Tergum uses secure client-side encryption, the master decryption keys are derived from the client's own `TERGUM_PASSPHRASE` and are never stored on the server. There are two ways to restore remote client data:
+
+#### Method 1: Client-Side Restore (Recommended)
+Log in to the remote client machine and run the restore command. The client daemon connects to the server to download backup blobs and decrypts them locally.
+
+**Example (Linux / macOS Client):**
+```bash
+# Executed on the client machine:
+TERGUM_PASSPHRASE=clientpassphrase tergum restore "*.docx" --dest /path/to/restore
+```
+
+**Example (PowerShell Windows Client):**
+```powershell
+# Executed on the client machine:
+$env:TERGUM_PASSPHRASE="clientpassphrase"; .\tergum.exe restore "*.docx" --dest C:\path\to\restore
+```
+
+#### Method 2: Server-Side Restore
+Alternatively, you can run the restore command directly on the server machine using the `--client` flag. Because backups are encrypted, you must provide the remote client's `TERGUM_PASSPHRASE`. If the client has a custom salt, copy it to the server's client configuration directory as `<configDir>/clients/<client_id>.salt`.
+
+**Example (Linux / macOS Server):**
+```bash
+# Executed on the server machine:
+TERGUM_PASSPHRASE=clientpassphrase tergum restore --client my-client "*.docx" --dest /path/to/restore
+```
+
+**Example (PowerShell Windows Server):**
+```powershell
+# Executed on the server machine:
+$env:TERGUM_PASSPHRASE="clientpassphrase"; .\tergum.exe restore --client my-client "*.docx" --dest C:\path\to\restore
 ```
 
 ---

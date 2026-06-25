@@ -1027,6 +1027,11 @@ func (s *Server) handleAPIRestoreFile(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprint(w, `{"error":"hash or backup_id required"}`)
 		return
 	}
+	if clientID != "" && clientID != "local" && clientID != "server" {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"error":"Restores for remote clients cannot be executed on the server because decryption keys are kept client-side for security. Please run the restore directly from the remote client using the CLI."}`)
+		return
+	}
 	if dest == "" {
 		dest = "/tmp/tergum-restored"
 	}

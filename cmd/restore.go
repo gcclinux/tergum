@@ -39,6 +39,7 @@ Examples:
 	cmd.Flags().String("backup-id", "", "restore from a specific backup set")
 	cmd.Flags().Bool("list", false, "search and list matching files without restoring")
 	cmd.Flags().StringP("file", "f", "", "specific file path, name, or pattern to restore")
+	cmd.Flags().String("client", "", "client ID to restore from (server-side only)")
 
 	return cmd
 }
@@ -49,6 +50,7 @@ func runRestore(cmd *cobra.Command, args []string) error {
 	backupID, _ := cmd.Flags().GetString("backup-id")
 	listOnly, _ := cmd.Flags().GetBool("list")
 	fileQuery, _ := cmd.Flags().GetString("file")
+	clientID, _ := cmd.Flags().GetString("client")
 
 	if len(args) == 0 && backupID == "" && fileQuery == "" {
 		return fmt.Errorf("provide a search query, --file, or --backup-id")
@@ -70,7 +72,18 @@ func runRestore(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("loading config: %w", err)
 	}
 
-	repo, err := db.NewRepository(cfg.Database.Path, cfg.Database.WALMode)
+	dbPath := cfg.Database.Path
+	if clientID != "" {
+		if cfg.Node.Role == "client" {
+			return fmt.Errorf("the --client flag cannot be used on a client node")
+		}
+		dbPath = filepath.Join(filepath.Dir(cfg.Database.Path), "clients", clientID+".db")
+		if _, err := os.Stat(dbPath); os.IsNotExist(err) {
+			return fmt.Errorf("client %q database copy not found on server", clientID)
+		}
+	}
+
+	repo, err := db.NewRepository(dbPath, cfg.Database.WALMode)
 	if err != nil {
 		return fmt.Errorf("opening database: %w", err)
 	}
@@ -82,7 +95,7 @@ func runRestore(cmd *cobra.Command, args []string) error {
 	var masterKey []byte
 	var encryptor *crypto.AESEncryptor
 	if cfg.Encryption.Enabled && !listOnly {
-		key, err := loadRestoreMasterKey(cfg)
+		key, err := loadRestoreMasterKey(cfg, clientID)
 		if err != nil {
 			return fmt.Errorf("loading encryption key: %w", err)
 		}
@@ -91,9 +104,17 @@ func runRestore(cmd *cobra.Command, args []string) error {
 	}
 
 	// Create data source based on node role (local or remote).
-	source, err := connection.NewDataSource(cfg)
-	if err != nil {
-		return fmt.Errorf("creating data source: %w", err)
+	var source restore.DataSource
+	if clientID != "" {
+		source = &restore.LocalDataSource{
+			StorageDir: cfg.StorageDir(),
+		}
+	} else {
+		var err error
+		source, err = connection.NewDataSource(cfg)
+		if err != nil {
+			return fmt.Errorf("creating data source: %w", err)
+		}
 	}
 
 	// Create restore engine.
@@ -289,9 +310,15 @@ func resolveDestination(dest, originalPath string) string {
 }
 
 // loadRestoreMasterKey is the same key loading logic used for backup.
-func loadRestoreMasterKey(cfg *config.Config) ([]byte, error) {
+func loadRestoreMasterKey(cfg *config.Config, clientID string) ([]byte, error) {
 	configDir := filepath.Dir(cfg.Database.Path)
 	saltPath := filepath.Join(configDir, "salt")
+	if clientID != "" {
+		clientSaltPath := filepath.Join(configDir, "clients", clientID+".salt")
+		if _, err := os.Stat(clientSaltPath); err == nil {
+			saltPath = clientSaltPath
+		}
+	}
 
 	saltHex, err := os.ReadFile(saltPath)
 	if err != nil {
