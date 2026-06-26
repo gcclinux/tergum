@@ -146,7 +146,6 @@ func (c *RemoteClientConnector) StopClientBackup(ctx context.Context, clientID s
 	return nil
 }
 
-
 // connectToClient looks up the client address in the registry and creates
 // a gRPC connection via mTLS. Returns an error if the client is not found
 // or is offline.
@@ -194,3 +193,92 @@ func (c *RemoteClientConnector) connectToClient(clientID string) (*grpcpkg.Tergu
 
 // Ensure RemoteClientConnector satisfies the ClientConnector interface at compile time.
 var _ ClientConnector = (*RemoteClientConnector)(nil)
+
+// PushRestoreToClient connects to the target client and streams decrypted file data
+// via the PushRestore RPC. It reads each file from CAS, decrypts it with the source
+// client's master key, and pushes it to the target client for writing.
+// Returns the PushRestoreResponse from the target client or an error.
+func (c *RemoteClientConnector) PushRestoreToClient(ctx context.Context, targetClientID string, files []PushRestoreFile, dest string) (*proto.PushRestoreResponse, error) {
+	client, err := c.connectToClient(targetClientID)
+	if err != nil {
+		return nil, fmt.Errorf("connect to target client %s: %w", targetClientID, err)
+	}
+
+	stream, err := client.PushRestore(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("open PushRestore stream to %s: %w", targetClientID, err)
+	}
+
+	const chunkSize = 64 * 1024 // 64KB chunks
+
+	for i, f := range files {
+		// Send file header.
+		header := &proto.FileHeader{
+			Blake3Hash:    f.Hash,
+			FileName:      f.FileName,
+			FilePath:      f.DestPath,
+			FileSize:      int64(len(f.Data)),
+			Permissions:   f.Permissions,
+			Owner:         f.Owner,
+			FileGroup:     f.Group,
+			Symlink:       f.Symlink,
+			SymlinkTarget: f.SymlinkTarget,
+		}
+		// Pass the base dest path in the Os field on the first file.
+		if i == 0 {
+			header.Os = dest
+		}
+
+		if err := stream.Send(&proto.FileChunk{
+			Payload: &proto.FileChunk_Header{Header: header},
+		}); err != nil {
+			return nil, fmt.Errorf("send header for %s: %w", f.FileName, err)
+		}
+
+		// Send data in chunks (skip for symlinks).
+		if !f.Symlink {
+			for offset := 0; offset < len(f.Data); offset += chunkSize {
+				end := offset + chunkSize
+				if end > len(f.Data) {
+					end = len(f.Data)
+				}
+				if err := stream.Send(&proto.FileChunk{
+					Payload: &proto.FileChunk_Data{Data: f.Data[offset:end]},
+				}); err != nil {
+					return nil, fmt.Errorf("send data chunk for %s: %w", f.FileName, err)
+				}
+			}
+		}
+
+		// Send trailer.
+		if err := stream.Send(&proto.FileChunk{
+			Payload: &proto.FileChunk_Trailer{Trailer: &proto.FileTrailer{
+				Blake3Hash: f.Hash,
+				BytesTotal: int64(len(f.Data)),
+			}},
+		}); err != nil {
+			return nil, fmt.Errorf("send trailer for %s: %w", f.FileName, err)
+		}
+	}
+
+	// Close and get response.
+	resp, err := stream.CloseAndRecv()
+	if err != nil {
+		return nil, fmt.Errorf("close PushRestore stream: %w", err)
+	}
+
+	return resp, nil
+}
+
+// PushRestoreFile describes a single decrypted file to push to a target client.
+type PushRestoreFile struct {
+	Hash          string
+	FileName      string
+	DestPath      string // full destination path on the target
+	Data          []byte // decrypted file content
+	Permissions   uint32
+	Owner         string
+	Group         string
+	Symlink       bool
+	SymlinkTarget string
+}

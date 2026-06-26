@@ -104,6 +104,9 @@ type Repository interface {
 	GetConfig(ctx context.Context, key string) (string, error)
 	SetConfig(ctx context.Context, key, value string) error
 
+	// Registry operations
+	GetClientAddress(ctx context.Context, clientID string) (string, error)
+
 	// Lifecycle
 	Close() error
 }
@@ -394,7 +397,6 @@ func (r *SQLiteRepository) SearchBackupFiles(ctx context.Context, backupID strin
 	return scanBackupEntries(rows)
 }
 
-
 // CountHashReferences returns the number of entries referencing the given hash.
 func (r *SQLiteRepository) CountHashReferences(ctx context.Context, hash string) (int64, error) {
 	var count int64
@@ -522,7 +524,6 @@ func (r *SQLiteRepository) FailStaleJobs(ctx context.Context, message string) (i
 	}
 	return res.RowsAffected()
 }
-
 
 // ListJobs returns backup jobs matching the filter, ordered by started_at DESC.
 func (r *SQLiteRepository) ListJobs(ctx context.Context, filter JobFilter) ([]model.BackupJob, error) {
@@ -1016,3 +1017,16 @@ func (r *SQLiteRepository) Checkpoint(ctx context.Context) error {
 	return err
 }
 
+// GetClientAddress looks up a client's registered address from the client_registry table.
+func (r *SQLiteRepository) GetClientAddress(ctx context.Context, clientID string) (string, error) {
+	var address string
+	err := r.db.QueryRowContext(ctx,
+		"SELECT address FROM client_registry WHERE client_id = ?", clientID).Scan(&address)
+	if err == sql.ErrNoRows {
+		return "", fmt.Errorf("client %q not found in registry", clientID)
+	}
+	if err != nil {
+		return "", err
+	}
+	return address, nil
+}

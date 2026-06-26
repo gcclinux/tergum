@@ -42,6 +42,16 @@
                             class="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:ring-2 focus:ring-blue-500 text-sm font-mono transition-colors duration-150" />
                  </div>
                  <div class="flex items-center gap-3">
+                     <label class="text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap w-28">Restore To:</label>
+                     <select id="remote-target-client"
+                             class="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 text-sm focus:ring-2 focus:ring-blue-500 transition-colors duration-150">
+                         <option value="">Server (write to server filesystem)</option>
+                         {{range .Clients}}
+                         <option value="{{.}}">{{.}} (push to client)</option>
+                         {{end}}
+                     </select>
+                 </div>
+                 <div class="flex items-center gap-3">
                      <label class="text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap w-28">Search Query:</label>
                      <input type="text"
                             id="remote-query"
@@ -311,6 +321,12 @@ function runRemoteRestore(mode) {
              + '&passphrase=' + encodeURIComponent(passphrase)
              + '&dest=' + encodeURIComponent(dest);
 
+    var targetSelect = document.getElementById('remote-target-client');
+    var targetClient = targetSelect ? targetSelect.value : '';
+    if (targetClient) {
+        body += '&target_client=' + encodeURIComponent(targetClient);
+    }
+
     if (mode === 'query') {
         body += '&query=' + encodeURIComponent(query);
         if (backupID) {
@@ -371,11 +387,14 @@ restoreFile = function(hash, filePath) {
 
     if (clientId && clientId !== 'local' && clientId !== 'server' && passphrase) {
         var dest = document.getElementById('remote-dest') ? document.getElementById('remote-dest').value : '/tmp/tergum-restored';
+        var targetSelect = document.getElementById('remote-target-client');
+        var targetClient = targetSelect ? targetSelect.value : '';
         var body = 'client_id=' + encodeURIComponent(clientId)
                  + '&passphrase=' + encodeURIComponent(passphrase)
                  + '&hash=' + encodeURIComponent(hash)
                  + '&path=' + encodeURIComponent(filePath)
                  + '&dest=' + encodeURIComponent(dest);
+        if (targetClient) { body += '&target_client=' + encodeURIComponent(targetClient); }
 
         fetch('/api/restore/remote', {
             method: 'POST',
@@ -413,10 +432,13 @@ restoreBackup = function(backupId) {
 
     if (clientId && clientId !== 'local' && clientId !== 'server' && passphrase) {
         var dest = document.getElementById('remote-dest') ? document.getElementById('remote-dest').value : '/tmp/tergum-restored';
+        var targetSelect = document.getElementById('remote-target-client');
+        var targetClient = targetSelect ? targetSelect.value : '';
         var body = 'client_id=' + encodeURIComponent(clientId)
                  + '&passphrase=' + encodeURIComponent(passphrase)
                  + '&backup_id=' + encodeURIComponent(backupId)
                  + '&dest=' + encodeURIComponent(dest);
+        if (targetClient) { body += '&target_client=' + encodeURIComponent(targetClient); }
 
         fetch('/api/restore/remote', {
             method: 'POST',

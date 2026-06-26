@@ -3,18 +3,25 @@ package cmd
 import (
 	"bufio"
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/hex"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/gcclinux/tergum/internal/config"
 	"github.com/gcclinux/tergum/internal/connection"
 	"github.com/gcclinux/tergum/internal/crypto"
 	"github.com/gcclinux/tergum/internal/db"
+	grpcpkg "github.com/gcclinux/tergum/internal/grpc"
+	"github.com/gcclinux/tergum/internal/grpc/proto"
 	"github.com/gcclinux/tergum/internal/restore"
 	"github.com/spf13/cobra"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 )
 
 func newRestoreCmd() *cobra.Command {
@@ -41,6 +48,7 @@ Examples:
 	cmd.Flags().StringP("file", "f", "", "specific file path, name, or pattern to restore")
 	cmd.Flags().StringP("path", "p", "", "specific file path, name, or pattern to restore")
 	cmd.Flags().String("client", "", "client ID to restore from (server-side only)")
+	cmd.Flags().String("target", "", "target client ID to push restored files to (requires --client)")
 
 	return cmd
 }
@@ -53,9 +61,14 @@ func runRestore(cmd *cobra.Command, args []string) error {
 	fileQuery, _ := cmd.Flags().GetString("file")
 	pathQuery, _ := cmd.Flags().GetString("path")
 	clientID, _ := cmd.Flags().GetString("client")
+	targetClient, _ := cmd.Flags().GetString("target")
 
 	if len(args) == 0 && backupID == "" && fileQuery == "" && pathQuery == "" {
 		return fmt.Errorf("provide a search query, --file, --path, or --backup-id")
+	}
+
+	if targetClient != "" && clientID == "" {
+		return fmt.Errorf("--target requires --client to specify the source client")
 	}
 
 	if fileQuery != "" && pathQuery != "" {
@@ -278,12 +291,20 @@ func runRestore(cmd *cobra.Command, args []string) error {
 
 	// Confirm restore.
 	fmt.Printf("Restoring %d file(s)...\n", len(entries))
+	if targetClient != "" {
+		fmt.Printf("Target: client %s\n", targetClient)
+	}
 	if dest != "" {
 		fmt.Printf("Destination: %s\n", dest)
 	} else {
 		fmt.Println("Destination: original paths")
 	}
 	fmt.Println()
+
+	// If targeting a remote client, decrypt and push via gRPC.
+	if targetClient != "" {
+		return runRestorePushToTarget(ctx, cfg, source, repo, encryptor, masterKey, entries, dest, clientID, targetClient)
+	}
 
 	// Run batch restore.
 	result, err := engine.RestoreBatch(ctx, entries, concurrency)
@@ -383,4 +404,173 @@ func loadRestoreMasterKey(cfg *config.Config, clientID string, dbSalt []byte) ([
 	}
 
 	return masterKey, nil
+}
+
+// runRestorePushToTarget decrypts files from the source client's backup and pushes
+// them to a target client via the PushRestore gRPC stream.
+func runRestorePushToTarget(ctx context.Context, cfg *config.Config, source restore.DataSource, repo db.Repository, encryptor *crypto.AESEncryptor, masterKey []byte, entries []restore.RestoreEntry, dest, sourceClient, targetClient string) error {
+	// Look up target client address from registry in the database.
+	targetAddress, err := lookupClientAddress(cfg, targetClient)
+	if err != nil {
+		return fmt.Errorf("looking up target client %q: %w", targetClient, err)
+	}
+
+	fmt.Printf("Connecting to target client %s at %s...\n", targetClient, targetAddress)
+
+	// Load TLS for connecting to the target client.
+	tlsCfg, _, err := connection.LoadClientTLS(cfg)
+	if err != nil {
+		return fmt.Errorf("loading TLS config: %w", err)
+	}
+
+	// Skip hostname verification (same pattern as RemoteClientConnector) but verify CA signature.
+	tlsCfgClone := tlsCfg.Clone()
+	tlsCfgClone.InsecureSkipVerify = true
+	tlsCfgClone.VerifyConnection = func(cs tls.ConnectionState) error {
+		opts := x509.VerifyOptions{
+			Roots:         tlsCfg.RootCAs,
+			CurrentTime:   time.Now(),
+			Intermediates: x509.NewCertPool(),
+		}
+		for _, cert := range cs.PeerCertificates[1:] {
+			opts.Intermediates.AddCert(cert)
+		}
+		_, err := cs.PeerCertificates[0].Verify(opts)
+		return err
+	}
+
+	creds := credentials.NewTLS(tlsCfgClone)
+	conn, err := grpc.NewClient(targetAddress, grpc.WithTransportCredentials(creds))
+	if err != nil {
+		return fmt.Errorf("connecting to target client %s: %w", targetClient, err)
+	}
+
+	client := grpcpkg.NewTergumClient(conn, conn, grpcpkg.ClientConfig{MaxRetries: 2})
+
+	// Open PushRestore stream.
+	stream, err := client.PushRestore(ctx)
+	if err != nil {
+		return fmt.Errorf("opening PushRestore stream to %s: %w", targetClient, err)
+	}
+
+	const chunkSize = 64 * 1024
+	var pushed, failed int
+
+	for i, entry := range entries {
+		// Download from CAS.
+		data, err := source.DownloadFile(ctx, entry.Hash)
+		if err != nil {
+			fmt.Printf("  SKIP %s: download failed: %v\n", entry.FileName, err)
+			failed++
+			continue
+		}
+
+		// Decrypt if encrypted.
+		fileData := data
+		if entry.Metadata != nil && len(entry.Metadata.EncryptedDEK) > 0 && len(entry.Metadata.Nonce) > 0 {
+			decrypted, err := encryptor.Decrypt(data, entry.Metadata.EncryptedDEK, entry.Metadata.Nonce, masterKey)
+			if err != nil {
+				fmt.Printf("  SKIP %s: decrypt failed: %v\n", entry.FileName, err)
+				failed++
+				continue
+			}
+			fileData = decrypted
+		}
+
+		// Build header.
+		header := &proto.FileHeader{
+			Blake3Hash: entry.Hash,
+			FileName:   entry.FileName,
+			FilePath:   entry.Destination,
+			FileSize:   int64(len(fileData)),
+		}
+		if entry.Metadata != nil {
+			if entry.Metadata.Permissions != nil {
+				header.Permissions = uint32(*entry.Metadata.Permissions)
+			}
+			header.Owner = entry.Metadata.Owner
+			header.FileGroup = entry.Metadata.FileGroup
+			header.Symlink = entry.Metadata.Symlink
+			header.SymlinkTarget = entry.Metadata.SymlinkTarget
+		}
+		// Pass dest base in Os field on first file.
+		if i == 0 {
+			header.Os = dest
+		}
+
+		// Send header.
+		if err := stream.Send(&proto.FileChunk{
+			Payload: &proto.FileChunk_Header{Header: header},
+		}); err != nil {
+			return fmt.Errorf("send header for %s: %w", entry.FileName, err)
+		}
+
+		// Send data in chunks (skip for symlinks).
+		if !(entry.Metadata != nil && entry.Metadata.Symlink) {
+			for offset := 0; offset < len(fileData); offset += chunkSize {
+				end := offset + chunkSize
+				if end > len(fileData) {
+					end = len(fileData)
+				}
+				if err := stream.Send(&proto.FileChunk{
+					Payload: &proto.FileChunk_Data{Data: fileData[offset:end]},
+				}); err != nil {
+					return fmt.Errorf("send data for %s: %w", entry.FileName, err)
+				}
+			}
+		}
+
+		// Send trailer.
+		if err := stream.Send(&proto.FileChunk{
+			Payload: &proto.FileChunk_Trailer{Trailer: &proto.FileTrailer{
+				Blake3Hash: entry.Hash,
+				BytesTotal: int64(len(fileData)),
+			}},
+		}); err != nil {
+			return fmt.Errorf("send trailer for %s: %w", entry.FileName, err)
+		}
+
+		pushed++
+	}
+
+	// Close and get response.
+	resp, err := stream.CloseAndRecv()
+	if err != nil {
+		return fmt.Errorf("close PushRestore stream: %w", err)
+	}
+
+	printOutput(
+		map[string]interface{}{
+			"target":         targetClient,
+			"files_sent":     pushed,
+			"files_received": resp.FilesReceived,
+			"files_failed":   resp.FilesFailed + int64(failed),
+		},
+		fmt.Sprintf("Push restore complete: %d files sent to %s (%d received, %d failed)", pushed, targetClient, resp.FilesReceived, resp.FilesFailed+int64(failed)),
+	)
+
+	return nil
+}
+
+// lookupClientAddress reads the client_registry table from the server's database
+// to find the address for a given client ID.
+func lookupClientAddress(cfg *config.Config, clientID string) (string, error) {
+	dbPath := cfg.Database.Path
+	registryDB, err := db.NewRepository(dbPath, false)
+	if err != nil {
+		return "", fmt.Errorf("open database: %w", err)
+	}
+	defer registryDB.Close()
+
+	// Query the client_registry table directly.
+	ctx := context.Background()
+	address, err := registryDB.GetClientAddress(ctx, clientID)
+	if err != nil {
+		return "", fmt.Errorf("client %q not found in registry: %w", clientID, err)
+	}
+	if address == "" {
+		return "", fmt.Errorf("client %q has no registered address", clientID)
+	}
+
+	return address, nil
 }

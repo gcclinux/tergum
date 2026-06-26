@@ -152,3 +152,20 @@ type RegisterResponse struct {
 	Success       bool   `json:"success"`
 	ServerVersion string `json:"server_version"`
 }
+
+// PushRestoreRequest is sent as the first message in a PushRestore stream
+// to configure the restore destination on the target client.
+type PushRestoreRequest struct {
+	DestPath     string `json:"dest_path"`     // Base destination directory on the target client
+	SourceClient string `json:"source_client"` // ID of the source client whose backup is being restored
+	TotalFiles   int64  `json:"total_files"`   // Expected total number of files (for progress)
+}
+
+// PushRestoreResponse is returned after a PushRestore stream completes.
+type PushRestoreResponse struct {
+	Success       bool   `json:"success"`
+	FilesReceived int64  `json:"files_received"`
+	BytesTotal    int64  `json:"bytes_total"`
+	FilesFailed   int64  `json:"files_failed"`
+	Message       string `json:"message"`
+}

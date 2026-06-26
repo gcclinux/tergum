@@ -422,17 +422,20 @@ func (m *mockRepo) RecordRestore(ctx context.Context, entry db.RestoreRecord) er
 func (m *mockRepo) ListRestoreHistory(ctx context.Context, limit int) ([]db.RestoreRecord, error) {
 	return nil, nil
 }
-func (m *mockRepo) DeleteAllActivity(ctx context.Context) (int64, error)           { return 0, nil }
-func (m *mockRepo) AddWatchExclude(ctx context.Context, path string) error         { return nil }
-func (m *mockRepo) RemoveWatchExclude(ctx context.Context, path string) error      { return nil }
-func (m *mockRepo) ListWatchExcludes(ctx context.Context) ([]string, error)        { return nil, nil }
-func (m *mockRepo) AddIncludePath(ctx context.Context, path string) error          { return nil }
-func (m *mockRepo) RemoveIncludePath(ctx context.Context, path string) error       { return nil }
-func (m *mockRepo) ListIncludePaths(ctx context.Context) ([]string, error)         { return nil, nil }
-func (m *mockRepo) AddExcludePattern(ctx context.Context, pattern string) error    { return nil }
-func (m *mockRepo) RemoveExcludePattern(ctx context.Context, pattern string) error { return nil }
-func (m *mockRepo) ListExcludePatterns(ctx context.Context) ([]string, error)      { return nil, nil }
+func (m *mockRepo) DeleteAllActivity(ctx context.Context) (int64, error)             { return 0, nil }
+func (m *mockRepo) AddWatchExclude(ctx context.Context, path string) error           { return nil }
+func (m *mockRepo) RemoveWatchExclude(ctx context.Context, path string) error        { return nil }
+func (m *mockRepo) ListWatchExcludes(ctx context.Context) ([]string, error)          { return nil, nil }
+func (m *mockRepo) AddIncludePath(ctx context.Context, path string) error            { return nil }
+func (m *mockRepo) RemoveIncludePath(ctx context.Context, path string) error         { return nil }
+func (m *mockRepo) ListIncludePaths(ctx context.Context) ([]string, error)           { return nil, nil }
+func (m *mockRepo) AddExcludePattern(ctx context.Context, pattern string) error      { return nil }
+func (m *mockRepo) RemoveExcludePattern(ctx context.Context, pattern string) error   { return nil }
+func (m *mockRepo) ListExcludePatterns(ctx context.Context) ([]string, error)        { return nil, nil }
 func (m *mockRepo) FailStaleJobs(ctx context.Context, message string) (int64, error) { return 0, nil }
-func (m *mockRepo) GetConfig(ctx context.Context, key string) (string, error)    { return "", nil }
-func (m *mockRepo) SetConfig(ctx context.Context, key, value string) error       { return nil }
-func (m *mockRepo) Close() error                                                   { return nil }
+func (m *mockRepo) GetConfig(ctx context.Context, key string) (string, error)        { return "", nil }
+func (m *mockRepo) SetConfig(ctx context.Context, key, value string) error           { return nil }
+func (m *mockRepo) GetClientAddress(ctx context.Context, clientID string) (string, error) {
+	return "", nil
+}
+func (m *mockRepo) Close() error { return nil }

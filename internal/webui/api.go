@@ -2019,6 +2019,7 @@ func (s *Server) handleAPIRestoreRemote(w http.ResponseWriter, r *http.Request) 
 	dest := strings.TrimSpace(r.FormValue("dest"))
 	hash := strings.TrimSpace(r.FormValue("hash"))
 	filePath := strings.TrimSpace(r.FormValue("path"))
+	targetClient := strings.TrimSpace(r.FormValue("target_client"))
 
 	// Validate required fields.
 	if clientID == "" || clientID == "local" || clientID == "server" {
@@ -2142,11 +2143,13 @@ func (s *Server) handleAPIRestoreRemote(w http.ResponseWriter, r *http.Request) 
 	}
 
 	// Run restore in background.
-	go s.runRemoteRestore(repo, closeFunc, encryptor, masterKey, storageDir, clientID, hash, filePath, backupID, query, dest)
+	go s.runRemoteRestore(repo, closeFunc, encryptor, masterKey, storageDir, clientID, hash, filePath, backupID, query, dest, targetClient)
 
 	// Build an informative message showing the actual server path where files will land.
 	var msg string
-	if query != "" {
+	if targetClient != "" {
+		msg = fmt.Sprintf("Remote restore started: pushing files from client '%s' to target client '%s' (dest: %s)", clientID, targetClient, dest)
+	} else if query != "" {
 		// For query restores, show the resolved base path as best we can.
 		resolvedExample := resolveDestination(dest, query)
 		msg = fmt.Sprintf("Remote restore started for client '%s' back to server location %s", clientID, filepath.Dir(resolvedExample))
@@ -2174,12 +2177,22 @@ func writeRemoteRestoreJSON(w http.ResponseWriter, data map[string]string) {
 
 // runRemoteRestore performs a remote client restore operation in the background.
 // It uses the provided passphrase-derived master key to decrypt the client's backup data.
-func (s *Server) runRemoteRestore(repo db.Repository, closeFunc func(), encryptor *cryptoPkg.AESEncryptor, masterKey []byte, storageDir, clientID, hash, filePath, backupID, query, dest string) {
+// If targetClient is set, files are pushed to the target client via PushRestore RPC
+// instead of being written to the server's local filesystem.
+func (s *Server) runRemoteRestore(repo db.Repository, closeFunc func(), encryptor *cryptoPkg.AESEncryptor, masterKey []byte, storageDir, clientID, hash, filePath, backupID, query, dest, targetClient string) {
 	defer closeFunc()
 	ctx := context.Background()
 
-	// Create restore engine with local CAS data source and client's master key.
+	// Create local data source for reading from CAS.
 	source := &localDataSource{storageDir: storageDir}
+
+	// If targeting a remote client, use the push restore flow.
+	if targetClient != "" {
+		s.runRemoteRestorePush(ctx, repo, encryptor, masterKey, source, clientID, targetClient, hash, filePath, backupID, query, dest)
+		return
+	}
+
+	// Otherwise, restore to local server filesystem using the restore engine.
 	engine := restore.NewRestoreEngine(source, repo, encryptor, masterKey)
 
 	if hash != "" {
@@ -2339,5 +2352,176 @@ func (s *Server) runRemoteRestore(repo db.Repository, closeFunc func(), encrypto
 				Message: fmt.Sprintf("Remote restore (client %s): %d files matching '%s' restored to %s (%d failed)", clientID, result.Restored, query, dest, result.Failed),
 			})
 		}
+	}
+}
+
+// runRemoteRestorePush decrypts files from source client and pushes them to the target client
+// via the PushRestore gRPC stream.
+func (s *Server) runRemoteRestorePush(ctx context.Context, repo db.Repository, encryptor *cryptoPkg.AESEncryptor, masterKey []byte, source *localDataSource, sourceClient, targetClient, hash, filePath, backupID, query, dest string) {
+	// Verify we have a client connector that supports PushRestore.
+	connector, ok := s.clientConnector.(*RemoteClientConnector)
+	if !ok || connector == nil {
+		slog.Error("remote restore push: client connector not available or wrong type")
+		if s.broker != nil {
+			s.broker.Publish(ActivityEvent{
+				Type:    "restore_failed",
+				Message: fmt.Sprintf("Push restore to %s failed: client connector not available", targetClient),
+			})
+		}
+		return
+	}
+
+	// Collect files to restore.
+	var entries []model.BackupEntry
+
+	if hash != "" {
+		// Single file by hash.
+		found, err := repo.FindByHash(ctx, hash)
+		if err != nil || len(found) == 0 {
+			slog.Error("remote restore push: file not found", "hash", hash)
+			return
+		}
+		entries = append(entries, found[0])
+	} else if backupID != "" && query == "" {
+		// Entire backup.
+		manifest, err := repo.GetManifest(ctx, backupID)
+		if err != nil {
+			slog.Error("remote restore push: get manifest failed", "error", err)
+			if s.broker != nil {
+				s.broker.Publish(ActivityEvent{
+					Type:    "restore_failed",
+					Message: fmt.Sprintf("Push restore to %s failed: could not load manifest - %v", targetClient, err),
+				})
+			}
+			return
+		}
+		for _, m := range manifest {
+			found, err := repo.FindByHash(ctx, m.Blake3Hash)
+			if err != nil || len(found) == 0 {
+				continue
+			}
+			entries = append(entries, found[0])
+		}
+	} else if query != "" {
+		// Search by query.
+		engine := restore.NewRestoreEngine(source, repo, encryptor, masterKey)
+		searchQuery := restore.SearchQuery{}
+		if strings.Contains(query, "/") || strings.Contains(query, "\\") {
+			searchQuery.Path = "%" + query + "%"
+		} else if strings.Contains(query, "*") || strings.Contains(query, "?") {
+			searchQuery.Pattern = query
+		} else {
+			searchQuery.Name = query
+		}
+
+		results, err := engine.Search(ctx, searchQuery)
+		if err != nil {
+			slog.Error("remote restore push: search failed", "query", query, "error", err)
+			if s.broker != nil {
+				s.broker.Publish(ActivityEvent{
+					Type:    "restore_failed",
+					Message: fmt.Sprintf("Push restore to %s failed: search error - %v", targetClient, err),
+				})
+			}
+			return
+		}
+
+		// Deduplicate.
+		seen := make(map[string]bool)
+		for _, r := range results {
+			if !seen[r.Blake3Hash] {
+				seen[r.Blake3Hash] = true
+				entries = append(entries, r)
+			}
+		}
+	}
+
+	if len(entries) == 0 {
+		slog.Warn("remote restore push: no files to restore")
+		if s.broker != nil {
+			s.broker.Publish(ActivityEvent{
+				Type:    "restore_failed",
+				Message: fmt.Sprintf("Push restore to %s: no files found", targetClient),
+			})
+		}
+		return
+	}
+
+	// Decrypt each file and build the push list.
+	var pushFiles []PushRestoreFile
+	for _, entry := range entries {
+		data, err := source.DownloadFile(ctx, entry.Blake3Hash)
+		if err != nil {
+			slog.Error("remote restore push: download failed", "hash", entry.Blake3Hash, "error", err)
+			continue
+		}
+
+		// Decrypt if encrypted.
+		fileData := data
+		if len(entry.EncryptedDEK) > 0 && len(entry.Nonce) > 0 {
+			decrypted, err := encryptor.Decrypt(data, entry.EncryptedDEK, entry.Nonce, masterKey)
+			if err != nil {
+				slog.Error("remote restore push: decrypt failed", "hash", entry.Blake3Hash, "error", err)
+				continue
+			}
+			fileData = decrypted
+		}
+
+		// Build destination path on target client.
+		destPath := resolveDestination(dest, entry.FilePath)
+
+		var perm uint32
+		if entry.Permissions != nil {
+			perm = uint32(*entry.Permissions)
+		}
+
+		pushFiles = append(pushFiles, PushRestoreFile{
+			Hash:          entry.Blake3Hash,
+			FileName:      entry.FileName,
+			DestPath:      destPath,
+			Data:          fileData,
+			Permissions:   perm,
+			Owner:         entry.Owner,
+			Group:         entry.FileGroup,
+			Symlink:       entry.Symlink,
+			SymlinkTarget: entry.SymlinkTarget,
+		})
+	}
+
+	if len(pushFiles) == 0 {
+		slog.Warn("remote restore push: all files failed to decrypt")
+		if s.broker != nil {
+			s.broker.Publish(ActivityEvent{
+				Type:    "restore_failed",
+				Message: fmt.Sprintf("Push restore to %s: all files failed to decrypt", targetClient),
+			})
+		}
+		return
+	}
+
+	// Push to target client.
+	slog.Info("remote restore push: sending files to target",
+		"source_client", sourceClient, "target_client", targetClient, "files", len(pushFiles))
+
+	resp, err := connector.PushRestoreToClient(ctx, targetClient, pushFiles, dest)
+	if err != nil {
+		slog.Error("remote restore push: push failed", "target", targetClient, "error", err)
+		if s.broker != nil {
+			s.broker.Publish(ActivityEvent{
+				Type:    "restore_failed",
+				Message: fmt.Sprintf("Push restore to %s failed: %v", targetClient, err),
+			})
+		}
+		return
+	}
+
+	slog.Info("remote restore push complete",
+		"source_client", sourceClient, "target_client", targetClient,
+		"files_received", resp.FilesReceived, "files_failed", resp.FilesFailed)
+	if s.broker != nil {
+		s.broker.Publish(ActivityEvent{
+			Type:    "restore_completed",
+			Message: fmt.Sprintf("Push restore from '%s' to '%s': %d files delivered (%d failed)", sourceClient, targetClient, resp.FilesReceived, resp.FilesFailed),
+		})
 	}
 }

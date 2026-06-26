@@ -270,6 +270,13 @@ func (c *TergumClient) RegisterClient(ctx context.Context, clientID, address str
 	return resp, err
 }
 
+// PushRestore opens a streaming client for pushing restored files to a target client.
+// Streaming RPCs are not retried — the caller manages the stream lifecycle.
+func (c *TergumClient) PushRestore(ctx context.Context) (proto.CommandService_PushRestoreClient, error) {
+	ctx = c.contextWithMetadata(ctx)
+	return c.command.PushRestore(ctx)
+}
+
 // --- DataService Methods ---
 
 // Upload returns a streaming client for uploading file chunks.

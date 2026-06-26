@@ -18,6 +18,7 @@ type CommandServiceClient interface {
 	StartWatcher(ctx context.Context, in *WatcherRequest, opts ...grpc.CallOption) (*WatcherResponse, error)
 	StopWatcher(ctx context.Context, in *WatcherRequest, opts ...grpc.CallOption) (*WatcherResponse, error)
 	RegisterClient(ctx context.Context, in *RegisterRequest, opts ...grpc.CallOption) (*RegisterResponse, error)
+	PushRestore(ctx context.Context, opts ...grpc.CallOption) (CommandService_PushRestoreClient, error)
 }
 
 type commandServiceClient struct {
@@ -40,6 +41,7 @@ const (
 	CommandService_StartWatcher_FullMethodName     = "/tergum.v3.CommandService/StartWatcher"
 	CommandService_StopWatcher_FullMethodName      = "/tergum.v3.CommandService/StopWatcher"
 	CommandService_RegisterClient_FullMethodName   = "/tergum.v3.CommandService/RegisterClient"
+	CommandService_PushRestore_FullMethodName      = "/tergum.v3.CommandService/PushRestore"
 )
 
 func (c *commandServiceClient) TriggerBackup(ctx context.Context, in *BackupRequest, opts ...grpc.CallOption) (*BackupResponse, error) {
@@ -132,6 +134,40 @@ func (c *commandServiceClient) RegisterClient(ctx context.Context, in *RegisterR
 	return out, nil
 }
 
+// CommandService_PushRestoreClient is the client streaming interface for PushRestore.
+type CommandService_PushRestoreClient interface {
+	Send(*FileChunk) error
+	CloseAndRecv() (*PushRestoreResponse, error)
+	grpc.ClientStream
+}
+
+type commandServicePushRestoreClient struct {
+	grpc.ClientStream
+}
+
+func (x *commandServicePushRestoreClient) Send(m *FileChunk) error {
+	return x.ClientStream.SendMsg(m)
+}
+
+func (x *commandServicePushRestoreClient) CloseAndRecv() (*PushRestoreResponse, error) {
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	m := new(PushRestoreResponse)
+	if err := x.ClientStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
+func (c *commandServiceClient) PushRestore(ctx context.Context, opts ...grpc.CallOption) (CommandService_PushRestoreClient, error) {
+	stream, err := c.cc.NewStream(ctx, &CommandService_ServiceDesc.Streams[0], CommandService_PushRestore_FullMethodName, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &commandServicePushRestoreClient{stream}, nil
+}
+
 // CommandServiceServer is the server API for CommandService.
 type CommandServiceServer interface {
 	TriggerBackup(context.Context, *BackupRequest) (*BackupResponse, error)
@@ -144,6 +180,7 @@ type CommandServiceServer interface {
 	StartWatcher(context.Context, *WatcherRequest) (*WatcherResponse, error)
 	StopWatcher(context.Context, *WatcherRequest) (*WatcherResponse, error)
 	RegisterClient(context.Context, *RegisterRequest) (*RegisterResponse, error)
+	PushRestore(CommandService_PushRestoreServer) error
 	mustEmbedUnimplementedCommandServiceServer()
 }
 
@@ -180,6 +217,9 @@ func (UnimplementedCommandServiceServer) StopWatcher(context.Context, *WatcherRe
 func (UnimplementedCommandServiceServer) RegisterClient(context.Context, *RegisterRequest) (*RegisterResponse, error) {
 	return nil, grpc.Errorf(12, "method RegisterClient not implemented") //nolint:staticcheck
 }
+func (UnimplementedCommandServiceServer) PushRestore(CommandService_PushRestoreServer) error {
+	return grpc.Errorf(12, "method PushRestore not implemented") //nolint:staticcheck
+}
 func (UnimplementedCommandServiceServer) mustEmbedUnimplementedCommandServiceServer() {}
 
 // UnsafeCommandServiceServer may be embedded to opt out of forward compatibility for this service.
@@ -190,6 +230,29 @@ type UnsafeCommandServiceServer interface {
 // RegisterCommandServiceServer registers the CommandService server implementation.
 func RegisterCommandServiceServer(s grpc.ServiceRegistrar, srv CommandServiceServer) {
 	s.RegisterService(&CommandService_ServiceDesc, srv)
+}
+
+// CommandService_PushRestoreServer is the server-side streaming interface for PushRestore.
+type CommandService_PushRestoreServer interface {
+	SendAndClose(*PushRestoreResponse) error
+	Recv() (*FileChunk, error)
+	grpc.ServerStream
+}
+
+type commandServicePushRestoreServer struct {
+	grpc.ServerStream
+}
+
+func (x *commandServicePushRestoreServer) SendAndClose(m *PushRestoreResponse) error {
+	return x.ServerStream.SendMsg(m)
+}
+
+func (x *commandServicePushRestoreServer) Recv() (*FileChunk, error) {
+	m := new(FileChunk)
+	if err := x.ServerStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
 }
 
 // CommandService_ServiceDesc is the grpc.ServiceDesc for CommandService.
@@ -238,7 +301,13 @@ var CommandService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _CommandService_RegisterClient_Handler,
 		},
 	},
-	Streams:  []grpc.StreamDesc{},
+	Streams: []grpc.StreamDesc{
+		{
+			StreamName:    "PushRestore",
+			Handler:       _CommandService_PushRestore_Handler,
+			ClientStreams: true,
+		},
+	},
 	Metadata: "proto/v3/command.proto",
 }
 
@@ -420,4 +489,8 @@ func _CommandService_RegisterClient_Handler(srv interface{}, ctx context.Context
 		return srv.(CommandServiceServer).RegisterClient(ctx, req.(*RegisterRequest))
 	}
 	return interceptor(ctx, in, info, handler)
+}
+
+func _CommandService_PushRestore_Handler(srv interface{}, stream grpc.ServerStream) error {
+	return srv.(CommandServiceServer).PushRestore(&commandServicePushRestoreServer{stream})
 }

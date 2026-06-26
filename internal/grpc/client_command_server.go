@@ -3,7 +3,11 @@ package grpc
 import (
 	"context"
 	"fmt"
+	"io"
+	"io/fs"
 	"log/slog"
+	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -39,7 +43,7 @@ type ClientCommandServer struct {
 	// Watcher instance for server-initiated watcher control.
 	// May be nil on startup if watcher was disabled in config; created on-demand via factory.
 	watcher        watcher.Watcher
-	watcherFactory WatcherFactory  // creates a watcher + ongoing backup on demand
+	watcherFactory WatcherFactory // creates a watcher + ongoing backup on demand
 	ongoingBackup  *scheduler.OngoingBackup
 	watchCtx       context.Context
 	watchCancel    context.CancelFunc
@@ -356,6 +360,129 @@ func (s *ClientCommandServer) SetWatcher(w watcher.Watcher) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.watcher = w
+}
+
+// PushRestore handles incoming file data from the server for cross-client restore.
+// The server decrypts files from the source client's backup and streams them here.
+// Stream protocol:
+//  1. First chunk: FileHeader with FilePath (destination), file metadata
+//  2. Data chunks: raw decrypted file content
+//  3. Trailer: blake3 hash for verification
+//  4. Repeat 1-3 for each file
+//
+// After all files are received, the client returns a PushRestoreResponse summary.
+func (s *ClientCommandServer) PushRestore(stream proto.CommandService_PushRestoreServer) error {
+	var filesReceived int64
+	var filesFailed int64
+	var bytesTotal int64
+
+	// State for current file being received.
+	var currentHeader *proto.FileHeader
+	var currentData []byte
+	var destBase string // base destination directory (from first header's metadata)
+
+	for {
+		chunk, err := stream.Recv()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			slog.Error("push restore: stream receive error", "error", err)
+			return status.Errorf(codes.Internal, "stream error: %v", err)
+		}
+
+		switch {
+		case chunk.GetHeader() != nil:
+			// Start of a new file.
+			currentHeader = chunk.GetHeader()
+			currentData = nil
+
+			// Use the FileName field to pass the dest base path on the first file only.
+			// After that, each header's FilePath defines the destination.
+			if destBase == "" && currentHeader.Os != "" {
+				// The Os field carries the dest base path (repurposed for PushRestore).
+				destBase = currentHeader.Os
+			}
+
+		case chunk.GetData() != nil:
+			// Accumulate file data.
+			currentData = append(currentData, chunk.GetData()...)
+
+		case chunk.GetTrailer() != nil:
+			// End of current file — write to disk.
+			if currentHeader == nil {
+				filesFailed++
+				continue
+			}
+
+			// Determine destination path.
+			destPath := currentHeader.FilePath
+			if destBase != "" && destPath == "" {
+				destPath = filepath.Join(destBase, currentHeader.FileName)
+			}
+			if destPath == "" {
+				slog.Error("push restore: no destination path for file", "file_name", currentHeader.FileName)
+				filesFailed++
+				currentHeader = nil
+				currentData = nil
+				continue
+			}
+
+			// Ensure destination directory exists.
+			destDir := filepath.Dir(destPath)
+			if err := os.MkdirAll(destDir, 0o755); err != nil {
+				slog.Error("push restore: create directory failed", "path", destDir, "error", err)
+				filesFailed++
+				currentHeader = nil
+				currentData = nil
+				continue
+			}
+
+			// Determine file permissions.
+			perm := fs.FileMode(0o644)
+			if currentHeader.Permissions != 0 {
+				perm = fs.FileMode(currentHeader.Permissions)
+			}
+
+			// Handle symlink restoration.
+			if currentHeader.Symlink && currentHeader.SymlinkTarget != "" {
+				os.Remove(destPath)
+				if err := os.Symlink(currentHeader.SymlinkTarget, destPath); err != nil {
+					slog.Error("push restore: create symlink failed", "path", destPath, "error", err)
+					filesFailed++
+				} else {
+					filesReceived++
+				}
+				currentHeader = nil
+				currentData = nil
+				continue
+			}
+
+			// Write file.
+			if err := os.WriteFile(destPath, currentData, perm); err != nil {
+				slog.Error("push restore: write file failed", "path", destPath, "error", err)
+				filesFailed++
+			} else {
+				bytesTotal += int64(len(currentData))
+				filesReceived++
+				slog.Debug("push restore: file written", "path", destPath, "size", len(currentData))
+			}
+
+			currentHeader = nil
+			currentData = nil
+		}
+	}
+
+	msg := fmt.Sprintf("push restore complete: %d files received, %d failed", filesReceived, filesFailed)
+	slog.Info(msg)
+
+	return stream.SendAndClose(&proto.PushRestoreResponse{
+		Success:       filesFailed == 0,
+		FilesReceived: filesReceived,
+		BytesTotal:    bytesTotal,
+		FilesFailed:   filesFailed,
+		Message:       msg,
+	})
 }
 
 // Ensure ClientCommandServer satisfies the interface at compile time.
