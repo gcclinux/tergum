@@ -1,4 +1,4 @@
-//go:build linux
+//go:build darwin
 
 package backup
 
@@ -25,13 +25,11 @@ func fillPlatformMetadata(sf *ScannedFile, path string, info os.FileInfo) {
 		sf.FileGroup = g.Name
 	}
 
-	// Access time.
-	atime := time.Unix(stat.Atim.Sec, stat.Atim.Nsec)
+	// Access time. On Darwin, the field is Atimespec (not Atim).
+	atime := time.Unix(stat.Atimespec.Sec, stat.Atimespec.Nsec)
 	sf.AccessedAt = &atime
 
-	// Create time (birth time) - use Ctim as a proxy on Linux.
-	// On Linux, Ctim is the status change time, not birth time,
-	// but it's the closest we can get without statx.
-	ctime := time.Unix(stat.Ctim.Sec, stat.Ctim.Nsec)
+	// Create time (birth time). On Darwin, Birthtimespec is the actual birth time.
+	ctime := time.Unix(stat.Birthtimespec.Sec, stat.Birthtimespec.Nsec)
 	sf.CreatedAt = &ctime
 }
