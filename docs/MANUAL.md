@@ -207,6 +207,7 @@ tergum paths list
 | `tergum setup` | ✅ Working | Interactive configuration wizard |
 | `tergum server` | ✅ Working | Start server or client daemon (role-aware) |
 | `tergum admin` | ✅ Working | Start Web UI only (lightweight) |
+| `tergum node` | ✅ Working | Manage node role and hostname settings |
 | `tergum backup` | ✅ Working | Run a manual backup (local or remote) |
 | `tergum paths` | ✅ Working | Manage include/exclude paths |
 | `tergum list` | ✅ Working | List backup sets and files |
@@ -281,9 +282,67 @@ The admin panel provides the same Web UI as the full server:
 - Dashboard with storage stats and backup history
 - Backup job management (view, delete)
 - Include/exclude path management
+- Node settings — change role (server/hybrid) and hostname (network interface)
 - Retention policy management
 - Restore file browser (search backed-up files)
 - Watcher path management
+
+### tergum node
+
+```
+Usage: tergum node <subcommand>
+
+Subcommands:
+  show                   Show current node role and hostname
+  role set <role>        Change node role (server or hybrid)
+  hostname set <host>    Set the hostname (network interface address)
+  hostname clear         Clear the hostname setting (use system default)
+
+Global flags apply:
+  --json                 Output as JSON
+```
+
+Change the node role between **server** (serves remote clients only, no local backups or file watcher) and **hybrid** (full server + local backup, file watcher, and scheduling). A server restart is required for role changes to take effect.
+
+The hostname setting identifies which network interface address to advertise to remote clients, useful when the node has multiple interfaces.
+
+**Linux / macOS:**
+```bash
+# Show current settings
+tergum node show
+
+# Switch to hybrid mode (enables local backups)
+tergum node role set hybrid
+
+# Switch back to server-only
+tergum node role set server
+
+# Set hostname to a specific interface
+tergum node hostname set 192.168.1.10
+
+# Clear hostname (use system default)
+tergum node hostname clear
+```
+
+**PowerShell (Windows):**
+```powershell
+# Show current settings
+.\tergum.exe node show
+
+# Switch to hybrid mode (enables local backups)
+.\tergum.exe node role set hybrid
+
+# Switch back to server-only
+.\tergum.exe node role set server
+
+# Set hostname to a specific interface
+.\tergum.exe node hostname set 192.168.1.10
+
+# Clear hostname (use system default)
+.\tergum.exe node hostname clear
+```
+
+These settings can also be changed from the Web UI under **Config → Node Settings**.
 
 ### tergum backup
 
@@ -844,7 +903,7 @@ Pages and capabilities:
 - **Dashboard** — storage stats, total files, total size
 - **Backups** — job history with status, file count, and delete functionality
 - **Restore** — search backed-up files by name/path (restore via CLI)
-- **Config** — add/remove include paths and exclude patterns (syncs to TOML)
+- **Config** — node settings (role, hostname), include/exclude paths (syncs to TOML)
 - **Retention** — add/remove retention policies with pattern matching
 - **Watchers** — add/remove watch paths for file monitoring
 - **Activity** — real-time event log (SSE)

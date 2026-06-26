@@ -7,6 +7,11 @@
 | [`tergum setup`](#tergum-setup) | ✅ Working | Interactive configuration wizard |
 | [`tergum server`](#tergum-server) | ✅ Working | Start server or client daemon (role-aware) |
 | [`tergum admin`](#tergum-admin) | ✅ Working | Start Web UI only (lightweight) |
+| [`tergum node`](#tergum-node) | ✅ Working | Manage node role and hostname settings |
+| [`tergum node show`](#tergum-node-show) | ✅ Working | Show current node role and hostname |
+| [`tergum node role set`](#tergum-node-role-set) | ✅ Working | Change node role (server/hybrid) |
+| [`tergum node hostname set`](#tergum-node-hostname-set) | ✅ Working | Set the hostname (network interface) |
+| [`tergum node hostname clear`](#tergum-node-hostname-clear) | ✅ Working | Clear the hostname setting |
 | [`tergum backup`](#tergum-backup) | ✅ Working | Run a manual backup (local or remote) |
 | [`tergum paths`](#tergum-paths) | ✅ Working | Manage include/exclude paths |
 | [`tergum paths scan`](#tergum-paths-scan) | ✅ Working | Scan a directory and add top-level folders |
@@ -160,6 +165,141 @@ tergum admin --port 8080
 
 # Start on a custom port
 .\tergum.exe admin --port 8080
+```
+
+---
+
+### tergum node
+
+Manage the node's role and hostname identity settings.
+
+```
+Usage: tergum node <subcommand>
+
+Subcommands:
+  show                   Show current node role and hostname
+  role set <role>        Change node role (server or hybrid)
+  hostname set <host>    Set the hostname (network interface address)
+  hostname clear         Clear the hostname setting (use system default)
+
+Global flags apply:
+  --json                 Output as JSON
+```
+
+Changing the role controls behavior at next server restart:
+- **server** — serves remote clients only; no local backups, no local file watcher.
+- **hybrid** — full server capabilities PLUS local backup, file watcher, and scheduling.
+
+The hostname identifies which network interface address to advertise to remote clients. Useful when the node has multiple network interfaces.
+
+---
+
+#### tergum node show
+
+Show the current node role and hostname.
+
+```
+Usage: tergum node show [flags]
+
+Flags:
+  --json   Output as JSON
+```
+
+**Linux / macOS:**
+```bash
+tergum node show
+tergum node show --json
+```
+
+**PowerShell (Windows):**
+```powershell
+.\tergum.exe node show
+.\tergum.exe node show --json
+```
+
+---
+
+#### tergum node role set
+
+Change the node role between "server" and "hybrid". Requires a server restart to take effect.
+
+```
+Usage: tergum node role set <server|hybrid> [flags]
+
+Flags:
+  --json   Output as JSON
+```
+
+**Linux / macOS:**
+```bash
+# Switch to hybrid (enables local backups and watcher)
+tergum node role set hybrid
+
+# Switch back to server-only mode
+tergum node role set server
+```
+
+**PowerShell (Windows):**
+```powershell
+# Switch to hybrid (enables local backups and watcher)
+.\tergum.exe node role set hybrid
+
+# Switch back to server-only mode
+.\tergum.exe node role set server
+```
+
+---
+
+#### tergum node hostname set
+
+Set the hostname used to identify the network interface for backup traffic. Requires a server restart to take effect.
+
+```
+Usage: tergum node hostname set <hostname> [flags]
+
+Flags:
+  --json   Output as JSON
+```
+
+**Linux / macOS:**
+```bash
+# Set to a specific IP address
+tergum node hostname set 192.168.1.10
+
+# Set to a DNS name
+tergum node hostname set backup.internal.example.com
+```
+
+**PowerShell (Windows):**
+```powershell
+# Set to a specific IP address
+.\tergum.exe node hostname set 192.168.1.10
+
+# Set to a DNS name
+.\tergum.exe node hostname set backup.internal.example.com
+```
+
+---
+
+#### tergum node hostname clear
+
+Clear the hostname setting so the system default is used. Requires a server restart to take effect.
+
+```
+Usage: tergum node hostname clear [flags]
+
+Flags:
+  --json   Output as JSON
+```
+
+**Linux / macOS:**
+```bash
+tergum node hostname clear
+```
+
+**PowerShell (Windows):**
+```powershell
+.\tergum.exe node hostname clear
 ```
 
 ---

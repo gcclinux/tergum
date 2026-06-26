@@ -28,8 +28,8 @@
         </div>
     </div>
 
-    <!-- Node Settings (collapsible) -->
-    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-sm" x-data="{ open: true }">
+    <!-- Node Settings (collapsible, editable) -->
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-sm" x-data="nodeSettings()">
         <button @click="open = !open" class="w-full flex items-center justify-between p-6 text-left">
             <h2 class="text-base font-semibold text-gray-800 dark:text-gray-100">Node Settings</h2>
             <svg :class="open ? 'rotate-180' : ''" class="w-5 h-5 text-gray-500 transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -37,18 +37,124 @@
             </svg>
         </button>
         <div x-show="open" x-transition class="px-6 pb-6 border-t border-gray-100 dark:border-gray-700 pt-4">
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <!-- Role -->
                 <div>
-                    <label class="block text-sm font-medium text-gray-600 dark:text-gray-400">Role</label>
-                    <p class="mt-1 text-sm text-gray-800 dark:text-gray-100">{{.Config.Node.Role}}</p>
+                    <label class="block text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">Role</label>
+                    <div class="flex items-center gap-2">
+                        <select x-model="role"
+                                class="block w-full rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm text-gray-800 dark:text-gray-100 px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                            <option value="server">server</option>
+                            <option value="hybrid">hybrid</option>
+                        </select>
+                        <button @click="saveRole()" :disabled="saving"
+                                class="bg-blue-600 text-white px-4 py-2 rounded text-sm hover:bg-blue-700 disabled:opacity-50 whitespace-nowrap">
+                            Save
+                        </button>
+                    </div>
+                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                        <strong>server</strong> — serves remote clients only.
+                        <strong>hybrid</strong> — server + local backups and watcher.
+                    </p>
                 </div>
+                <!-- Hostname -->
                 <div>
-                    <label class="block text-sm font-medium text-gray-600 dark:text-gray-400">Hostname</label>
-                    <p class="mt-1 text-sm text-gray-800 dark:text-gray-100">{{if .Config.Node.Hostname}}{{.Config.Node.Hostname}}{{else}}<span class="text-gray-400 italic">not set</span>{{end}}</p>
+                    <label class="block text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">Hostname</label>
+                    <div class="flex items-center gap-2">
+                        <input type="text" x-model="hostname"
+                               placeholder="e.g. 192.168.1.10 or backup.local"
+                               class="block w-full rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm text-gray-800 dark:text-gray-100 px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                        <button @click="saveHostname()" :disabled="saving"
+                                class="bg-blue-600 text-white px-4 py-2 rounded text-sm hover:bg-blue-700 disabled:opacity-50 whitespace-nowrap">
+                            Save
+                        </button>
+                        <button x-show="hostname !== ''" @click="clearHostname()" :disabled="saving"
+                                class="text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300 px-2 py-2 rounded text-sm hover:bg-red-50 dark:hover:bg-red-900/20 whitespace-nowrap">
+                            Clear
+                        </button>
+                    </div>
+                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                        Network interface address to advertise. Leave blank for system default.
+                    </p>
                 </div>
+            </div>
+            <!-- Status message -->
+            <div x-show="message" x-transition
+                 class="mt-4 p-3 rounded text-sm"
+                 :class="messageType === 'error' ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300' : 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300'"
+                 x-text="message">
             </div>
         </div>
     </div>
+
+    <script>
+    function nodeSettings() {
+        return {
+            open: true,
+            role: '{{.Config.Node.Role}}',
+            hostname: '{{.Config.Node.Hostname}}',
+            saving: false,
+            message: '',
+            messageType: 'success',
+
+            showMessage(msg, type) {
+                this.message = msg;
+                this.messageType = type || 'success';
+                setTimeout(() => { this.message = ''; }, 5000);
+            },
+
+            async saveRole() {
+                this.saving = true;
+                try {
+                    const res = await fetch('/api/config/node/role', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({ role: this.role })
+                    });
+                    if (!res.ok) {
+                        const text = await res.text();
+                        throw new Error(text);
+                    }
+                    const data = await res.json();
+                    if (data.restart_required) {
+                        this.showMessage('Role changed to "' + this.role + '". Refresh the page to see updated navigation.', 'success');
+                    } else {
+                        this.showMessage('Role is already "' + this.role + '". No change needed.', 'success');
+                    }
+                } catch (e) {
+                    this.showMessage('Failed to save role: ' + e.message, 'error');
+                } finally {
+                    this.saving = false;
+                }
+            },
+
+            async saveHostname() {
+                this.saving = true;
+                try {
+                    const res = await fetch('/api/config/node/hostname', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({ hostname: this.hostname })
+                    });
+                    if (!res.ok) {
+                        const text = await res.text();
+                        throw new Error(text);
+                    }
+                    this.showMessage('Hostname saved. Refresh the page to apply.', 'success');
+                } catch (e) {
+                    this.showMessage('Failed to save hostname: ' + e.message, 'error');
+                } finally {
+                    this.saving = false;
+                }
+            },
+
+            async clearHostname() {
+                this.hostname = '';
+                await this.saveHostname();
+            }
+        };
+    }
+    </script>
 
     <!-- Storage Settings (collapsible) -->
     <div class="bg-white dark:bg-gray-800 rounded-lg shadow-sm" x-data="{ open: true }">

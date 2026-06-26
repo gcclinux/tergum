@@ -300,6 +300,10 @@ func (s *Server) routes() http.Handler {
 	})
 	authed.HandleFunc("/api/watchers/config/autostart", s.handleAPIWatcherAutostart)
 
+	// Node settings API endpoints.
+	authed.HandleFunc("/api/config/node/role", s.handleAPINodeRole)
+	authed.HandleFunc("/api/config/node/hostname", s.handleAPINodeHostname)
+
 	// Backup API endpoints.
 	authed.HandleFunc("/api/backups/trigger", s.handleAPIBackupTrigger)
 	authed.HandleFunc("/api/backups/stop", s.handleAPIBackupStop)
