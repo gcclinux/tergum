@@ -592,11 +592,12 @@ type backupJobView struct {
 }
 
 type restoreData struct {
-	Title    string
-	NodeRole string
-	NavItems []NavItem
-	Jobs     []backupJobView
-	Clients  []string
+	Title          string
+	NodeRole       string
+	NavItems       []NavItem
+	Jobs           []backupJobView
+	Clients        []string
+	SelectedClient string
 }
 
 type configData struct {
@@ -803,11 +804,12 @@ func (s *Server) handleBackups(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleRestore(w http.ResponseWriter, r *http.Request) {
 	data := restoreData{
-		Title:    "Restore",
-		NodeRole: s.nodeRole(),
-		NavItems: FilterNavItems(s.nodeRole()),
-		Jobs:     []backupJobView{},
-		Clients:  []string{},
+		Title:          "Restore",
+		NodeRole:       s.nodeRole(),
+		NavItems:       FilterNavItems(s.nodeRole()),
+		Jobs:           []backupJobView{},
+		Clients:        []string{},
+		SelectedClient: r.URL.Query().Get("client"),
 	}
 
 	if s.clientRegistry != nil {

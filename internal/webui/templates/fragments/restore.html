@@ -4,14 +4,14 @@
     <div class="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6">
         <div class="flex items-center justify-between mb-4 flex-wrap gap-4">
             <h2 class="text-base font-semibold text-gray-800 dark:text-gray-100">Available Backups</h2>
-            <div class="flex items-center gap-3">
+            <div class="flex items-center gap-3 hidden">
                 <label for="restore-client-select" class="text-sm font-medium text-gray-600 dark:text-gray-400 whitespace-nowrap">Client:</label>
                 <select id="restore-client-select"
                         name="client_id"
                         class="px-3 py-1.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 text-sm focus:ring-2 focus:ring-blue-500 transition-colors duration-150">
-                    <option value="local">Server (Local)</option>
+                    <option value="local" {{if eq .SelectedClient ""}}selected{{end}}>Server (Local)</option>
                     {{range .Clients}}
-                    <option value="{{.}}">{{.}}</option>
+                    <option value="{{.}}" {{if eq . $.SelectedClient}}selected{{end}}>{{.}}</option>
                     {{end}}
                 </select>
             </div>
@@ -487,6 +487,18 @@ restoreBackup = function(backupId) {
     
     if (clientSelect) {
         clientSelect.addEventListener('change', updateWarning);
+        // Pre-select client from URL query parameter (e.g., /restore?client=fedora)
+        var params = new URLSearchParams(window.location.search);
+        var clientParam = params.get('client');
+        if (clientParam) {
+            for (var i = 0; i < clientSelect.options.length; i++) {
+                if (clientSelect.options[i].value === clientParam) {
+                    clientSelect.value = clientParam;
+                    clientSelect.dispatchEvent(new Event('change', { bubbles: true }));
+                    break;
+                }
+            }
+        }
         updateWarning(); // run once initially
     }
 })();

@@ -802,6 +802,7 @@ Flags:
       --json               Output as JSON
       --client string      Client ID to restore from (server-side only)
   -p, --path string        Specific file path, name, or pattern to restore (alternative to query argument)
+      --target string      Target client ID to push restored files to (requires --client)
 ```
 
 **Search behavior:**
@@ -858,7 +859,7 @@ $env:TERGUM_PASSPHRASE="mypass"; .\tergum.exe restore "important.docx"
 ```
 
 **Restoring Remote Client Data:**
-Because Tergum uses secure client-side encryption, the master decryption keys are derived from the client's own `TERGUM_PASSPHRASE` and are never stored on the server. There are two ways to restore remote client data:
+Because Tergum uses secure client-side encryption, the master decryption keys are derived from the client's own `TERGUM_PASSPHRASE` and are never stored on the server. There are three ways to restore remote client data:
 
 #### Method 1: Client-Side Restore (Recommended)
 Log in to the remote client machine and run the restore command. The client daemon connects to the server to download backup blobs and decrypts them locally. **Files will be restored directly onto the remote client's filesystem.**
@@ -875,20 +876,47 @@ TERGUM_PASSPHRASE=clientpassphrase tergum restore "*.docx" --dest /path/to/resto
 $env:TERGUM_PASSPHRASE="clientpassphrase"; .\tergum.exe restore "*.docx" --dest C:\path\to\restore
 ```
 
-#### Method 2: Server-Side Restore
-Alternatively, you can run the restore command directly on the server machine using the `--client` flag. You can separate the query using the `--path` (or `-p`) flag to avoid parser issues with positional arguments. Because backups are encrypted, you must provide the remote client's `TERGUM_PASSPHRASE`. **Files will be restored onto the server's local filesystem** (this is useful if the client machine is offline or destroyed and you need to recover its files onto the server). If the client has a custom salt, copy it to the server's client configuration directory as `<configDir>/clients/<client_id>.salt`.
+#### Method 2: Server-Side Restore (to server filesystem)
+Run the restore command on the server using `--client`. You must provide the remote client's `TERGUM_PASSPHRASE`. **Files will be restored onto the server's local filesystem** (useful if the client is offline or destroyed).
 
 **Example (Linux / macOS Server):**
 ```bash
-# Executed on the server machine:
+# Executed on the server machine — files land on the server:
 TERGUM_PASSPHRASE=clientpassphrase tergum restore --client my-client --path "*.docx" --dest /path/to/restore
 ```
 
 **Example (PowerShell Windows Server):**
 ```powershell
-# Executed on the server machine:
+# Executed on the server machine — files land on the server:
 $env:TERGUM_PASSPHRASE="clientpassphrase"; .\tergum.exe restore --client my-client --path "*.docx" --dest C:\path\to\restore
 ```
+
+#### Method 3: Cross-Client Restore (push to target client)
+Use `--target` to push restored files directly to another online client over gRPC. The server decrypts the source client's backup and streams the files to the target client, which writes them to disk. **The target client must be online and registered.**
+
+**Example (Linux / macOS Server):**
+```bash
+# Restore from client "fedora" and push files to client "ubuntu":
+TERGUM_PASSPHRASE=fedora_passphrase tergum restore --client fedora --target ubuntu --path "/home/user/Documents/" --dest /tmp/restored
+
+# Restore back to the same client (disaster recovery — client re-imaged):
+TERGUM_PASSPHRASE=fedora_passphrase tergum restore --client fedora --target fedora --path "report.pdf" --dest /tmp/restored
+```
+
+**Example (PowerShell Windows Server):**
+```powershell
+# Restore from client "fedora" and push files to client "ubuntu":
+$env:TERGUM_PASSPHRASE="fedora_passphrase"; .\tergum.exe restore --client fedora --target ubuntu --path "/home/user/Documents/" --dest /tmp/restored
+
+# Restore back to the same client:
+$env:TERGUM_PASSPHRASE="fedora_passphrase"; .\tergum.exe restore --client fedora --target fedora --path "report.pdf" --dest /tmp/restored
+```
+
+**Requirements for `--target`:**
+- The source client must have `--client` specified
+- The target client must be online (registered in the server's client registry)
+- The server must have TLS configured to connect to the target client
+- The `TERGUM_PASSPHRASE` is the source client's passphrase (for decryption)
 
 ---
 

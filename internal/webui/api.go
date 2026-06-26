@@ -1745,6 +1745,7 @@ func (s *Server) handleAPIClientsList(w http.ResponseWriter, r *http.Request) {
 			fmt.Fprintf(w, `<button hx-post="/api/clients/%s/backup" hx-swap="none" class="text-xs px-2.5 py-1.5 rounded border border-blue-200 dark:border-blue-700 text-blue-700 dark:text-blue-300 %s"%s>Trigger Backup</button>`, ci.ClientID, disabledClass, disabledAttr)
 		}
 		fmt.Fprintf(w, `<button hx-post="/api/clients/%s/watcher/start" hx-swap="none" class="text-xs px-2.5 py-1.5 rounded border border-green-200 dark:border-green-700 text-green-700 dark:text-green-300 %s"%s>Start Watcher</button>`, ci.ClientID, disabledClass, disabledAttr)
+		fmt.Fprintf(w, `<a href="/restore?client=%s" hx-get="/restore?client=%s" hx-target="#content-area" hx-push-url="true" class="text-xs px-2.5 py-1.5 rounded border border-yellow-200 dark:border-yellow-700 text-yellow-700 dark:text-yellow-300 hover:bg-yellow-50 dark:hover:bg-gray-700 cursor-pointer no-underline">Restore</a>`, ci.ClientID, ci.ClientID)
 		fmt.Fprintf(w, `<button hx-post="/api/clients/%s/watcher/stop" hx-swap="none" class="text-xs px-2.5 py-1.5 rounded border border-red-200 dark:border-red-700 text-red-700 dark:text-red-300 %s"%s>Stop Watcher</button>`, ci.ClientID, disabledClass, disabledAttr)
 		fmt.Fprint(w, `</div>`)
 

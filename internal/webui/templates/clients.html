@@ -64,6 +64,14 @@
                             Start Watcher
                         </button>
                         {{end}}
+                        <a href="/restore?client={{.ClientID}}"
+                            onclick="event.stopPropagation();"
+                            class="text-xs bg-purple-500 text-white px-2 py-1 rounded hover:bg-purple-600 mr-1 inline-block no-underline"
+                            hx-get="/restore?client={{.ClientID}}"
+                            hx-target="#content-area"
+                            hx-push-url="true">
+                            Restore
+                        </a>
                     </td>
                 </tr>
                 <!-- Detail row (hidden by default) -->
@@ -327,6 +335,7 @@ function refreshClients() {
                 } else {
                     watcherBtn = `<button onclick="event.stopPropagation(); startWatcher('${c.client_id}')" class="text-xs bg-green-500 text-white px-2 py-1 rounded hover:bg-green-600 mr-1" ${disabled}>Start Watcher</button>`;
                 }
+                const restoreBtn = `<a href="/restore?client=${c.client_id}" onclick="event.stopPropagation();" class="text-xs bg-purple-500 text-white px-2 py-1 rounded hover:bg-purple-600 mr-1 inline-block no-underline" hx-get="/restore?client=${c.client_id}" hx-target="#content-area" hx-push-url="true">Restore</a>`;
 
                 const isExpanded = expandedClients[c.client_id] || false;
 
@@ -339,6 +348,7 @@ function refreshClients() {
                     <td class="p-3 text-center">
                         <button onclick="event.stopPropagation(); triggerBackup('${c.client_id}')" class="text-xs bg-blue-500 text-white px-2 py-1 rounded hover:bg-blue-600 mr-1" ${disabled}>Trigger Backup</button>
                         ${watcherBtn}
+                        ${restoreBtn}
                     </td>
                 </tr>`;
 
@@ -382,6 +392,7 @@ function refreshClients() {
                 </tr>`;
             });
             tbody.innerHTML = html;
+            htmx.process(tbody);
 
             // Re-load data for any expanded clients.
             Object.keys(expandedClients).forEach(cid => {

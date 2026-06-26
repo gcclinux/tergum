@@ -142,5 +142,25 @@ document.addEventListener('keydown', function(e) {
 document.getElementById('file-modal').addEventListener('click', function(e) {
     if (e.target === this) closeFileList();
 });
+
+// Pre-select client from URL query parameter (e.g., /restore?client=fedora)
+(function() {
+    var params = new URLSearchParams(window.location.search);
+    var clientParam = params.get('client');
+    if (clientParam) {
+        var select = document.getElementById('restore-client-select');
+        if (select) {
+            // Check if the option exists before selecting it.
+            for (var i = 0; i < select.options.length; i++) {
+                if (select.options[i].value === clientParam) {
+                    select.value = clientParam;
+                    // Trigger change event so htmx-driven sections (backup list) reload for this client.
+                    select.dispatchEvent(new Event('change', { bubbles: true }));
+                    break;
+                }
+            }
+        }
+    }
+})();
 </script>
 {{template "footer" .}}

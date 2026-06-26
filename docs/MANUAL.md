@@ -411,6 +411,9 @@ Flags:
   -c, --concurrency int    Parallel restore streams (default 4)
       --backup-id string   Restore from a specific backup set
       --list               Search and list matching files without restoring
+      --client string      Client ID to restore from (server-side only)
+  -p, --path string        Specific file path, name, or pattern to restore
+      --target string      Target client ID to push restored files to (requires --client)
       --json               Output as JSON
 ```
 
@@ -902,13 +905,68 @@ tergum admin     # Web UI only (lightweight, no gRPC/scheduler)
 Pages and capabilities:
 - **Dashboard** — storage stats, total files, total size
 - **Backups** — job history with status, file count, and delete functionality
-- **Restore** — search backed-up files by name/path (restore via CLI)
+- **Restore** — browse, search, and restore files from any client's backup (including cross-client restore with passphrase)
 - **Config** — node settings (role, hostname), include/exclude paths (syncs to TOML)
 - **Retention** — add/remove retention policies with pattern matching
 - **Watchers** — add/remove watch paths for file monitoring
 - **Activity** — real-time event log (SSE)
 - **Clients** — connected client nodes with trigger backup, start/stop watcher, schedule config (server role only)
 - **Metrics** — backup and storage metrics
+
+---
+
+## Restoring Files
+
+Tergum provides three restore methods: CLI local restore, CLI cross-client restore, and Web UI restore.
+
+### Web UI Restore
+
+The Restore page in the Web UI provides a graphical interface for browsing, searching, and restoring files.
+
+**For local/hybrid nodes:**
+1. Navigate to **Restore** in the sidebar
+2. Select "Server (Local)" from the Client dropdown
+3. Browse backups or search for files
+4. Click **Restore** on individual files or **Restore All** for an entire backup
+
+**For remote client backups (cross-client restore):**
+
+When you select a remote client from the Client dropdown, the Web UI shows the **Remote Client Restore** panel:
+
+1. **Passphrase** — Enter the encryption passphrase for the source client. This is used in memory only to derive the decryption key and is never stored.
+2. **Destination** — The base directory where restored files will be written (e.g., `/tmp/restored`).
+3. **Restore To** — Choose where the files are delivered:
+   - *Server (write to server filesystem)* — files are decrypted and written to the server's local disk at the Destination path.
+   - *\<client name\> (push to client)* — files are decrypted on the server and pushed over gRPC to the selected target client, which writes them to disk at the Destination path.
+4. **Search Query** — A file name, path, or glob pattern to match (e.g., `*.go`, `report.pdf`, `/home/user/Documents/`).
+
+Then click:
+- **Restore by Query** — restores all files matching the search query
+- **Restore Entire Backup** — restores all files from the selected backup ID (select one from the backup table first)
+
+You can also browse/search the remote client's backup files in the table below and click **Restore** on individual files — when a passphrase is entered, these buttons automatically use the remote restore endpoint.
+
+**Key points:**
+- The passphrase verification happens immediately — if it's wrong, you get an error before any restore begins
+- Restore operations run in the background; progress appears in the Activity feed (SSE)
+- The "Restore To" dropdown only shows online clients — the target must be connected
+
+### CLI Restore
+
+See the [CLI Reference](CLI.md#tergum-restore) for full details on `tergum restore` including `--client` and `--target` flags.
+
+Quick reference:
+
+```bash
+# Local restore (client pulls from server)
+TERGUM_PASSPHRASE=mypass tergum restore "*.go" --dest /tmp/restored
+
+# Server-side restore (files land on server)
+TERGUM_PASSPHRASE=clientpass tergum restore --client fedora --path "report.pdf" --dest /tmp/restored
+
+# Cross-client restore (push from source to target client)
+TERGUM_PASSPHRASE=clientpass tergum restore --client fedora --target ubuntu --path "/home/user/docs/" --dest /tmp/restored
+```
 
 ---
 
