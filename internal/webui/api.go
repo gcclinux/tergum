@@ -2008,8 +2008,7 @@ func (s *Server) handleAPIRestoreRemote(w http.ResponseWriter, r *http.Request) 
 	}
 
 	if err := r.ParseForm(); err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, `{"error":"invalid form data"}`)
+		writeRemoteRestoreJSON(w, map[string]string{"error": "invalid form data"})
 		return
 	}
 
@@ -2023,18 +2022,15 @@ func (s *Server) handleAPIRestoreRemote(w http.ResponseWriter, r *http.Request) 
 
 	// Validate required fields.
 	if clientID == "" || clientID == "local" || clientID == "server" {
-		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, `{"error":"A remote client_id is required for remote restore."}`)
+		writeRemoteRestoreJSON(w, map[string]string{"error": "A remote client_id is required for remote restore."})
 		return
 	}
 	if passphrase == "" {
-		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, `{"error":"Encryption passphrase is required to decrypt remote client backups."}`)
+		writeRemoteRestoreJSON(w, map[string]string{"error": "Encryption passphrase is required to decrypt remote client backups."})
 		return
 	}
 	if hash == "" && backupID == "" && query == "" {
-		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, `{"error":"Provide a hash, backup_id, or search query."}`)
+		writeRemoteRestoreJSON(w, map[string]string{"error": "Provide a hash, backup_id, or search query."})
 		return
 	}
 	if dest == "" {
@@ -2044,8 +2040,7 @@ func (s *Server) handleAPIRestoreRemote(w http.ResponseWriter, r *http.Request) 
 	// Open client database.
 	repo, closeFunc, err := s.getRepoForClient(r.Context(), clientID)
 	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprintf(w, `{"error":"Failed to open client database: %s"}`, escapeJS(err.Error()))
+		writeRemoteRestoreJSON(w, map[string]string{"error": fmt.Sprintf("Failed to open client database: %v", err)})
 		return
 	}
 
@@ -2081,8 +2076,7 @@ func (s *Server) handleAPIRestoreRemote(w http.ResponseWriter, r *http.Request) 
 
 	if len(salt) == 0 {
 		closeFunc()
-		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, `{"error":"Could not find encryption salt for this client. Ensure the client has synced its database to the server."}`)
+		writeRemoteRestoreJSON(w, map[string]string{"error": "Could not find encryption salt for this client. Ensure the client has synced its database to the server."})
 		return
 	}
 
@@ -2090,8 +2084,7 @@ func (s *Server) handleAPIRestoreRemote(w http.ResponseWriter, r *http.Request) 
 	masterKey, err := encryptor.DeriveKey(passphrase, salt)
 	if err != nil {
 		closeFunc()
-		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprintf(w, `{"error":"Key derivation failed: %s"}`, escapeJS(err.Error()))
+		writeRemoteRestoreJSON(w, map[string]string{"error": fmt.Sprintf("Key derivation failed: %v", err)})
 		return
 	}
 
@@ -2100,8 +2093,7 @@ func (s *Server) handleAPIRestoreRemote(w http.ResponseWriter, r *http.Request) 
 		valid, verifyErr := encryptor.VerifyMasterKey(masterKey, verifyData)
 		if verifyErr != nil || !valid {
 			closeFunc()
-			w.Header().Set("Content-Type", "application/json")
-			fmt.Fprint(w, `{"error":"Invalid passphrase: decryption key verification failed. Please check the passphrase for this client."}`)
+			writeRemoteRestoreJSON(w, map[string]string{"error": "Invalid passphrase: decryption key verification failed. Please check the passphrase for this client."})
 			return
 		}
 	} else {
@@ -2121,8 +2113,7 @@ func (s *Server) handleAPIRestoreRemote(w http.ResponseWriter, r *http.Request) 
 				valid, verifyErr := encryptor.VerifyMasterKey(masterKey, strings.TrimSpace(string(verifyBytes)))
 				if verifyErr != nil || !valid {
 					closeFunc()
-					w.Header().Set("Content-Type", "application/json")
-					fmt.Fprint(w, `{"error":"Invalid passphrase: decryption key verification failed. Please check the passphrase for this client."}`)
+					writeRemoteRestoreJSON(w, map[string]string{"error": "Invalid passphrase: decryption key verification failed. Please check the passphrase for this client."})
 					return
 				}
 			}
@@ -2146,17 +2137,39 @@ func (s *Server) handleAPIRestoreRemote(w http.ResponseWriter, r *http.Request) 
 
 	if storageDir == "" {
 		closeFunc()
-		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, `{"error":"Storage directory not configured on server."}`)
+		writeRemoteRestoreJSON(w, map[string]string{"error": "Storage directory not configured on server."})
 		return
 	}
 
 	// Run restore in background.
 	go s.runRemoteRestore(repo, closeFunc, encryptor, masterKey, storageDir, clientID, hash, filePath, backupID, query, dest)
 
+	// Build an informative message showing the actual server path where files will land.
+	var msg string
+	if query != "" {
+		// For query restores, show the resolved base path as best we can.
+		resolvedExample := resolveDestination(dest, query)
+		msg = fmt.Sprintf("Remote restore started for client '%s' back to server location %s", clientID, filepath.Dir(resolvedExample))
+	} else if filePath != "" {
+		resolved := resolveDestination(dest, filePath)
+		msg = fmt.Sprintf("Remote restore started for client '%s' back to server location %s", clientID, filepath.Dir(resolved))
+	} else {
+		// Full backup restore — files will be under dest with original structure.
+		absDest, _ := filepath.Abs(dest)
+		msg = fmt.Sprintf("Remote restore started for client '%s' back to server location %s", clientID, absDest)
+	}
+
+	writeRemoteRestoreJSON(w, map[string]string{
+		"status":  "started",
+		"dest":    dest,
+		"message": msg,
+	})
+}
+
+// writeRemoteRestoreJSON writes a JSON response with proper encoding (handles special chars in paths).
+func writeRemoteRestoreJSON(w http.ResponseWriter, data map[string]string) {
 	w.Header().Set("Content-Type", "application/json")
-	msg := fmt.Sprintf("Remote restore started for client '%s' to %s", clientID, dest)
-	fmt.Fprintf(w, `{"status":"started","dest":"%s","message":"%s"}`, escapeJS(dest), escapeJS(msg))
+	json.NewEncoder(w).Encode(data)
 }
 
 // runRemoteRestore performs a remote client restore operation in the background.
