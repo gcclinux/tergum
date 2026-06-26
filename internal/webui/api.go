@@ -2,6 +2,7 @@ package webui
 
 import (
 	"context"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"html"
@@ -1415,7 +1416,6 @@ func (s *Server) handleAPIClientBackupStop(w http.ResponseWriter, r *http.Reques
 	})
 }
 
-
 // handleAPIClientWatcherStart handles POST /api/clients/{id}/watcher/start.
 func (s *Server) handleAPIClientWatcherStart(w http.ResponseWriter, r *http.Request, clientID string) {
 	if s.clientConnector == nil {
@@ -1996,4 +1996,335 @@ func (s *Server) getRepoForClient(ctx context.Context, clientID string) (db.Repo
 	}
 
 	return repo, closeFunc, nil
+}
+
+// handleAPIRestoreRemote handles POST /api/restore/remote — restores files from a remote client's
+// backup using the client's encryption passphrase provided at request time.
+// This enables cross-client restores from the WebUI without requiring CLI access.
+func (s *Server) handleAPIRestoreRemote(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	if err := r.ParseForm(); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"error":"invalid form data"}`)
+		return
+	}
+
+	clientID := strings.TrimSpace(r.FormValue("client_id"))
+	passphrase := r.FormValue("passphrase")
+	backupID := strings.TrimSpace(r.FormValue("backup_id"))
+	query := strings.TrimSpace(r.FormValue("query"))
+	dest := strings.TrimSpace(r.FormValue("dest"))
+	hash := strings.TrimSpace(r.FormValue("hash"))
+	filePath := strings.TrimSpace(r.FormValue("path"))
+
+	// Validate required fields.
+	if clientID == "" || clientID == "local" || clientID == "server" {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"error":"A remote client_id is required for remote restore."}`)
+		return
+	}
+	if passphrase == "" {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"error":"Encryption passphrase is required to decrypt remote client backups."}`)
+		return
+	}
+	if hash == "" && backupID == "" && query == "" {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"error":"Provide a hash, backup_id, or search query."}`)
+		return
+	}
+	if dest == "" {
+		dest = "/tmp/tergum-restored"
+	}
+
+	// Open client database.
+	repo, closeFunc, err := s.getRepoForClient(r.Context(), clientID)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprintf(w, `{"error":"Failed to open client database: %s"}`, escapeJS(err.Error()))
+		return
+	}
+
+	// Derive master key from passphrase + client salt.
+	// First try to get salt from the client's database (encryption_salt config key).
+	var salt []byte
+	if saltHex, err := repo.GetConfig(r.Context(), "encryption_salt"); err == nil && saltHex != "" {
+		if s, err := hex.DecodeString(saltHex); err == nil {
+			salt = s
+		}
+	}
+
+	// Fallback: try the client salt file on disk.
+	if len(salt) == 0 {
+		var dbDir string
+		if s.fullCfg != nil {
+			dbDir = filepath.Dir(s.fullCfg.Database.Path)
+		} else if s.configPath != "" {
+			cfg, err := config.Load(s.configPath)
+			if err == nil {
+				dbDir = filepath.Dir(cfg.Database.Path)
+			}
+		}
+		if dbDir != "" {
+			clientSaltPath := filepath.Join(dbDir, "clients", clientID+".salt")
+			if saltHex, err := os.ReadFile(clientSaltPath); err == nil {
+				if s, err := hex.DecodeString(strings.TrimSpace(string(saltHex))); err == nil {
+					salt = s
+				}
+			}
+		}
+	}
+
+	if len(salt) == 0 {
+		closeFunc()
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"error":"Could not find encryption salt for this client. Ensure the client has synced its database to the server."}`)
+		return
+	}
+
+	encryptor := cryptoPkg.NewEncryptor()
+	masterKey, err := encryptor.DeriveKey(passphrase, salt)
+	if err != nil {
+		closeFunc()
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprintf(w, `{"error":"Key derivation failed: %s"}`, escapeJS(err.Error()))
+		return
+	}
+
+	// Verify the derived key against key_verify if available in the client DB.
+	if verifyData, err := repo.GetConfig(r.Context(), "key_verify"); err == nil && verifyData != "" {
+		valid, verifyErr := encryptor.VerifyMasterKey(masterKey, verifyData)
+		if verifyErr != nil || !valid {
+			closeFunc()
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprint(w, `{"error":"Invalid passphrase: decryption key verification failed. Please check the passphrase for this client."}`)
+			return
+		}
+	} else {
+		// Fallback: check for key_verify file on disk (clients/{id}.key_verify).
+		var dbDir string
+		if s.fullCfg != nil {
+			dbDir = filepath.Dir(s.fullCfg.Database.Path)
+		} else if s.configPath != "" {
+			cfg, err := config.Load(s.configPath)
+			if err == nil {
+				dbDir = filepath.Dir(cfg.Database.Path)
+			}
+		}
+		if dbDir != "" {
+			verifyPath := filepath.Join(dbDir, "clients", clientID+".key_verify")
+			if verifyBytes, err := os.ReadFile(verifyPath); err == nil {
+				valid, verifyErr := encryptor.VerifyMasterKey(masterKey, strings.TrimSpace(string(verifyBytes)))
+				if verifyErr != nil || !valid {
+					closeFunc()
+					w.Header().Set("Content-Type", "application/json")
+					fmt.Fprint(w, `{"error":"Invalid passphrase: decryption key verification failed. Please check the passphrase for this client."}`)
+					return
+				}
+			}
+		}
+	}
+
+	// Determine storage directory.
+	var storageDir string
+	if bt, ok := s.backupTrigger.(*LocalBackupTrigger); ok {
+		storageDir = bt.storageDir
+	}
+	if storageDir == "" && s.configPath != "" {
+		cfg, err := config.Load(s.configPath)
+		if err == nil {
+			storageDir = cfg.StorageDir()
+		}
+	}
+	if storageDir == "" && s.fullCfg != nil {
+		storageDir = s.fullCfg.StorageDir()
+	}
+
+	if storageDir == "" {
+		closeFunc()
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"error":"Storage directory not configured on server."}`)
+		return
+	}
+
+	// Run restore in background.
+	go s.runRemoteRestore(repo, closeFunc, encryptor, masterKey, storageDir, clientID, hash, filePath, backupID, query, dest)
+
+	w.Header().Set("Content-Type", "application/json")
+	msg := fmt.Sprintf("Remote restore started for client '%s' to %s", clientID, dest)
+	fmt.Fprintf(w, `{"status":"started","dest":"%s","message":"%s"}`, escapeJS(dest), escapeJS(msg))
+}
+
+// runRemoteRestore performs a remote client restore operation in the background.
+// It uses the provided passphrase-derived master key to decrypt the client's backup data.
+func (s *Server) runRemoteRestore(repo db.Repository, closeFunc func(), encryptor *cryptoPkg.AESEncryptor, masterKey []byte, storageDir, clientID, hash, filePath, backupID, query, dest string) {
+	defer closeFunc()
+	ctx := context.Background()
+
+	// Create restore engine with local CAS data source and client's master key.
+	source := &localDataSource{storageDir: storageDir}
+	engine := restore.NewRestoreEngine(source, repo, encryptor, masterKey)
+
+	if hash != "" {
+		// Single file restore by hash.
+		destination := resolveDestination(dest, filePath)
+		err := engine.RestoreFile(ctx, hash, destination)
+		if err != nil {
+			slog.Error("remote restore: file restore failed", "client_id", clientID, "hash", hash, "error", err)
+			if s.broker != nil {
+				s.broker.Publish(ActivityEvent{
+					Type:    "restore_failed",
+					Message: fmt.Sprintf("Remote restore failed (client %s): %s - %v", clientID, filePath, err),
+				})
+			}
+			return
+		}
+		slog.Info("remote restore: file restored", "client_id", clientID, "path", destination)
+		if s.broker != nil {
+			s.broker.Publish(ActivityEvent{
+				Type:    "restore_completed",
+				Message: fmt.Sprintf("Remote restore (client %s): %s to %s", clientID, filePath, dest),
+			})
+		}
+		return
+	}
+
+	if backupID != "" && query == "" {
+		// Restore entire backup set.
+		manifest, err := repo.GetManifest(ctx, backupID)
+		if err != nil {
+			slog.Error("remote restore: get manifest failed", "client_id", clientID, "error", err)
+			if s.broker != nil {
+				s.broker.Publish(ActivityEvent{
+					Type:    "restore_failed",
+					Message: fmt.Sprintf("Remote restore failed (client %s): could not load manifest - %v", clientID, err),
+				})
+			}
+			return
+		}
+
+		var entries []restore.RestoreEntry
+		for _, m := range manifest {
+			found, err := repo.FindByHash(ctx, m.Blake3Hash)
+			if err != nil || len(found) == 0 {
+				continue
+			}
+			entry := found[0]
+			destination := resolveDestination(dest, entry.FilePath)
+			entries = append(entries, restore.RestoreEntry{
+				Hash:        entry.Blake3Hash,
+				FileName:    entry.FileName,
+				Destination: destination,
+				BackupID:    backupID,
+				Metadata:    &entry,
+			})
+		}
+
+		if len(entries) == 0 {
+			slog.Warn("remote restore: no files in backup", "client_id", clientID, "backup_id", backupID)
+			if s.broker != nil {
+				s.broker.Publish(ActivityEvent{
+					Type:    "restore_failed",
+					Message: fmt.Sprintf("Remote restore (client %s): no files found in backup %s", clientID, backupID),
+				})
+			}
+			return
+		}
+
+		result, err := engine.RestoreBatch(ctx, entries, 4)
+		if err != nil {
+			slog.Error("remote restore: batch restore failed", "client_id", clientID, "error", err)
+			if s.broker != nil {
+				s.broker.Publish(ActivityEvent{
+					Type:    "restore_failed",
+					Message: fmt.Sprintf("Remote restore failed (client %s): %v", clientID, err),
+				})
+			}
+			return
+		}
+		slog.Info("remote restore complete", "client_id", clientID, "restored", result.Restored, "failed", result.Failed)
+		if s.broker != nil {
+			s.broker.Publish(ActivityEvent{
+				Type:    "restore_completed",
+				Message: fmt.Sprintf("Remote restore (client %s): %d files restored to %s (%d failed)", clientID, result.Restored, dest, result.Failed),
+			})
+		}
+		return
+	}
+
+	// Search by query and restore matching files.
+	if query != "" {
+		searchQuery := restore.SearchQuery{}
+		if strings.Contains(query, "/") || strings.Contains(query, "\\") {
+			searchQuery.Path = "%" + query + "%"
+		} else if strings.Contains(query, "*") || strings.Contains(query, "?") {
+			searchQuery.Pattern = query
+		} else {
+			searchQuery.Name = query
+		}
+
+		results, err := engine.Search(ctx, searchQuery)
+		if err != nil {
+			slog.Error("remote restore: search failed", "client_id", clientID, "query", query, "error", err)
+			if s.broker != nil {
+				s.broker.Publish(ActivityEvent{
+					Type:    "restore_failed",
+					Message: fmt.Sprintf("Remote restore search failed (client %s): %v", clientID, err),
+				})
+			}
+			return
+		}
+
+		if len(results) == 0 {
+			slog.Warn("remote restore: no files matching query", "client_id", clientID, "query", query)
+			if s.broker != nil {
+				s.broker.Publish(ActivityEvent{
+					Type:    "restore_failed",
+					Message: fmt.Sprintf("Remote restore (client %s): no files matching '%s'", clientID, query),
+				})
+			}
+			return
+		}
+
+		// Deduplicate by hash.
+		seen := make(map[string]bool)
+		var entries []restore.RestoreEntry
+		for _, r := range results {
+			if seen[r.Blake3Hash] {
+				continue
+			}
+			seen[r.Blake3Hash] = true
+			destination := resolveDestination(dest, r.FilePath)
+			entry := r
+			entries = append(entries, restore.RestoreEntry{
+				Hash:        r.Blake3Hash,
+				FileName:    r.FileName,
+				Destination: destination,
+				Metadata:    &entry,
+			})
+		}
+
+		result, err := engine.RestoreBatch(ctx, entries, 4)
+		if err != nil {
+			slog.Error("remote restore: batch restore failed", "client_id", clientID, "error", err)
+			if s.broker != nil {
+				s.broker.Publish(ActivityEvent{
+					Type:    "restore_failed",
+					Message: fmt.Sprintf("Remote restore failed (client %s): %v", clientID, err),
+				})
+			}
+			return
+		}
+		slog.Info("remote restore complete", "client_id", clientID, "query", query, "restored", result.Restored, "failed", result.Failed)
+		if s.broker != nil {
+			s.broker.Publish(ActivityEvent{
+				Type:    "restore_completed",
+				Message: fmt.Sprintf("Remote restore (client %s): %d files matching '%s' restored to %s (%d failed)", clientID, result.Restored, query, dest, result.Failed),
+			})
+		}
+	}
 }

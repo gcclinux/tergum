@@ -322,6 +322,7 @@ func (s *Server) routes() http.Handler {
 	authed.HandleFunc("/api/restore/backups", s.handleAPIRestoreBackups)
 	authed.HandleFunc("/api/restore/files", s.handleAPIRestoreFiles)
 	authed.HandleFunc("/api/restore/run", s.handleAPIRestoreFile)
+	authed.HandleFunc("/api/restore/remote", s.handleAPIRestoreRemote)
 	authed.HandleFunc("/api/restore/jobs", s.handleAPIRestoreJobs)
 
 	// Dashboard API.
