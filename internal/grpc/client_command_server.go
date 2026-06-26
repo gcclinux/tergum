@@ -416,8 +416,17 @@ func (s *ClientCommandServer) PushRestore(stream proto.CommandService_PushRestor
 			}
 
 			// Determine destination path.
+			// If destBase is set, resolve the file's path under it (same logic as CLI --dest).
 			destPath := currentHeader.FilePath
-			if destBase != "" && destPath == "" {
+			if destBase != "" && destPath != "" {
+				// Strip volume/leading slashes and join under destBase.
+				vol := filepath.VolumeName(destPath)
+				rel := destPath[len(vol):]
+				for len(rel) > 0 && (rel[0] == '/' || rel[0] == '\\') {
+					rel = rel[1:]
+				}
+				destPath = filepath.Join(destBase, rel)
+			} else if destBase != "" && destPath == "" {
 				destPath = filepath.Join(destBase, currentHeader.FileName)
 			}
 			if destPath == "" {

@@ -2467,9 +2467,7 @@ func (s *Server) runRemoteRestorePush(ctx context.Context, repo db.Repository, e
 			fileData = decrypted
 		}
 
-		// Build destination path on target client.
-		destPath := resolveDestination(dest, entry.FilePath)
-
+		// Send the original file path — the target client resolves with destBase + its own OS filepath.
 		var perm uint32
 		if entry.Permissions != nil {
 			perm = uint32(*entry.Permissions)
@@ -2478,7 +2476,7 @@ func (s *Server) runRemoteRestorePush(ctx context.Context, repo db.Repository, e
 		pushFiles = append(pushFiles, PushRestoreFile{
 			Hash:          entry.Blake3Hash,
 			FileName:      entry.FileName,
-			DestPath:      destPath,
+			DestPath:      entry.FilePath, // original path, NOT resolved on server
 			Data:          fileData,
 			Permissions:   perm,
 			Owner:         entry.Owner,

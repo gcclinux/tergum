@@ -481,7 +481,7 @@ func runRestorePushToTarget(ctx context.Context, cfg *config.Config, source rest
 		header := &proto.FileHeader{
 			Blake3Hash: entry.Hash,
 			FileName:   entry.FileName,
-			FilePath:   entry.Destination,
+			FilePath:   entry.Metadata.FilePath, // original path — target client resolves with its own OS
 			FileSize:   int64(len(fileData)),
 		}
 		if entry.Metadata != nil {
