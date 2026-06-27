@@ -33,6 +33,7 @@ type Config struct {
 type NodeConfig struct {
 	Role     string `toml:"role"`
 	Hostname string `toml:"hostname"`
+	NATMode  bool   `toml:"nat_mode"` // when true, client uses a command tunnel instead of listening for inbound connections
 }
 
 // ServerConfig defines connection parameters for the Tergum server.

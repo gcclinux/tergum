@@ -6,6 +6,7 @@ import (
 	"crypto/x509"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	grpcpkg "github.com/gcclinux/tergum/internal/grpc"
@@ -18,17 +19,21 @@ import (
 // RemoteClientConnector implements ClientConnector by connecting to remote
 // client nodes via gRPC. It uses the registry to look up client addresses
 // and TLS configuration for mTLS authentication.
+// When a client has an active command tunnel (NAT mode), commands are dispatched
+// via the tunnel instead of dialing back to the client.
 type RemoteClientConnector struct {
-	registry *registry.Registry
-	tlsCfg   *tls.Config
-	logger   *slog.Logger
+	registry  *registry.Registry
+	tlsCfg    *tls.Config
+	tunnelHub *grpcpkg.TunnelHub
+	logger    *slog.Logger
 }
 
 // RemoteClientConnectorConfig holds configuration for the RemoteClientConnector.
 type RemoteClientConnectorConfig struct {
-	Registry *registry.Registry
+	Registry  *registry.Registry
 	TLSCfg   *tls.Config
-	Logger   *slog.Logger
+	TunnelHub *grpcpkg.TunnelHub // optional; enables NAT tunnel dispatch
+	Logger    *slog.Logger
 }
 
 // NewRemoteClientConnector creates a new RemoteClientConnector.
@@ -38,14 +43,25 @@ func NewRemoteClientConnector(cfg RemoteClientConnectorConfig) *RemoteClientConn
 		logger = slog.Default()
 	}
 	return &RemoteClientConnector{
-		registry: cfg.Registry,
-		tlsCfg:   cfg.TLSCfg,
-		logger:   logger,
+		registry:  cfg.Registry,
+		tlsCfg:    cfg.TLSCfg,
+		tunnelHub: cfg.TunnelHub,
+		logger:    logger,
 	}
 }
 
 // TriggerClientBackup connects to the client and sends a TriggerBackup RPC.
 func (c *RemoteClientConnector) TriggerClientBackup(ctx context.Context, clientID string) error {
+	// Try tunnel first if available.
+	if c.tunnelHub != nil && c.tunnelHub.HasTunnel(clientID) {
+		_, err := c.tunnelHub.TriggerBackup(ctx, clientID, &proto.BackupRequest{
+			Level:       proto.BackupLevel_AUTO,
+			ClientId:    clientID,
+			InitiatedBy: "webui",
+		})
+		return err
+	}
+
 	client, err := c.connectToClient(clientID)
 	if err != nil {
 		return err
@@ -61,6 +77,22 @@ func (c *RemoteClientConnector) TriggerClientBackup(ctx context.Context, clientI
 // StartClientWatcher connects to the client and sends a StartWatcher RPC.
 // On success, it updates the registry watcher status.
 func (c *RemoteClientConnector) StartClientWatcher(ctx context.Context, clientID string) error {
+	// Try tunnel first if available.
+	if c.tunnelHub != nil && c.tunnelHub.HasTunnel(clientID) {
+		resp, err := c.tunnelHub.StartWatcher(ctx, clientID, &proto.WatcherRequest{ClientId: clientID})
+		if err != nil {
+			return fmt.Errorf("start watcher on client %s via tunnel: %w", clientID, err)
+		}
+		if !resp.Success {
+			return fmt.Errorf("start watcher on client %s: %s", clientID, resp.Message)
+		}
+		if setErr := c.registry.SetWatcherActive(clientID, true); setErr != nil {
+			c.logger.Warn("failed to update watcher status in registry",
+				"client_id", clientID, "error", setErr)
+		}
+		return nil
+	}
+
 	client, err := c.connectToClient(clientID)
 	if err != nil {
 		return err
@@ -87,6 +119,22 @@ func (c *RemoteClientConnector) StartClientWatcher(ctx context.Context, clientID
 // StopClientWatcher connects to the client and sends a StopWatcher RPC.
 // On success, it updates the registry watcher status.
 func (c *RemoteClientConnector) StopClientWatcher(ctx context.Context, clientID string) error {
+	// Try tunnel first if available.
+	if c.tunnelHub != nil && c.tunnelHub.HasTunnel(clientID) {
+		resp, err := c.tunnelHub.StopWatcher(ctx, clientID, &proto.WatcherRequest{ClientId: clientID})
+		if err != nil {
+			return fmt.Errorf("stop watcher on client %s via tunnel: %w", clientID, err)
+		}
+		if !resp.Success {
+			return fmt.Errorf("stop watcher on client %s: %s", clientID, resp.Message)
+		}
+		if setErr := c.registry.SetWatcherActive(clientID, false); setErr != nil {
+			c.logger.Warn("failed to update watcher status in registry",
+				"client_id", clientID, "error", setErr)
+		}
+		return nil
+	}
+
 	client, err := c.connectToClient(clientID)
 	if err != nil {
 		return err
@@ -112,6 +160,22 @@ func (c *RemoteClientConnector) StopClientWatcher(ctx context.Context, clientID 
 
 // GetClientStatus connects to the client and sends a GetStatus RPC.
 func (c *RemoteClientConnector) GetClientStatus(ctx context.Context, clientID string) (*ClientStatusInfo, error) {
+	// Try tunnel first if available.
+	if c.tunnelHub != nil && c.tunnelHub.HasTunnel(clientID) {
+		resp, err := c.tunnelHub.GetStatus(ctx, clientID, &proto.StatusRequest{ClientId: clientID})
+		if err != nil {
+			return nil, fmt.Errorf("get status from client %s via tunnel: %w", clientID, err)
+		}
+		return &ClientStatusInfo{
+			Status:           resp.Status,
+			BackupID:         resp.BackupId,
+			FilesProcessed:   resp.FilesProcessed,
+			BytesTransferred: resp.BytesTransferred,
+			StartedAt:        resp.StartedAt,
+			Message:          resp.Message,
+		}, nil
+	}
+
 	client, err := c.connectToClient(clientID)
 	if err != nil {
 		return nil, err
@@ -134,6 +198,12 @@ func (c *RemoteClientConnector) GetClientStatus(ctx context.Context, clientID st
 
 // StopClientBackup connects to the client and sends a StopBackup RPC.
 func (c *RemoteClientConnector) StopClientBackup(ctx context.Context, clientID string) error {
+	// Try tunnel first if available.
+	if c.tunnelHub != nil && c.tunnelHub.HasTunnel(clientID) {
+		_, err := c.tunnelHub.StopBackup(ctx, clientID, &proto.StopRequest{ClientId: clientID})
+		return err
+	}
+
 	client, err := c.connectToClient(clientID)
 	if err != nil {
 		return err
@@ -156,6 +226,12 @@ func (c *RemoteClientConnector) connectToClient(clientID string) (*grpcpkg.Tergu
 	}
 	if ci.Status != "online" {
 		return nil, fmt.Errorf("client %q is offline", clientID)
+	}
+
+	// If the address is a tunnel marker, the client is NAT and should be
+	// reached via tunnel, not direct connection.
+	if strings.HasPrefix(ci.Address, "tunnel://") {
+		return nil, fmt.Errorf("client %q is behind NAT (use tunnel)", clientID)
 	}
 
 	// Connect to the client's command port using mTLS.

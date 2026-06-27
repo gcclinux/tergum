@@ -36,6 +36,7 @@ type CommandServer struct {
 	deletionEngine  DeletionEngine
 	retentionEngine RetentionEngine
 	registry        *registry.Registry
+	tunnelHub       *TunnelHub
 	backupSem       *Semaphore
 	version         string
 	startedAt       time.Time
@@ -48,6 +49,7 @@ type CommandServerConfig struct {
 	DeletionEngine  DeletionEngine
 	RetentionEngine RetentionEngine
 	Registry        *registry.Registry // optional; nil in local "both" mode
+	TunnelHub       *TunnelHub         // optional; nil disables command tunnels
 	MaxBackups      int                // max concurrent backups, default 4
 	Version         string
 }
@@ -70,6 +72,7 @@ func NewCommandServer(cfg CommandServerConfig) *CommandServer {
 		deletionEngine:  cfg.DeletionEngine,
 		retentionEngine: cfg.RetentionEngine,
 		registry:        cfg.Registry,
+		tunnelHub:       cfg.TunnelHub,
 		backupSem:       NewSemaphore(maxBackups),
 		version:         version,
 		startedAt:       time.Now(),
@@ -354,6 +357,67 @@ func clientIDFromContext(ctx context.Context) (string, error) {
 	}
 
 	return "", fmt.Errorf("no client identity found")
+}
+
+// CommandTunnel handles bidirectional command tunnels from NAT clients.
+// The client opens this stream and keeps it alive; the server pushes commands
+// and receives responses over it. This eliminates the need for inbound
+// connectivity to the client.
+func (s *CommandServer) CommandTunnel(stream proto.CommandService_CommandTunnelServer) error {
+	// The first message from the client is always a registration response
+	// with RequestId "__register__" that carries the clientID.
+	firstMsg, err := stream.Recv()
+	if err != nil {
+		return fmt.Errorf("tunnel: waiting for registration: %w", err)
+	}
+
+	var clientID string
+	if firstMsg.RequestId == "__register__" && firstMsg.PingResponse != nil {
+		clientID = firstMsg.PingResponse.Version // Version field carries clientID during registration
+	}
+
+	// Fallback: try to get clientID from the mTLS certificate or metadata.
+	if clientID == "" {
+		cn, cnErr := clientIDFromContext(stream.Context())
+		if cnErr == nil && cn != "" {
+			clientID = cn
+		}
+	}
+
+	if clientID == "" {
+		return fmt.Errorf("tunnel: client did not identify itself")
+	}
+
+	if s.tunnelHub == nil {
+		return fmt.Errorf("tunnel: tunnel hub not configured on this server")
+	}
+
+	// Register the tunnel.
+	s.tunnelHub.Register(clientID, stream)
+	defer s.tunnelHub.Unregister(clientID)
+
+	// Also mark the client as online in the registry if available.
+	if s.registry != nil {
+		// Register with a special "tunnel" address marker so the connector
+		// knows to use the tunnel instead of dialing directly.
+		_, _ = s.registry.Register(clientID, "tunnel://"+clientID)
+	}
+
+	// Read responses from the client and deliver them to waiting callers.
+	for {
+		resp, recvErr := stream.Recv()
+		if recvErr != nil {
+			return recvErr // stream closed or error — client disconnected
+		}
+
+		s.tunnelHub.DeliverResponse(clientID, resp)
+	}
+}
+
+// TunnelHub returns the server's TunnelHub for use by other components
+// (e.g., the RemoteClientConnector) to send commands via tunnel.
+func (s *CommandServer) TunnelHub() *TunnelHub {
+	return s.tunnelHub
 }
 
 // Ensure CommandServer satisfies the interface at compile time.

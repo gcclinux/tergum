@@ -196,6 +196,7 @@ func runInteractiveSetup(wiz *setupWizard) error {
 
 	// 2b. Server address (if client or hybrid)
 	var serverAddress string
+	var natMode bool
 	if role == "client" || role == "hybrid" {
 		if role == "client" {
 			for {
@@ -211,6 +212,14 @@ func runInteractiveSetup(wiz *setupWizard) error {
 				}
 				break
 			}
+
+			// NAT mode: ask if the client is behind NAT and cannot accept inbound connections.
+			fmt.Fprintln(wiz.writer)
+			fmt.Fprintln(wiz.writer, "NAT Mode: Enable this if the server cannot directly connect back to")
+			fmt.Fprintln(wiz.writer, "this client (e.g., client and server are on different subnets without")
+			fmt.Fprintln(wiz.writer, "port forwarding). The client will maintain an outbound tunnel to the")
+			fmt.Fprintln(wiz.writer, "server for receiving commands.")
+			natMode = wiz.promptYesNo("Enable NAT mode?", false)
 		} else {
 			serverAddress = wiz.prompt("Server address (hostname or IP)", "localhost")
 		}
@@ -487,6 +496,7 @@ func runInteractiveSetup(wiz *setupWizard) error {
 
 	// 10. Write TOML configuration file
 	cfg := buildConfig(role, serverAddress, clientHostname, storagePath, certsDir, configDir, generateCerts)
+	cfg.Node.NATMode = natMode
 	cfg.Watcher.Enabled = watcherEnabled
 	cfg.Scheduler.FullBackupCron = fullBackupCron
 	cfg.Scheduler.AutoBackupCron = autoBackupCron
@@ -539,6 +549,11 @@ func runInteractiveSetup(wiz *setupWizard) error {
 	fmt.Fprintln(wiz.writer, "Setup complete! Next steps:")
 	if role == "client" {
 		fmt.Fprintln(wiz.writer, "  tergum client    — start the client daemon (required for backups)")
+		if natMode {
+			fmt.Fprintln(wiz.writer)
+			fmt.Fprintln(wiz.writer, "  NAT mode enabled: the client will maintain an outbound command")
+			fmt.Fprintln(wiz.writer, "  tunnel to the server. No inbound ports need to be open on this machine.")
+		}
 	} else {
 		fmt.Fprintln(wiz.writer, "  tergum server    — start the server (required for backups)")
 	}
@@ -555,6 +570,7 @@ func runInteractiveSetup(wiz *setupWizard) error {
 			"include_paths":    includePaths,
 			"exclude_patterns": excludePatterns,
 			"watcher_enabled":  watcherEnabled,
+			"nat_mode":         natMode,
 		},
 		"",
 	)

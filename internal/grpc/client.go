@@ -277,6 +277,14 @@ func (c *TergumClient) PushRestore(ctx context.Context) (proto.CommandService_Pu
 	return c.command.PushRestore(ctx)
 }
 
+// CommandTunnel opens a bidirectional command tunnel stream to the server.
+// Used by NAT clients to receive commands from the server without inbound connectivity.
+// Streaming RPCs are not retried — the caller manages the stream lifecycle.
+func (c *TergumClient) CommandTunnel(ctx context.Context) (proto.CommandService_CommandTunnelClient, error) {
+	ctx = c.contextWithMetadata(ctx)
+	return c.command.CommandTunnel(ctx)
+}
+
 // --- DataService Methods ---
 
 // Upload returns a streaming client for uploading file chunks.

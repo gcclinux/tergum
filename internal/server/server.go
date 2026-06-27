@@ -168,12 +168,14 @@ func (s *Server) Start(ctx context.Context) error {
 	backupEng := &noopBackupEngine{}
 
 	// Build gRPC command server.
+	tunnelHub := grpcpkg.NewTunnelHub(observe.Logger("tunnel-hub"))
 	cmdServer := grpcpkg.NewCommandServer(grpcpkg.CommandServerConfig{
 		BackupEngine:    backupEng,
 		Repo:            repo,
 		DeletionEngine:  nil, // wired separately when deletion adapter is complete
 		RetentionEngine: retEngine,
 		Registry:        reg,
+		TunnelHub:       tunnelHub,
 		MaxBackups:      s.cfg.Backup.MaxConcurrentUploads,
 		Version:         version.Version,
 	})
@@ -323,9 +325,10 @@ func (s *Server) Start(ctx context.Context) error {
 		webuiOpts = append(webuiOpts, webui.WithClientRegistry(reg))
 		if clientTLS != nil {
 			connector := webui.NewRemoteClientConnector(webui.RemoteClientConnectorConfig{
-				Registry: reg,
-				TLSCfg:   clientTLS,
-				Logger:   observe.Logger("client-connector"),
+				Registry:  reg,
+				TLSCfg:    clientTLS,
+				TunnelHub: tunnelHub,
+				Logger:    observe.Logger("client-connector"),
 			})
 			webuiOpts = append(webuiOpts, webui.WithClientConnector(connector))
 			s.logger.Info("remote client connector enabled")
@@ -586,6 +589,8 @@ func (s *Server) startClient(ctx context.Context) error {
 	})
 
 	// Start gRPC server for client-side CommandService on :7400.
+	// In NAT mode, we still start the local listener (useful for local CLI commands)
+	// but the server will reach us via the command tunnel, not this port.
 	creds := credentials.NewTLS(serverTLS)
 	s.grpcCmd = grpc.NewServer(grpc.Creds(creds))
 	proto.RegisterCommandServiceServer(s.grpcCmd, cmdHandler)
@@ -623,6 +628,11 @@ func (s *Server) startClient(ctx context.Context) error {
 	}
 	clientAddress := fmt.Sprintf("%s:%d", hostname, s.cfg.Server.CommandPort)
 
+	// In NAT mode, register with a tunnel:// address and start the command tunnel.
+	if s.cfg.Node.NATMode {
+		clientAddress = "tunnel://" + clientID
+	}
+
 	// 5. Send RegisterClient RPC.
 	_, regErr := serverClient.RegisterClient(ctx, clientID, clientAddress)
 	if regErr != nil {
@@ -640,6 +650,19 @@ func (s *Server) startClient(ctx context.Context) error {
 	// 6. Start heartbeat loop.
 	heartbeatCtx, heartbeatCancel := context.WithCancel(ctx)
 	go grpcpkg.StartHeartbeat(heartbeatCtx, serverClient, clientID, clientAddress, 30*time.Second)
+
+	// 6b. In NAT mode, start the command tunnel so the server can reach us.
+	if s.cfg.Node.NATMode {
+		tunnelCtx, tunnelCancel := context.WithCancel(ctx)
+		_ = tunnelCancel // will be cancelled when ctx is cancelled
+		go grpcpkg.StartTunnel(tunnelCtx, grpcpkg.TunnelClientConfig{
+			ServerClient:      serverClient,
+			ClientID:          clientID,
+			Handler:           cmdHandler,
+			ReconnectInterval: 5 * time.Second,
+		})
+		s.logger.Info("NAT command tunnel started", "client_id", clientID)
+	}
 
 	// 7. If watcher is enabled, start file watcher with RemoteServerConnection.
 	var fw watcher.Watcher

@@ -19,6 +19,7 @@ type CommandServiceClient interface {
 	StopWatcher(ctx context.Context, in *WatcherRequest, opts ...grpc.CallOption) (*WatcherResponse, error)
 	RegisterClient(ctx context.Context, in *RegisterRequest, opts ...grpc.CallOption) (*RegisterResponse, error)
 	PushRestore(ctx context.Context, opts ...grpc.CallOption) (CommandService_PushRestoreClient, error)
+	CommandTunnel(ctx context.Context, opts ...grpc.CallOption) (CommandService_CommandTunnelClient, error)
 }
 
 type commandServiceClient struct {
@@ -42,6 +43,7 @@ const (
 	CommandService_StopWatcher_FullMethodName      = "/tergum.v3.CommandService/StopWatcher"
 	CommandService_RegisterClient_FullMethodName   = "/tergum.v3.CommandService/RegisterClient"
 	CommandService_PushRestore_FullMethodName      = "/tergum.v3.CommandService/PushRestore"
+	CommandService_CommandTunnel_FullMethodName    = "/tergum.v3.CommandService/CommandTunnel"
 )
 
 func (c *commandServiceClient) TriggerBackup(ctx context.Context, in *BackupRequest, opts ...grpc.CallOption) (*BackupResponse, error) {
@@ -168,6 +170,37 @@ func (c *commandServiceClient) PushRestore(ctx context.Context, opts ...grpc.Cal
 	return &commandServicePushRestoreClient{stream}, nil
 }
 
+// CommandService_CommandTunnelClient is the bidirectional streaming interface for CommandTunnel.
+type CommandService_CommandTunnelClient interface {
+	Send(*TunnelResponse) error
+	Recv() (*TunnelCommand, error)
+	grpc.ClientStream
+}
+
+type commandServiceCommandTunnelClient struct {
+	grpc.ClientStream
+}
+
+func (x *commandServiceCommandTunnelClient) Send(m *TunnelResponse) error {
+	return x.ClientStream.SendMsg(m)
+}
+
+func (x *commandServiceCommandTunnelClient) Recv() (*TunnelCommand, error) {
+	m := new(TunnelCommand)
+	if err := x.ClientStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
+func (c *commandServiceClient) CommandTunnel(ctx context.Context, opts ...grpc.CallOption) (CommandService_CommandTunnelClient, error) {
+	stream, err := c.cc.NewStream(ctx, &CommandService_ServiceDesc.Streams[1], CommandService_CommandTunnel_FullMethodName, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &commandServiceCommandTunnelClient{stream}, nil
+}
+
 // CommandServiceServer is the server API for CommandService.
 type CommandServiceServer interface {
 	TriggerBackup(context.Context, *BackupRequest) (*BackupResponse, error)
@@ -181,6 +214,7 @@ type CommandServiceServer interface {
 	StopWatcher(context.Context, *WatcherRequest) (*WatcherResponse, error)
 	RegisterClient(context.Context, *RegisterRequest) (*RegisterResponse, error)
 	PushRestore(CommandService_PushRestoreServer) error
+	CommandTunnel(CommandService_CommandTunnelServer) error
 	mustEmbedUnimplementedCommandServiceServer()
 }
 
@@ -220,6 +254,9 @@ func (UnimplementedCommandServiceServer) RegisterClient(context.Context, *Regist
 func (UnimplementedCommandServiceServer) PushRestore(CommandService_PushRestoreServer) error {
 	return grpc.Errorf(12, "method PushRestore not implemented") //nolint:staticcheck
 }
+func (UnimplementedCommandServiceServer) CommandTunnel(CommandService_CommandTunnelServer) error {
+	return grpc.Errorf(12, "method CommandTunnel not implemented") //nolint:staticcheck
+}
 func (UnimplementedCommandServiceServer) mustEmbedUnimplementedCommandServiceServer() {}
 
 // UnsafeCommandServiceServer may be embedded to opt out of forward compatibility for this service.
@@ -249,6 +286,29 @@ func (x *commandServicePushRestoreServer) SendAndClose(m *PushRestoreResponse) e
 
 func (x *commandServicePushRestoreServer) Recv() (*FileChunk, error) {
 	m := new(FileChunk)
+	if err := x.ServerStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
+// CommandService_CommandTunnelServer is the bidirectional streaming interface for CommandTunnel (server side).
+type CommandService_CommandTunnelServer interface {
+	Send(*TunnelCommand) error
+	Recv() (*TunnelResponse, error)
+	grpc.ServerStream
+}
+
+type commandServiceCommandTunnelServer struct {
+	grpc.ServerStream
+}
+
+func (x *commandServiceCommandTunnelServer) Send(m *TunnelCommand) error {
+	return x.ServerStream.SendMsg(m)
+}
+
+func (x *commandServiceCommandTunnelServer) Recv() (*TunnelResponse, error) {
+	m := new(TunnelResponse)
 	if err := x.ServerStream.RecvMsg(m); err != nil {
 		return nil, err
 	}
@@ -305,6 +365,12 @@ var CommandService_ServiceDesc = grpc.ServiceDesc{
 		{
 			StreamName:    "PushRestore",
 			Handler:       _CommandService_PushRestore_Handler,
+			ClientStreams: true,
+		},
+		{
+			StreamName:    "CommandTunnel",
+			Handler:       _CommandService_CommandTunnel_Handler,
+			ServerStreams: true,
 			ClientStreams: true,
 		},
 	},
@@ -493,4 +559,8 @@ func _CommandService_RegisterClient_Handler(srv interface{}, ctx context.Context
 
 func _CommandService_PushRestore_Handler(srv interface{}, stream grpc.ServerStream) error {
 	return srv.(CommandServiceServer).PushRestore(&commandServicePushRestoreServer{stream})
+}
+
+func _CommandService_CommandTunnel_Handler(srv interface{}, stream grpc.ServerStream) error {
+	return srv.(CommandServiceServer).CommandTunnel(&commandServiceCommandTunnelServer{stream})
 }
