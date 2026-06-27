@@ -79,10 +79,22 @@ func Scan(ctx context.Context, includePaths []string, excludePatterns []string, 
 				return nil
 			}
 
+			// Skip reparse points (junctions/symlinks) that appear as files.
+			// On Windows, legacy junction points like "My Music", "My Pictures"
+			// inside user profile folders are inaccessible and should be skipped.
+			if d.Type()&fs.ModeSymlink != 0 || d.Type()&fs.ModeIrregular != 0 {
+				return nil
+			}
+
 			// Use Lstat to detect symlinks.
 			info, err := os.Lstat(path)
 			if err != nil {
 				// Can't stat, skip gracefully.
+				return nil
+			}
+
+			// Skip symlinks/reparse points detected via Lstat (catches Windows junctions).
+			if info.Mode()&os.ModeSymlink != 0 || isReparsePoint(info) {
 				return nil
 			}
 

@@ -10,6 +10,11 @@ import (
 	"time"
 )
 
+// isReparsePoint always returns false on Darwin (reparse points are Windows-only).
+func isReparsePoint(info os.FileInfo) bool {
+	return false
+}
+
 // fillPlatformMetadata fills platform-specific metadata fields (owner, group, timestamps).
 func fillPlatformMetadata(sf *ScannedFile, path string, info os.FileInfo) {
 	stat, ok := info.Sys().(*syscall.Stat_t)
