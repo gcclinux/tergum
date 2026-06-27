@@ -44,9 +44,11 @@ OUTPUT_DIR="${OUTPUT_DIR:-./dist}"
 mkdir -p "$OUTPUT_DIR"
 
 build_linux() {
-    echo "Building for Linux (amd64)..."
-    CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="$LDFLAGS" -o "$OUTPUT_DIR/tergum-linux" ./
-    echo "  -> $OUTPUT_DIR/tergum-linux"
+    echo "Building for Linux (amd64 & aarch64)..."
+    CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="$LDFLAGS" -o "$OUTPUT_DIR/tergum-amd64-linux" ./
+    echo "  -> $OUTPUT_DIR/tergum-amd64-linux"
+    CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags="$LDFLAGS" -o "$OUTPUT_DIR/tergum-aarch64-linux" ./
+    echo "  -> $OUTPUT_DIR/tergum-aarch64-linux"
 }
 
 build_darwin() {
