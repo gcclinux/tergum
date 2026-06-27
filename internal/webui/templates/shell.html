@@ -294,6 +294,54 @@
             }
         }));
 
+        Alpine.data('folderBrowser', () => ({
+            open: false,
+            currentDir: '',
+            parentDir: '',
+            dirs: [],
+            loadingBrowse: false,
+            openBrowser() {
+                this.open = true;
+                this.browse('');
+            },
+            async browse(path) {
+                this.loadingBrowse = true;
+                try {
+                    const url = '/api/paths/browse' + (path ? '?path=' + encodeURIComponent(path) : '');
+                    const resp = await fetch(url);
+                    if (resp.ok) {
+                        const data = await resp.json();
+                        this.currentDir = data.current || '';
+                        this.parentDir = data.parent || '';
+                        this.dirs = data.dirs || [];
+                    }
+                } catch (e) {
+                    console.error('Browse failed:', e);
+                } finally {
+                    this.loadingBrowse = false;
+                }
+            },
+            navigate(path) {
+                this.browse(path);
+            },
+            goUp() {
+                if (this.parentDir) {
+                    this.browse(this.parentDir);
+                }
+            },
+            selectCurrent() {
+                // Find the pathList component on the includes tab and set newItem.
+                const includesEl = document.querySelector('[x-data*="pathList(\'/api/paths/includes"]');
+                if (includesEl && includesEl._x_dataStack) {
+                    const pathListData = includesEl._x_dataStack.find(d => d.newItem !== undefined);
+                    if (pathListData) {
+                        pathListData.newItem = this.currentDir;
+                    }
+                }
+                this.open = false;
+            }
+        }));
+
         Alpine.data('watcherPage', () => ({
             running: false,
             pending: false,

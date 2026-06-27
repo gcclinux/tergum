@@ -272,6 +272,7 @@ func (s *Server) routes() http.Handler {
 	authed.HandleFunc("/api/paths/excludes/add", s.handlePathsExcludeAdd)
 	authed.HandleFunc("/api/paths/excludes/remove", s.handlePathsExcludeRemove)
 	authed.HandleFunc("/api/paths/scan", s.handlePathsScan)
+	authed.HandleFunc("/api/paths/browse", s.handlePathsBrowse)
 
 	// Watcher API endpoints.
 	authed.HandleFunc("/api/watchers", func(w http.ResponseWriter, r *http.Request) {

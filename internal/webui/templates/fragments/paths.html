@@ -1,46 +1,97 @@
 {{define "content"}}
-<div class="space-y-6">
+<div x-data="{
+    activeTab: 'includes',
+    includeFilter: '',
+    excludeFilter: '',
+    includeCount: 0,
+    excludeCount: 0
+}">
 
-    <!-- Include Paths -->
+    <!-- Single card with tabs -->
     <div class="bg-white dark:bg-gray-800 rounded-lg shadow-sm">
-        <div class="p-6 border-b border-gray-100 dark:border-gray-700">
-            <h2 class="text-base font-semibold text-gray-800 dark:text-gray-100">Include Paths</h2>
-            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Directories that will be included in backups and watched for changes.</p>
+
+        <!-- Tab header -->
+        <div class="flex items-center border-b border-gray-100 dark:border-gray-700">
+            <button type="button" @click="activeTab = 'includes'"
+                    :class="activeTab === 'includes'
+                        ? 'border-blue-500 text-blue-600 dark:text-blue-400'
+                        : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:border-gray-300'"
+                    class="flex items-center gap-2 px-6 py-4 text-sm font-medium border-b-2 transition-colors">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/>
+                </svg>
+                Include Paths
+                <span x-show="includeCount > 0" x-text="includeCount"
+                      class="inline-flex items-center justify-center px-2 py-0.5 text-xs font-medium rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300"></span>
+            </button>
+            <button type="button" @click="activeTab = 'excludes'"
+                    :class="activeTab === 'excludes'
+                        ? 'border-blue-500 text-blue-600 dark:text-blue-400'
+                        : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:border-gray-300'"
+                    class="flex items-center gap-2 px-6 py-4 text-sm font-medium border-b-2 transition-colors">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"/>
+                </svg>
+                Exclude Patterns
+                <span x-show="excludeCount > 0" x-text="excludeCount"
+                      class="inline-flex items-center justify-center px-2 py-0.5 text-xs font-medium rounded-full bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300"></span>
+            </button>
         </div>
-        <div class="p-6" x-data="pathList('/api/paths/includes', 'path', 'paths')">
-            <div class="space-y-2 mb-4">
-                <template x-for="p in items" :key="p">
+
+        <!-- Include Paths Tab -->
+        <div x-show="activeTab === 'includes'" x-data="pathList('/api/paths/includes', 'path', 'paths')" x-effect="$root.includeCount = items.length" class="p-6">
+            <p class="text-sm text-gray-500 dark:text-gray-400 mb-4">Directories that will be included in backups and watched for changes.</p>
+
+            <!-- Search filter -->
+            <div x-show="items.length > 5" class="mb-4">
+                <div class="relative">
+                    <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+                    </svg>
+                    <input type="text" x-model="$root.includeFilter"
+                           class="w-full pl-9 pr-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                           placeholder="Filter paths...">
+                </div>
+            </div>
+
+            <!-- Chips -->
+            <div class="flex flex-wrap gap-2 mb-4 min-h-[2.5rem]">
+                <template x-for="p in items.filter(i => !$root.includeFilter || i.toLowerCase().includes($root.includeFilter.toLowerCase()))" :key="p">
                     <div>
-                        <!-- Normal row -->
-                        <div x-show="pendingRemove !== p"
-                             class="flex items-center justify-between gap-2 px-3 py-2 bg-gray-50 dark:bg-gray-700 rounded-lg">
-                            <span class="text-sm text-gray-800 dark:text-gray-100 font-mono break-all" x-text="p"></span>
+                        <!-- Normal chip -->
+                        <span x-show="pendingRemove !== p"
+                              class="inline-flex items-center gap-1.5 pl-6 pr-1.5 py-1.5 text-sm font-mono bg-blue-50 dark:bg-blue-900/30 text-blue-800 dark:text-white border border-blue-200 dark:border-blue-700 rounded-full whitespace-nowrap group transition-all hover:border-blue-300 dark:hover:border-blue-500">
+                            <span x-text="'\u00A0\u00A0' + p"></span>
                             <button type="button" @click.prevent.stop="confirmRemove(p)"
-                                    class="text-red-500 hover:text-red-700 dark:hover:text-red-400 text-xs font-medium flex-shrink-0 px-2 py-1 rounded hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors">
+                                    class="inline-flex items-center justify-center w-5 h-5 rounded-full text-blue-400 dark:text-blue-300 hover:text-white hover:bg-red-500 transition-colors flex-shrink-0"
+                                    title="Remove">
+                                <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"/>
+                                </svg>
+                            </button>
+                        </span>
+                        <!-- Confirm chip -->
+                        <span x-show="pendingRemove === p"
+                              class="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm whitespace-nowrap bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-200 border border-red-300 dark:border-red-700 rounded-full">
+                            <span class="font-mono" x-text="p"></span>
+                            <button type="button" @click.prevent.stop="doRemove(p)" :disabled="loading"
+                                    class="px-2 py-0.5 text-xs font-medium text-white bg-red-600 hover:bg-red-700 rounded-full disabled:opacity-50 transition-colors">
                                 Remove
                             </button>
-                        </div>
-                        <!-- Confirmation row -->
-                        <div x-show="pendingRemove === p"
-                             class="flex items-center justify-between gap-2 px-3 py-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
-                            <span class="text-sm text-red-700 dark:text-red-300 font-medium">Remove <span class="font-mono" x-text="p"></span>?</span>
-                            <div class="flex gap-2 flex-shrink-0">
-                                <button type="button" @click.prevent.stop="doRemove(p)" :disabled="loading"
-                                        class="px-3 py-1 text-xs font-medium text-white bg-red-600 hover:bg-red-700 rounded disabled:opacity-50 transition-colors">
-                                    Yes, remove
-                                </button>
-                                <button type="button" @click.prevent.stop="cancelRemove()"
-                                        class="px-3 py-1 text-xs font-medium text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-gray-600 hover:bg-gray-200 dark:hover:bg-gray-500 rounded transition-colors">
-                                    Cancel
-                                </button>
-                            </div>
-                        </div>
+                            <button type="button" @click.prevent.stop="cancelRemove()"
+                                    class="px-2 py-0.5 text-xs font-medium text-gray-600 dark:text-gray-300 bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 rounded-full transition-colors">
+                                Cancel
+                            </button>
+                        </span>
                     </div>
                 </template>
-                <p x-show="items.length === 0" class="text-sm text-gray-400 dark:text-gray-500 italic">No include paths configured</p>
+                <p x-show="items.length === 0" class="text-sm text-gray-400 dark:text-gray-500 italic py-1">No include paths configured</p>
+                <p x-show="items.length > 0 && items.filter(i => !$root.includeFilter || i.toLowerCase().includes($root.includeFilter.toLowerCase())).length === 0"
+                   class="text-sm text-gray-400 dark:text-gray-500 italic py-1">No paths match filter</p>
             </div>
-            <!-- Add input -->
-            <div class="flex gap-2">
+
+            <!-- Add input (pinned at bottom) -->
+            <div class="flex gap-2 pt-4 border-t border-gray-100 dark:border-gray-700">
                 <div class="flex-1 relative">
                     <input type="text" x-model="newItem" @keydown.enter.prevent="addItem()" @input="error = ''"
                            :class="error ? 'border-red-500 focus:ring-red-500' : 'border-gray-300 dark:border-gray-600 focus:ring-blue-500'"
@@ -48,54 +99,71 @@
                            placeholder="Enter path to include...">
                     <p x-show="error" x-text="error" class="absolute mt-1 text-xs text-red-500"></p>
                 </div>
+                <button type="button" @click.prevent="$dispatch('open-browser')"
+                        class="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-200 bg-gray-100 dark:bg-gray-600 hover:bg-gray-200 dark:hover:bg-gray-500 rounded-lg transition-colors">
+                    Browse
+                </button>
                 <button type="button" @click.prevent="addItem()" :disabled="loading"
                         class="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
                     Add
                 </button>
             </div>
         </div>
-    </div>
 
-    <!-- Exclude Patterns -->
-    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-sm">
-        <div class="p-6 border-b border-gray-100 dark:border-gray-700">
-            <h2 class="text-base font-semibold text-gray-800 dark:text-gray-100">Exclude Patterns</h2>
-            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Glob patterns for files and directories to skip during backup.</p>
-        </div>
-        <div class="p-6" x-data="pathList('/api/paths/excludes', 'pattern', 'patterns')">
-            <div class="space-y-2 mb-4">
-                <template x-for="p in items" :key="p">
+        <!-- Exclude Patterns Tab -->
+        <div x-show="activeTab === 'excludes'" x-data="pathList('/api/paths/excludes', 'pattern', 'patterns')" x-effect="$root.excludeCount = items.length" class="p-6">
+            <p class="text-sm text-gray-500 dark:text-gray-400 mb-4">Glob patterns for files and directories to skip during backup.</p>
+
+            <!-- Search filter -->
+            <div x-show="items.length > 5" class="mb-4">
+                <div class="relative">
+                    <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+                    </svg>
+                    <input type="text" x-model="$root.excludeFilter"
+                           class="w-full pl-9 pr-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                           placeholder="Filter patterns...">
+                </div>
+            </div>
+
+            <!-- Chips -->
+            <div class="flex flex-wrap gap-2 mb-4 min-h-[2.5rem]">
+                <template x-for="p in items.filter(i => !$root.excludeFilter || i.toLowerCase().includes($root.excludeFilter.toLowerCase()))" :key="p">
                     <div>
-                        <!-- Normal row -->
-                        <div x-show="pendingRemove !== p"
-                             class="flex items-center justify-between gap-2 px-3 py-2 bg-gray-50 dark:bg-gray-700 rounded-lg">
-                            <span class="text-sm text-gray-800 dark:text-gray-100 font-mono break-all" x-text="p"></span>
+                        <!-- Normal chip -->
+                        <span x-show="pendingRemove !== p"
+                              class="inline-flex items-center gap-1.5 pl-6 pr-1.5 py-1.5 text-sm font-mono bg-orange-50 dark:bg-orange-900/30 text-orange-800 dark:text-white border border-orange-200 dark:border-orange-700 rounded-full whitespace-nowrap group transition-all hover:border-orange-300 dark:hover:border-orange-500">
+                            <span x-text="'\u00A0\u00A0' + p"></span>
                             <button type="button" @click.prevent.stop="confirmRemove(p)"
-                                    class="text-red-500 hover:text-red-700 dark:hover:text-red-400 text-xs font-medium flex-shrink-0 px-2 py-1 rounded hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors">
+                                    class="inline-flex items-center justify-center w-5 h-5 rounded-full text-orange-400 dark:text-orange-300 hover:text-white hover:bg-red-500 transition-colors flex-shrink-0"
+                                    title="Remove">
+                                <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"/>
+                                </svg>
+                            </button>
+                        </span>
+                        <!-- Confirm chip -->
+                        <span x-show="pendingRemove === p"
+                              class="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm whitespace-nowrap bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-200 border border-red-300 dark:border-red-700 rounded-full">
+                            <span class="font-mono" x-text="p"></span>
+                            <button type="button" @click.prevent.stop="doRemove(p)" :disabled="loading"
+                                    class="px-2 py-0.5 text-xs font-medium text-white bg-red-600 hover:bg-red-700 rounded-full disabled:opacity-50 transition-colors">
                                 Remove
                             </button>
-                        </div>
-                        <!-- Confirmation row -->
-                        <div x-show="pendingRemove === p"
-                             class="flex items-center justify-between gap-2 px-3 py-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
-                            <span class="text-sm text-red-700 dark:text-red-300 font-medium">Remove <span class="font-mono" x-text="p"></span>?</span>
-                            <div class="flex gap-2 flex-shrink-0">
-                                <button type="button" @click.prevent.stop="doRemove(p)" :disabled="loading"
-                                        class="px-3 py-1 text-xs font-medium text-white bg-red-600 hover:bg-red-700 rounded disabled:opacity-50 transition-colors">
-                                    Yes, remove
-                                </button>
-                                <button type="button" @click.prevent.stop="cancelRemove()"
-                                        class="px-3 py-1 text-xs font-medium text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-gray-600 hover:bg-gray-200 dark:hover:bg-gray-500 rounded transition-colors">
-                                    Cancel
-                                </button>
-                            </div>
-                        </div>
+                            <button type="button" @click.prevent.stop="cancelRemove()"
+                                    class="px-2 py-0.5 text-xs font-medium text-gray-600 dark:text-gray-300 bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 rounded-full transition-colors">
+                                Cancel
+                            </button>
+                        </span>
                     </div>
                 </template>
-                <p x-show="items.length === 0" class="text-sm text-gray-400 dark:text-gray-500 italic">No exclude patterns configured</p>
+                <p x-show="items.length === 0" class="text-sm text-gray-400 dark:text-gray-500 italic py-1">No exclude patterns configured</p>
+                <p x-show="items.length > 0 && items.filter(i => !$root.excludeFilter || i.toLowerCase().includes($root.excludeFilter.toLowerCase())).length === 0"
+                   class="text-sm text-gray-400 dark:text-gray-500 italic py-1">No patterns match filter</p>
             </div>
-            <!-- Add input -->
-            <div class="flex gap-2">
+
+            <!-- Add input (pinned at bottom) -->
+            <div class="flex gap-2 pt-4 border-t border-gray-100 dark:border-gray-700">
                 <div class="flex-1 relative">
                     <input type="text" x-model="newItem" @keydown.enter.prevent="addItem()" @input="error = ''"
                            :class="error ? 'border-red-500 focus:ring-red-500' : 'border-gray-300 dark:border-gray-600 focus:ring-blue-500'"
@@ -109,8 +177,74 @@
                 </button>
             </div>
         </div>
+
     </div>
 
+    <!-- Folder Browser Modal -->
+    <div x-data="folderBrowser()" @open-browser.window="openBrowser()" x-show="open" x-cloak
+         class="fixed inset-0 z-50 flex items-center justify-center p-4" @keydown.escape.window="open = false">
+        <!-- Backdrop -->
+        <div class="absolute inset-0 bg-black/50" @click="open = false"></div>
+        <!-- Modal -->
+        <div class="relative bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-lg flex flex-col overflow-hidden" style="height: 70vh;">
+            <!-- Header (fixed) -->
+            <div class="flex-shrink-0 flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-gray-700">
+                <h3 class="text-base font-semibold text-gray-800 dark:text-gray-100">Browse Folders</h3>
+                <button type="button" @click="open = false" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
+                    <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"/>
+                    </svg>
+                </button>
+            </div>
+            <!-- Current path bar (fixed, always visible) -->
+            <div class="flex-shrink-0 px-5 py-3 bg-gray-100 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600 flex items-center gap-2">
+                <button type="button" @click="goUp()" :disabled="!parentDir"
+                        class="p-1.5 rounded hover:bg-gray-200 dark:hover:bg-gray-600 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                        title="Go up">
+                    <svg class="w-4 h-4 text-gray-600 dark:text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7"/>
+                    </svg>
+                </button>
+                <span class="text-sm font-mono text-gray-900 dark:text-white truncate flex-1" x-text="currentDir"></span>
+            </div>
+            <!-- Directory listing (scrollable) -->
+            <div class="flex-1 overflow-y-auto min-h-0 px-5 py-3">
+                <div x-show="loadingBrowse" class="flex items-center justify-center py-8">
+                    <svg class="animate-spin w-5 h-5 text-blue-500" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                    </svg>
+                </div>
+                <div x-show="!loadingBrowse && dirs.length === 0" class="text-sm text-gray-400 dark:text-gray-500 italic py-4 text-center">
+                    No subdirectories found
+                </div>
+                <div x-show="!loadingBrowse" class="space-y-1">
+                    <template x-for="d in dirs" :key="d.path">
+                        <button type="button" @click="navigate(d.path)"
+                                class="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-left hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors group">
+                            <svg class="w-4 h-4 text-yellow-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                                <path d="M2 6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z"/>
+                            </svg>
+                            <span class="text-sm text-gray-700 dark:text-gray-200 group-hover:text-gray-900 dark:group-hover:text-white truncate" x-text="d.name"></span>
+                        </button>
+                    </template>
+                </div>
+            </div>
+            <!-- Footer with select button (fixed) -->
+            <div class="flex-shrink-0 px-5 py-4 border-t border-gray-200 dark:border-gray-700 flex items-center justify-between gap-3">
+                <span class="text-xs text-gray-500 dark:text-gray-400 truncate" x-text="'Select: ' + currentDir"></span>
+                <div class="flex gap-2 flex-shrink-0">
+                    <button type="button" @click="open = false"
+                            class="px-4 py-2 text-sm font-medium text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-gray-600 hover:bg-gray-200 dark:hover:bg-gray-500 rounded-lg transition-colors">
+                        Cancel
+                    </button>
+                    <button type="button" @click="selectCurrent()"
+                            class="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors">
+                        Select This Folder
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
 </div>
-
 {{end}}

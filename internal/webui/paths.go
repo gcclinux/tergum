@@ -335,3 +335,82 @@ func (s *Server) syncPathsToConfig(ctx context.Context) {
 		s.logger.Error("sync paths: cannot write config file", "error", err)
 	}
 }
+
+// handlePathsBrowse lists directories at a given path for the folder picker UI.
+// GET /api/paths/browse?path=/some/dir
+// If no path is provided, it defaults to the user's home directory.
+// Returns JSON with current path and list of subdirectories.
+func (s *Server) handlePathsBrowse(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	browseDir := strings.TrimSpace(r.URL.Query().Get("path"))
+	if browseDir == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			http.Error(w, "cannot determine home directory", http.StatusInternalServerError)
+			return
+		}
+		browseDir = home
+	}
+
+	absDir, err := filepath.Abs(browseDir)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("invalid path: %v", err), http.StatusBadRequest)
+		return
+	}
+
+	// Verify the path exists and is a directory.
+	info, err := os.Stat(absDir)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("path not found: %v", err), http.StatusBadRequest)
+		return
+	}
+	if !info.IsDir() {
+		http.Error(w, "path is not a directory", http.StatusBadRequest)
+		return
+	}
+
+	entries, err := os.ReadDir(absDir)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("cannot read directory: %v", err), http.StatusBadRequest)
+		return
+	}
+
+	type dirEntry struct {
+		Name string `json:"name"`
+		Path string `json:"path"`
+	}
+
+	var dirs []dirEntry
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		name := entry.Name()
+		// Skip hidden directories on Unix (dot-prefixed).
+		if strings.HasPrefix(name, ".") {
+			continue
+		}
+		dirs = append(dirs, dirEntry{
+			Name: name,
+			Path: filepath.Join(absDir, name),
+		})
+	}
+
+	// Determine parent directory.
+	parent := filepath.Dir(absDir)
+	if parent == absDir {
+		// At filesystem root, no parent.
+		parent = ""
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"current": absDir,
+		"parent":  parent,
+		"dirs":    dirs,
+	})
+}

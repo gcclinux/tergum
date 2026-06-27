@@ -456,6 +456,8 @@ func runInteractiveSetup(wiz *setupWizard) error {
 			"obj/",
 			"target/",
 			"dist/",
+			"**/go/bin/",
+			"**/go/pkg/",
 		}
 		fmt.Fprintln(wiz.writer, "  Default patterns added.")
 	}
