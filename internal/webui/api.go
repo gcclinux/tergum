@@ -1780,22 +1780,45 @@ func (s *Server) handleAPIMetricsCards(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if s.repo != nil {
+		var totalFiles, totalBytes, totalDeduped int64
+
+		// Local jobs.
 		jobs, err := s.repo.ListJobs(r.Context(), db.JobFilter{})
 		if err == nil {
-			var totalFiles, totalBytes, totalDeduped int64
 			for _, j := range jobs {
 				totalFiles += j.FileCount
 				totalBytes += j.BytesNew
 				totalDeduped += j.FilesDeduped
 			}
-			metrics.FilesBackedUp = totalFiles
-			metrics.BytesTransferred = formatSize(totalBytes)
+		}
 
-			if totalFiles > 0 {
-				ratio := float64(totalDeduped) / float64(totalFiles) * 100
-				metrics.DedupRatio = fmt.Sprintf("%.1f%%", ratio)
-				metrics.DedupRatioPercent = ratio
+		// Remote client jobs.
+		if s.clientRegistry != nil {
+			clients := s.clientRegistry.ListClients()
+			for _, client := range clients {
+				clientRepo, cleanup, err := s.getRepoForClient(r.Context(), client.ClientID)
+				if err != nil {
+					continue
+				}
+				cJobs, err := clientRepo.ListJobs(r.Context(), db.JobFilter{})
+				if err == nil {
+					for _, j := range cJobs {
+						totalFiles += j.FileCount
+						totalBytes += j.BytesNew
+						totalDeduped += j.FilesDeduped
+					}
+				}
+				cleanup()
 			}
+		}
+
+		metrics.FilesBackedUp = totalFiles
+		metrics.BytesTransferred = formatSize(totalBytes)
+
+		if totalFiles > 0 {
+			ratio := float64(totalDeduped) / float64(totalFiles) * 100
+			metrics.DedupRatio = fmt.Sprintf("%.1f%%", ratio)
+			metrics.DedupRatioPercent = ratio
 		}
 
 		paths, err := s.repo.GetAllFilePaths(r.Context())

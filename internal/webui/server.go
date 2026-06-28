@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/gcclinux/tergum/internal/config"
@@ -999,22 +1000,45 @@ func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if s.repo != nil {
+		var totalFiles, totalBytes, totalDeduped int64
+
+		// Local jobs.
 		jobs, err := s.repo.ListJobs(r.Context(), db.JobFilter{})
 		if err == nil {
-			var totalFiles, totalBytes, totalDeduped int64
 			for _, j := range jobs {
 				totalFiles += j.FileCount
 				totalBytes += j.BytesNew
 				totalDeduped += j.FilesDeduped
 			}
-			data.Metrics.FilesBackedUp = totalFiles
-			data.Metrics.BytesTransferred = formatSize(totalBytes)
+		}
 
-			if totalFiles > 0 {
-				ratio := float64(totalDeduped) / float64(totalFiles) * 100
-				data.Metrics.DedupRatio = fmt.Sprintf("%.1f%%", ratio)
-				data.Metrics.DedupRatioPercent = ratio
+		// Remote client jobs.
+		if s.clientRegistry != nil {
+			clients := s.clientRegistry.ListClients()
+			for _, client := range clients {
+				clientRepo, cleanup, err := s.getRepoForClient(r.Context(), client.ClientID)
+				if err != nil {
+					continue
+				}
+				cJobs, err := clientRepo.ListJobs(r.Context(), db.JobFilter{})
+				if err == nil {
+					for _, j := range cJobs {
+						totalFiles += j.FileCount
+						totalBytes += j.BytesNew
+						totalDeduped += j.FilesDeduped
+					}
+				}
+				cleanup()
 			}
+		}
+
+		data.Metrics.FilesBackedUp = totalFiles
+		data.Metrics.BytesTransferred = formatSize(totalBytes)
+
+		if totalFiles > 0 {
+			ratio := float64(totalDeduped) / float64(totalFiles) * 100
+			data.Metrics.DedupRatio = fmt.Sprintf("%.1f%%", ratio)
+			data.Metrics.DedupRatioPercent = ratio
 		}
 
 		// Count unique hashes from a recent query.
@@ -1040,11 +1064,49 @@ func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 		data.Metrics.StorageColor = StorageColorScheme(data.Metrics.StoragePercent)
 	}
 
+	// Count connected clients.
+	if s.clientRegistry != nil {
+		clients := s.clientRegistry.ListClients()
+		count := 0
+		for _, ci := range clients {
+			if ci.Status == "online" {
+				count++
+			}
+		}
+		data.Metrics.ConnectedClients = count
+	}
+
 	s.renderFragment(w, r, "metrics", data)
 }
 
 // dirSizeQuick estimates directory size by listing top-level prefix dirs.
+// Results are cached for 60 seconds to avoid slow filesystem walks on large storage volumes.
 func dirSizeQuick(path string) int64 {
+	dirSizeCacheMu.Lock()
+	defer dirSizeCacheMu.Unlock()
+
+	now := time.Now()
+	if cached, ok := dirSizeCache[path]; ok && now.Sub(cached.time) < 60*time.Second {
+		return cached.size
+	}
+
+	size := dirSizeWalk(path)
+	dirSizeCache[path] = dirSizeCacheEntry{size: size, time: now}
+	return size
+}
+
+type dirSizeCacheEntry struct {
+	size int64
+	time time.Time
+}
+
+var (
+	dirSizeCache   = make(map[string]dirSizeCacheEntry)
+	dirSizeCacheMu sync.Mutex
+)
+
+// dirSizeWalk calculates actual directory size by walking prefix subdirs.
+func dirSizeWalk(path string) int64 {
 	var size int64
 	entries, err := os.ReadDir(path)
 	if err != nil {
