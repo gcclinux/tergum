@@ -2,15 +2,22 @@ package cmd
 
 import (
 	"context"
+	"crypto/sha256"
+	"database/sql"
+	"encoding/hex"
+	"encoding/pem"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/gcclinux/tergum/internal/config"
 	"github.com/gcclinux/tergum/internal/db"
 	"github.com/gcclinux/tergum/internal/model"
 	"github.com/spf13/cobra"
+
+	_ "modernc.org/sqlite"
 )
 
 func newStatusCmd() *cobra.Command {
@@ -82,6 +89,15 @@ func runStatus(cmd *cobra.Command, args []string) error {
 		dbSize = dbInfo.Size()
 	}
 
+	// Get CA fingerprint (if TLS is configured).
+	caFingerprint := getCACertFingerprint(cfg.TLS.CACert)
+
+	// Get registered client count (server/hybrid only).
+	var clientsTotal, clientsOnline int
+	if cfg.Node.Role == "server" || cfg.Node.Role == "hybrid" {
+		clientsTotal, clientsOnline = countRegisteredClients(cfg.Database.Path)
+	}
+
 	// Build status output.
 	status := map[string]interface{}{
 		"role":             cfg.Node.Role,
@@ -103,6 +119,21 @@ func runStatus(cmd *cobra.Command, args []string) error {
 		"watcher":          cfg.Watcher.Enabled,
 		"webui":            cfg.WebUI.Enabled,
 		"webui_port":       cfg.WebUI.Port,
+		"command_port":     cfg.Server.CommandPort,
+		"data_port":        cfg.Server.DataPort,
+		"bootstrap_port":   cfg.Server.BootstrapPort,
+		"metrics_port":     cfg.Metrics.Port,
+	}
+
+	if caFingerprint != "" {
+		status["ca_fingerprint"] = caFingerprint
+	}
+	if cfg.Node.Role == "server" || cfg.Node.Role == "hybrid" {
+		status["clients_registered"] = clientsTotal
+		status["clients_online"] = clientsOnline
+	}
+	if cfg.Node.NATMode {
+		status["nat_mode"] = true
 	}
 
 	if lastBackup != nil {
@@ -125,8 +156,34 @@ func runStatus(cmd *cobra.Command, args []string) error {
 		fmt.Printf("  Storage:          %s (%s)\n", storageDir, formatBytes(storageSize))
 		fmt.Printf("  Encryption:       %v\n", cfg.Encryption.Enabled)
 		fmt.Printf("  Watcher:          %v\n", cfg.Watcher.Enabled)
+		if cfg.Node.NATMode {
+			fmt.Printf("  NAT Mode:         true\n")
+		}
 		fmt.Printf("  Web UI:           %v (port %d)\n", cfg.WebUI.Enabled, cfg.WebUI.Port)
 		fmt.Println()
+
+		fmt.Println("Network:")
+		fmt.Printf("  Command port:     %d\n", cfg.Server.CommandPort)
+		fmt.Printf("  Data port:        %d\n", cfg.Server.DataPort)
+		fmt.Printf("  Bootstrap port:   %d\n", cfg.Server.BootstrapPort)
+		fmt.Printf("  Metrics port:     %d\n", cfg.Metrics.Port)
+		if cfg.Node.Role == "client" && cfg.Server.Address != "" {
+			fmt.Printf("  Server address:   %s\n", cfg.Server.Address)
+		}
+		fmt.Println()
+
+		if caFingerprint != "" {
+			fmt.Println("TLS:")
+			fmt.Printf("  CA fingerprint:   %s\n", caFingerprint)
+			fmt.Println()
+		}
+
+		if cfg.Node.Role == "server" || cfg.Node.Role == "hybrid" {
+			fmt.Println("Clients:")
+			fmt.Printf("  Registered:       %d\n", clientsTotal)
+			fmt.Printf("  Online:           %d\n", clientsOnline)
+			fmt.Println()
+		}
 
 		fmt.Println("Paths:")
 		fmt.Printf("  Include paths:    %d\n", len(includes))
@@ -168,6 +225,53 @@ func runStatus(cmd *cobra.Command, args []string) error {
 	}
 
 	return nil
+}
+
+// getCACertFingerprint reads the CA certificate and returns its SHA-256 fingerprint
+// in colon-separated hex format. Returns empty string if the cert cannot be read.
+func getCACertFingerprint(caPath string) string {
+	if caPath == "" {
+		return ""
+	}
+	caBytes, err := os.ReadFile(caPath)
+	if err != nil {
+		return ""
+	}
+	block, _ := pem.Decode(caBytes)
+	if block == nil {
+		return ""
+	}
+	fingerprint := sha256.Sum256(block.Bytes)
+	fingerprintHex := hex.EncodeToString(fingerprint[:])
+	var pairs []string
+	for i := 0; i < len(fingerprintHex)-1; i += 2 {
+		pairs = append(pairs, fingerprintHex[i:i+2])
+	}
+	return strings.Join(pairs, ":")
+}
+
+// countRegisteredClients queries the client_registry table directly to count
+// total and online clients without starting the full registry subsystem.
+func countRegisteredClients(dbPath string) (total, online int) {
+	sqlDB, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		return 0, 0
+	}
+	defer sqlDB.Close()
+
+	// Total registered.
+	row := sqlDB.QueryRow("SELECT COUNT(*) FROM client_registry")
+	if row.Scan(&total) != nil {
+		total = 0
+	}
+
+	// Currently online.
+	row = sqlDB.QueryRow("SELECT COUNT(*) FROM client_registry WHERE status = 'online'")
+	if row.Scan(&online) != nil {
+		online = 0
+	}
+
+	return total, online
 }
 
 // dirSize calculates the total size of all files in a directory tree.

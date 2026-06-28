@@ -433,6 +433,9 @@ func (m *mockRepo) AddExcludePattern(ctx context.Context, pattern string) error 
 func (m *mockRepo) RemoveExcludePattern(ctx context.Context, pattern string) error   { return nil }
 func (m *mockRepo) ListExcludePatterns(ctx context.Context) ([]string, error)        { return nil, nil }
 func (m *mockRepo) FailStaleJobs(ctx context.Context, message string) (int64, error) { return 0, nil }
+func (m *mockRepo) FailStaleJobsOlderThan(ctx context.Context, maxAge time.Duration, message string) (int64, error) {
+	return 0, nil
+}
 func (m *mockRepo) GetConfig(ctx context.Context, key string) (string, error)        { return "", nil }
 func (m *mockRepo) SetConfig(ctx context.Context, key, value string) error           { return nil }
 func (m *mockRepo) GetClientAddress(ctx context.Context, clientID string) (string, error) {

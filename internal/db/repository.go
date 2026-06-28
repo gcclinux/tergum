@@ -70,6 +70,7 @@ type Repository interface {
 	UpdateJob(ctx context.Context, jobID string, update JobUpdate) error
 	ListJobs(ctx context.Context, filter JobFilter) ([]model.BackupJob, error)
 	FailStaleJobs(ctx context.Context, message string) (int64, error)
+	FailStaleJobsOlderThan(ctx context.Context, maxAge time.Duration, message string) (int64, error)
 
 	// Retention operations
 	GetFileVersions(ctx context.Context, filePath string) ([]model.BackupEntry, error)
@@ -518,6 +519,23 @@ func (r *SQLiteRepository) FailStaleJobs(ctx context.Context, message string) (i
 		 SET status = 'failed', finished_at = ?, error_message = ? 
 		 WHERE status = 'running'`,
 		now, message,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
+}
+
+// FailStaleJobsOlderThan marks "running" jobs as failed if they started more than maxAge ago.
+// This catches jobs where the completion DB sync failed, leaving a stale "running" record.
+func (r *SQLiteRepository) FailStaleJobsOlderThan(ctx context.Context, maxAge time.Duration, message string) (int64, error) {
+	now := time.Now().UTC()
+	cutoff := now.Add(-maxAge).Format(time.DateTime)
+	res, err := r.db.ExecContext(ctx,
+		`UPDATE backup_jobs 
+		 SET status = 'failed', finished_at = ?, error_message = ? 
+		 WHERE status = 'running' AND started_at < ?`,
+		now.Format(time.DateTime), message, cutoff,
 	)
 	if err != nil {
 		return 0, err

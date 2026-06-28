@@ -1992,6 +1992,14 @@ func (s *Server) getRepoForClient(ctx context.Context, clientID string) (db.Repo
 		return nil, nil, fmt.Errorf("failed to open client database copy: %w", err)
 	}
 
+	// Clean up stale "running" jobs that have been running for more than 24 hours.
+	// This handles cases where a DB sync after backup completion failed, leaving
+	// the server's copy of the client DB with a permanently "running" job.
+	if affected, cleanErr := repo.FailStaleJobsOlderThan(ctx, 24*time.Hour, "Stale: DB sync likely failed after completion"); cleanErr == nil && affected > 0 {
+		s.logger.Info("cleaned stale running jobs in client DB copy",
+			"client_id", clientID, "count", affected)
+	}
+
 	closeFunc := func() {
 		_ = repo.Close()
 	}

@@ -159,8 +159,22 @@ func (e *BackupEngine) RunBackup(ctx context.Context, req BackupRequest) (*Backu
 					slog.Warn("database checkpoint failed before sync", "error", err)
 				}
 			}
-			if err := e.server.SyncDatabase(ctx, e.config.DatabasePath); err != nil {
-				slog.Warn("database sync failed during job finalization", "status", status, "error", err)
+			// Retry SyncDatabase up to 3 times with short backoff to ensure
+			// the server gets the final job status. A failed sync leaves the
+			// server's copy of the client DB showing "running" indefinitely.
+			var syncErr error
+			for attempt := 0; attempt < 3; attempt++ {
+				syncErr = e.server.SyncDatabase(ctx, e.config.DatabasePath)
+				if syncErr == nil {
+					break
+				}
+				slog.Warn("database sync failed during job finalization (retrying)",
+					"status", status, "attempt", attempt+1, "error", syncErr)
+				time.Sleep(time.Duration(attempt+1) * 2 * time.Second)
+			}
+			if syncErr != nil {
+				slog.Error("database sync failed after retries — server may show stale job status",
+					"backup_id", backupID, "status", status, "error", syncErr)
 			}
 		}
 		if result != nil {

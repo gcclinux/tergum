@@ -172,6 +172,9 @@ func (m *mockRepository) ListExcludePatterns(ctx context.Context) ([]string, err
 func (m *mockRepository) FailStaleJobs(ctx context.Context, message string) (int64, error) {
 	return 0, nil
 }
+func (m *mockRepository) FailStaleJobsOlderThan(ctx context.Context, maxAge time.Duration, message string) (int64, error) {
+	return 0, nil
+}
 func (m *mockRepository) GetConfig(ctx context.Context, key string) (string, error) { return "", nil }
 func (m *mockRepository) SetConfig(ctx context.Context, key, value string) error    { return nil }
 func (m *mockRepository) GetClientAddress(ctx context.Context, clientID string) (string, error) {
