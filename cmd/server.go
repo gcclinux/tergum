@@ -19,9 +19,15 @@ import (
 func newServerCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "server",
-		Short: "Start the Tergum server",
-		Long: `Starts gRPC services (ports 7400, 7401), metrics (7490), retention engine,
-and scheduler. Handles graceful shutdown on SIGTERM/SIGINT (exit code 10).`,
+		Short: "Start the Tergum daemon",
+		Long: `Starts the Tergum daemon in role-aware mode based on [node].role in config:
+  - role "server": gRPC services (7400, 7401), web UI (7480), metrics (7490),
+    retention engine, scheduler, client registry
+  - role "client": client CommandService (7400), heartbeat to server,
+    file watcher (if enabled), accepts remote triggers
+  - role "hybrid": full local server (same as "server" without client registry)
+
+Handles graceful shutdown on SIGTERM/SIGINT (exit code 10).`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfgPath, _ := cmd.Flags().GetString("config")
 
@@ -32,10 +38,6 @@ and scheduler. Handles graceful shutdown on SIGTERM/SIGINT (exit code 10).`,
 
 			if getCerts, _ := cmd.Flags().GetBool("get-certs"); getCerts {
 				return printServerCACertFingerprint(cfg)
-			}
-
-			if cfg.Node.Role == "client" {
-				return fmt.Errorf("cannot start server on a node configured with the 'client' role. Use 'tergum client' instead")
 			}
 
 			if err := cfg.Validate(); err != nil {
