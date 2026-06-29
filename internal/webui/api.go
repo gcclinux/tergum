@@ -1280,8 +1280,12 @@ func (s *Server) handleAPIClients(w http.ResponseWriter, r *http.Request) {
 		if !ci.LastSeen.IsZero() {
 			cj.LastSeen = ci.LastSeen.Format(time.RFC3339)
 		}
-		if !ci.LastBackup.IsZero() {
-			cj.LastBackup = ci.LastBackup.Format(time.RFC3339)
+		lastBackup := ci.LastBackup
+		if lastBackup.IsZero() {
+			lastBackup = s.resolveClientLastBackup(ci.ClientID)
+		}
+		if !lastBackup.IsZero() {
+			cj.LastBackup = lastBackup.Format(time.RFC3339)
 		}
 		if ci.Schedule != nil {
 			cj.FullBackupCron = ci.Schedule.FullBackupCron
@@ -2028,6 +2032,47 @@ func (s *Server) getRepoForClient(ctx context.Context, clientID string) (db.Repo
 	}
 
 	return repo, closeFunc, nil
+}
+
+// resolveClientLastBackup queries a client's synced database for the most
+// recent completed backup time. Used as a fallback when the registry's
+// last_backup field is empty (e.g., for clients that registered before the
+// OnSync hook was added).
+func (s *Server) resolveClientLastBackup(clientID string) time.Time {
+	var dbDir string
+	if s.fullCfg != nil {
+		dbDir = filepath.Dir(s.fullCfg.Database.Path)
+	} else if s.configPath != "" {
+		cfg, err := config.Load(s.configPath)
+		if err == nil {
+			dbDir = filepath.Dir(cfg.Database.Path)
+		}
+	}
+	if dbDir == "" {
+		return time.Time{}
+	}
+
+	dbPath := filepath.Join(dbDir, "clients", clientID+".db")
+	if _, err := os.Stat(dbPath); err != nil {
+		return time.Time{}
+	}
+
+	repo, err := db.NewRepository(dbPath, false)
+	if err != nil {
+		return time.Time{}
+	}
+	defer repo.Close()
+
+	completed := model.JobCompleted
+	jobs, err := repo.ListJobs(context.Background(), db.JobFilter{Status: &completed, Limit: 1})
+	if err != nil || len(jobs) == 0 {
+		return time.Time{}
+	}
+
+	if jobs[0].FinishedAt != nil {
+		return *jobs[0].FinishedAt
+	}
+	return time.Time{}
 }
 
 // handleAPIRestoreRemote handles POST /api/restore/remote — restores files from a remote client's

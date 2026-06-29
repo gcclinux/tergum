@@ -28,15 +28,17 @@ type DataServer struct {
 	writeQueue *db.WriteQueue
 	clientsDir string // directory for storing client database copies
 	restoreSem *Semaphore
+	onSync     func(clientID string, dbPath string)
 }
 
 // DataServerConfig holds configuration for the DataServer.
 type DataServerConfig struct {
 	Store       storage.Store
 	Repo        db.Repository
-	WriteQueue  *db.WriteQueue // serializes DB writes to avoid SQLITE_BUSY
-	ClientsDir  string         // path to clients/ directory for SyncDatabase
-	MaxRestores int            // max concurrent restores, default 8
+	WriteQueue  *db.WriteQueue                       // serializes DB writes to avoid SQLITE_BUSY
+	ClientsDir  string                               // path to clients/ directory for SyncDatabase
+	MaxRestores int                                  // max concurrent restores, default 8
+	OnSync      func(clientID string, dbPath string) // called after a successful SyncDatabase
 }
 
 // NewDataServer creates a new DataServer with the given configuration.
@@ -52,6 +54,7 @@ func NewDataServer(cfg DataServerConfig) *DataServer {
 		writeQueue: cfg.WriteQueue,
 		clientsDir: cfg.ClientsDir,
 		restoreSem: NewSemaphore(maxRestores),
+		onSync:     cfg.OnSync,
 	}
 }
 
@@ -318,6 +321,12 @@ func (s *DataServer) SyncDatabase(stream proto.DataService_SyncDatabaseServer) e
 	}
 
 	success = true
+
+	// Notify the server to update last backup time from the synced DB.
+	if s.onSync != nil {
+		s.onSync(clientID, destPath)
+	}
+
 	return stream.SendAndClose(&proto.SyncResponse{
 		Success: true,
 		Message: fmt.Sprintf("database synced for client %s: %d bytes received", clientID, bytesReceived),

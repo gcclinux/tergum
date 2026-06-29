@@ -12,6 +12,8 @@ import (
 
 	"github.com/gcclinux/tergum/internal/config"
 	"github.com/gcclinux/tergum/internal/registry"
+
+	_ "modernc.org/sqlite"
 )
 
 func newClientCmd() *cobra.Command {
@@ -54,7 +56,7 @@ func newClientStatusCmd() *cobra.Command {
 }
 
 func runClientList() error {
-	reg, cleanup, err := openRegistry()
+	reg, clientsDir, cleanup, err := openRegistry()
 	if err != nil {
 		return err
 	}
@@ -68,6 +70,7 @@ func runClientList() error {
 			Address      string `json:"address"`
 			Status       string `json:"status"`
 			LastSeen     string `json:"last_seen,omitempty"`
+			LastBackup   string `json:"last_backup,omitempty"`
 			RegisteredAt string `json:"registered_at,omitempty"`
 		}
 
@@ -80,6 +83,10 @@ func runClientList() error {
 			}
 			if !c.LastSeen.IsZero() {
 				entry.LastSeen = c.LastSeen.Local().Format(time.DateTime)
+			}
+			lastBackup := resolveLastBackup(&c, clientsDir)
+			if !lastBackup.IsZero() {
+				entry.LastBackup = lastBackup.Local().Format(time.DateTime)
 			}
 			if !c.RegisteredAt.IsZero() {
 				entry.RegisteredAt = c.RegisteredAt.Local().Format(time.DateTime)
@@ -97,14 +104,19 @@ func runClientList() error {
 	}
 
 	w := tabwriter.NewWriter(os.Stdout, 0, 4, 2, ' ', 0)
-	fmt.Fprintf(w, "CLIENT\tADDRESS\tSTATUS\tLAST SEEN\n")
-	fmt.Fprintf(w, "------\t-------\t------\t---------\n")
+	fmt.Fprintf(w, "CLIENT\tADDRESS\tSTATUS\tLAST SEEN\tLAST BACKUP\n")
+	fmt.Fprintf(w, "------\t-------\t------\t---------\t-----------\n")
 	for _, c := range clients {
 		lastSeen := "never"
 		if !c.LastSeen.IsZero() {
 			lastSeen = formatTimeAgo(c.LastSeen)
 		}
-		fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", c.ClientID, c.Address, c.Status, lastSeen)
+		lastBackup := resolveLastBackup(&c, clientsDir)
+		lastBackupStr := "never"
+		if !lastBackup.IsZero() {
+			lastBackupStr = formatTimeAgo(lastBackup)
+		}
+		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n", c.ClientID, c.Address, c.Status, lastSeen, lastBackupStr)
 	}
 	w.Flush()
 
@@ -112,7 +124,7 @@ func runClientList() error {
 }
 
 func runClientStatus(clientID string) error {
-	reg, cleanup, err := openRegistry()
+	reg, clientsDir, cleanup, err := openRegistry()
 	if err != nil {
 		return err
 	}
@@ -122,6 +134,8 @@ func runClientStatus(clientID string) error {
 	if ci == nil {
 		return fmt.Errorf("client %q not found in registry", clientID)
 	}
+
+	lastBackup := resolveLastBackup(ci, clientsDir)
 
 	if jsonOut {
 		type clientStatus struct {
@@ -149,8 +163,8 @@ func runClientStatus(clientID string) error {
 		if !ci.LastSeen.IsZero() {
 			status.LastSeen = ci.LastSeen.Local().Format(time.DateTime)
 		}
-		if !ci.LastBackup.IsZero() {
-			status.LastBackup = ci.LastBackup.Local().Format(time.DateTime)
+		if !lastBackup.IsZero() {
+			status.LastBackup = lastBackup.Local().Format(time.DateTime)
 		}
 		if !ci.RegisteredAt.IsZero() {
 			status.RegisteredAt = ci.RegisteredAt.Local().Format(time.DateTime)
@@ -180,8 +194,8 @@ func runClientStatus(clientID string) error {
 		fmt.Printf("Last Seen:      never\n")
 	}
 
-	if !ci.LastBackup.IsZero() {
-		fmt.Printf("Last Backup:    %s (%s)\n", ci.LastBackup.Local().Format(time.DateTime), formatTimeAgo(ci.LastBackup))
+	if !lastBackup.IsZero() {
+		fmt.Printf("Last Backup:    %s (%s)\n", lastBackup.Local().Format(time.DateTime), formatTimeAgo(lastBackup))
 	} else {
 		fmt.Printf("Last Backup:    never\n")
 	}
@@ -213,26 +227,26 @@ func runClientStatus(clientID string) error {
 }
 
 // openRegistry opens a read-only connection to the registry database.
-// Returns the registry, a cleanup function, and any error.
-func openRegistry() (*registry.Registry, func(), error) {
+// Returns the registry, the clients dir path, a cleanup function, and any error.
+func openRegistry() (*registry.Registry, string, func(), error) {
 	cfg, err := config.Load(cfgFile)
 	if err != nil {
-		return nil, nil, fmt.Errorf("loading config: %w", err)
+		return nil, "", nil, fmt.Errorf("loading config: %w", err)
 	}
 
 	if cfg.Node.Role == "client" {
-		return nil, nil, fmt.Errorf("'tergum client' commands are only available on server or hybrid nodes")
+		return nil, "", nil, fmt.Errorf("'tergum client' commands are only available on server or hybrid nodes")
 	}
 
 	dbPath := cfg.Database.Path
 	// Ensure the database file exists.
 	if _, err := os.Stat(dbPath); os.IsNotExist(err) {
-		return nil, nil, fmt.Errorf("database not found at %s (has the server been started?)", dbPath)
+		return nil, "", nil, fmt.Errorf("database not found at %s (has the server been started?)", dbPath)
 	}
 
 	db, err := sql.Open("sqlite", filepath.Clean(dbPath))
 	if err != nil {
-		return nil, nil, fmt.Errorf("open database: %w", err)
+		return nil, "", nil, fmt.Errorf("open database: %w", err)
 	}
 
 	reg, err := registry.New(registry.Config{
@@ -240,14 +254,56 @@ func openRegistry() (*registry.Registry, func(), error) {
 	})
 	if err != nil {
 		db.Close()
-		return nil, nil, fmt.Errorf("open registry: %w", err)
+		return nil, "", nil, fmt.Errorf("open registry: %w", err)
 	}
+
+	clientsDir := filepath.Join(filepath.Dir(dbPath), "clients")
 
 	cleanup := func() {
 		db.Close()
 	}
 
-	return reg, cleanup, nil
+	return reg, clientsDir, cleanup, nil
+}
+
+// resolveLastBackup returns the last backup time for a client.
+// It checks the registry first, and falls back to querying the client's
+// synced database for the most recent completed backup.
+func resolveLastBackup(ci *registry.ClientInfo, clientsDir string) time.Time {
+	if !ci.LastBackup.IsZero() {
+		return ci.LastBackup
+	}
+
+	// Fall back to querying the client's synced DB.
+	clientDBPath := filepath.Join(clientsDir, ci.ClientID+".db")
+	if _, err := os.Stat(clientDBPath); err != nil {
+		return time.Time{}
+	}
+
+	clientDB, err := sql.Open("sqlite", clientDBPath)
+	if err != nil {
+		return time.Time{}
+	}
+	defer clientDB.Close()
+
+	var finishedAt *string
+	err = clientDB.QueryRow(
+		`SELECT finished_at FROM backup_jobs
+		 WHERE status = 'completed' AND finished_at IS NOT NULL
+		 ORDER BY finished_at DESC LIMIT 1`,
+	).Scan(&finishedAt)
+	if err != nil || finishedAt == nil {
+		return time.Time{}
+	}
+
+	// Try RFC3339 first, then legacy datetime format.
+	if t, err := time.Parse(time.RFC3339, *finishedAt); err == nil {
+		return t
+	}
+	if t, err := time.ParseInLocation(time.DateTime, *finishedAt, time.UTC); err == nil {
+		return t
+	}
+	return time.Time{}
 }
 
 // formatTimeAgo returns a human-friendly relative time string.

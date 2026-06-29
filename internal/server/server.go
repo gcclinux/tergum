@@ -192,6 +192,17 @@ func (s *Server) Start(ctx context.Context) error {
 		WriteQueue:  s.writeQueue,
 		ClientsDir:  clientsDir,
 		MaxRestores: s.cfg.Backup.MaxConcurrentDownloads,
+		OnSync: func(clientID string, dbPath string) {
+			// After receiving a client DB sync, query it for the latest
+			// completed backup and update the registry.
+			if s.registry == nil {
+				return
+			}
+			lastBackup := queryClientLastBackup(dbPath)
+			if !lastBackup.IsZero() {
+				_ = s.registry.SetLastBackup(clientID, lastBackup)
+			}
+		},
 	})
 
 	// Create gRPC servers with TLS credentials.
@@ -835,6 +846,35 @@ func storagePathFromDB(dbPath string) string {
 func clientsDirFromDB(dbPath string) string {
 	dir := filepath.Dir(dbPath)
 	return filepath.Join(dir, "clients")
+}
+
+// queryClientLastBackup opens a client's synced database and queries the
+// most recent completed backup's finished_at timestamp.
+func queryClientLastBackup(dbPath string) time.Time {
+	clientDB, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		return time.Time{}
+	}
+	defer clientDB.Close()
+
+	var finishedAt *string
+	err = clientDB.QueryRow(
+		`SELECT finished_at FROM backup_jobs
+		 WHERE status = 'completed' AND finished_at IS NOT NULL
+		 ORDER BY finished_at DESC LIMIT 1`,
+	).Scan(&finishedAt)
+	if err != nil || finishedAt == nil {
+		return time.Time{}
+	}
+
+	// Try RFC3339 first, then legacy datetime format.
+	if t, err := time.Parse(time.RFC3339, *finishedAt); err == nil {
+		return t
+	}
+	if t, err := time.ParseInLocation(time.DateTime, *finishedAt, time.UTC); err == nil {
+		return t
+	}
+	return time.Time{}
 }
 
 // noopBackupEngine is a stub backup engine for the server side.
