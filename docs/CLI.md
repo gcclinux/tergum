@@ -12,6 +12,11 @@
 | [`tergum node role set`](#tergum-node-role-set) | ✅ Working | Change node role (server/hybrid) |
 | [`tergum node hostname set`](#tergum-node-hostname-set) | ✅ Working | Set the hostname (network interface) |
 | [`tergum node hostname clear`](#tergum-node-hostname-clear) | ✅ Working | Clear the hostname setting |
+| [`tergum service`](#tergum-service) | ✅ Working | Manage the Tergum background service |
+| [`tergum service start`](#tergum-service-start) | ✅ Working | Start the service in the background |
+| [`tergum service stop`](#tergum-service-stop) | ✅ Working | Stop the running service |
+| [`tergum service restart`](#tergum-service-restart) | ✅ Working | Restart the service |
+| [`tergum service status`](#tergum-service-status) | ✅ Working | Check if the service is running |
 | [`tergum backup`](#tergum-backup) | ✅ Working | Run a manual backup (local or remote) |
 | [`tergum paths`](#tergum-paths) | ✅ Working | Manage include/exclude paths |
 | [`tergum paths scan`](#tergum-paths-scan) | ✅ Working | Scan a directory and add top-level folders |
@@ -57,6 +62,8 @@ Available on every command:
 | Variable | Description |
 |----------|-------------|
 | `TERGUM_PASSPHRASE` | Encryption passphrase (avoids interactive prompt) |
+| `TERGUM_CONFIG` | Path to configuration file (used by `service start`) |
+| `TERGUM_LOG_LEVEL` | Log level: debug, info, warn, error (default: info) |
 
 ---
 
@@ -300,6 +307,161 @@ tergum node hostname clear
 **PowerShell (Windows):**
 ```powershell
 .\tergum.exe node hostname clear
+```
+
+---
+
+### tergum service
+
+Manage the Tergum daemon as a background service. The appropriate services and ports are started based on the configured node role (client, server, or hybrid).
+
+```
+Usage: tergum service <subcommand>
+
+Subcommands:
+  start     Start the service in the background
+  stop      Stop the running service
+  restart   Restart the service
+  status    Check if the service is running
+```
+
+The service commands load environment variables from a `.env` file before launching, eliminating the need for manual `nohup`, `env`, or `&` background tricks. A PID file is stored in the config directory for process tracking.
+
+**`.env` file format:**
+```bash
+# Required: Passphrase for encryption key derivation
+TERGUM_PASSPHRASE=your-secure-passphrase-here
+
+# Optional: Path to configuration file
+# TERGUM_CONFIG=/path/to/tergum.toml
+
+# Optional: Log level (debug, info, warn, error)
+# TERGUM_LOG_LEVEL=info
+```
+
+---
+
+#### tergum service start
+
+Start the Tergum daemon as a background process. Loads the `.env` file, determines the node role from config, and spawns the appropriate daemon (`server` or `client`).
+
+```
+Usage: tergum service start [flags]
+
+Flags:
+  --env-file string   Path to .env file (default ".env")
+```
+
+The PID is stored in the platform config directory for later stop/restart. Logs are written to `tergum-service.log` in the same directory.
+
+**Linux / macOS:**
+```bash
+# Create .env from the template
+cp .env.example .env
+# Edit .env with your passphrase, then:
+
+# Start the service (reads .env from current directory)
+tergum service start
+
+# Start with a custom .env location
+tergum service start --env-file /etc/tergum/.env
+
+# Start with a specific config file
+tergum service start --config /path/to/tergum.toml
+```
+
+**PowerShell (Windows):**
+```powershell
+# Create .env from the template
+Copy-Item .env.example .env
+# Edit .env with your passphrase, then:
+
+# Start the service (reads .env from current directory)
+.\tergum.exe service start
+
+# Start with a custom .env location
+.\tergum.exe service start --env-file C:\tergum\.env
+
+# Start with a specific config file
+.\tergum.exe service start --config C:\tergum\tergum.toml
+```
+
+---
+
+#### tergum service stop
+
+Stop the running Tergum service by sending a termination signal to the tracked PID.
+
+```
+Usage: tergum service stop [flags]
+```
+
+On Linux/macOS, sends SIGTERM for graceful shutdown. On Windows, terminates the process.
+
+**Linux / macOS:**
+```bash
+tergum service stop
+```
+
+**PowerShell (Windows):**
+```powershell
+.\tergum.exe service stop
+```
+
+---
+
+#### tergum service restart
+
+Stop the running service (if any) and start it again with the current configuration and `.env` file.
+
+```
+Usage: tergum service restart [flags]
+
+Flags:
+  --env-file string   Path to .env file (default ".env")
+```
+
+**Linux / macOS:**
+```bash
+# Restart with default .env
+tergum service restart
+
+# Restart with updated env file
+tergum service restart --env-file /etc/tergum/.env
+```
+
+**PowerShell (Windows):**
+```powershell
+# Restart with default .env
+.\tergum.exe service restart
+
+# Restart with updated env file
+.\tergum.exe service restart --env-file C:\tergum\.env
+```
+
+---
+
+#### tergum service status
+
+Check whether the Tergum service is currently running.
+
+```
+Usage: tergum service status [flags]
+
+Flags:
+  --json   Output as JSON
+```
+
+**Linux / macOS:**
+```bash
+tergum service status
+tergum service status --json
+```
+
+**PowerShell (Windows):**
+```powershell
+.\tergum.exe service status
+.\tergum.exe service status --json
 ```
 
 ---

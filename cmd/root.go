@@ -59,6 +59,7 @@ func init() {
 	rootCmd.AddCommand(newCleanupCmd())
 	rootCmd.AddCommand(newMigrateCmd())
 	rootCmd.AddCommand(newNodeCmd())
+	rootCmd.AddCommand(newServiceCmd())
 	rootCmd.AddCommand(newVersionCmd())
 }
 
