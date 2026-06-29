@@ -1,51 +1,279 @@
 package cmd
 
 import (
-	"context"
+	"database/sql"
 	"fmt"
 	"os"
+	"path/filepath"
+	"text/tabwriter"
+	"time"
 
 	"github.com/spf13/cobra"
 
 	"github.com/gcclinux/tergum/internal/config"
-	"github.com/gcclinux/tergum/internal/server"
+	"github.com/gcclinux/tergum/internal/registry"
 )
 
 func newClientCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "client",
-		Short: "Start the Tergum client daemon",
-		Long:  `Starts the Tergum client daemon, registering with the server and enabling automated backups.`,
+		Short: "Manage and view remote clients (server-side)",
+		Long: `View and manage remote backup clients registered with this server.
+Requires the node role to be "server" or "hybrid".`,
+	}
+
+	cmd.AddCommand(newClientListCmd())
+	cmd.AddCommand(newClientStatusCmd())
+
+	return cmd
+}
+
+func newClientListCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "list",
+		Short: "List all registered clients and their online/offline status",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			cfgPath, _ := cmd.Flags().GetString("config")
-
-			cfg, err := config.Load(cfgPath)
-			if err != nil {
-				return err
-			}
-
-			if cfg.Node.Role != "client" {
-				return fmt.Errorf("cannot start client daemon on a node configured with the %q role. Use 'tergum server' instead", cfg.Node.Role)
-			}
-
-			if err := cfg.Validate(); err != nil {
-				return err
-			}
-
-			srv, err := server.New(cfg)
-			if err != nil {
-				return err
-			}
-
-			if err := srv.Start(context.Background()); err != nil {
-				return err
-			}
-
-			// Graceful shutdown exit code 10 (stopped by user).
-			os.Exit(10)
-			return nil
+			return runClientList()
 		},
 	}
 
 	return cmd
+}
+
+func newClientStatusCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "status <client-name>",
+		Short: "Show detailed status for a specific client",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runClientStatus(args[0])
+		},
+	}
+
+	return cmd
+}
+
+func runClientList() error {
+	reg, cleanup, err := openRegistry()
+	if err != nil {
+		return err
+	}
+	defer cleanup()
+
+	clients := reg.ListClients()
+
+	if jsonOut {
+		type clientEntry struct {
+			ClientID     string `json:"client_id"`
+			Address      string `json:"address"`
+			Status       string `json:"status"`
+			LastSeen     string `json:"last_seen,omitempty"`
+			RegisteredAt string `json:"registered_at,omitempty"`
+		}
+
+		entries := make([]clientEntry, 0, len(clients))
+		for _, c := range clients {
+			entry := clientEntry{
+				ClientID: c.ClientID,
+				Address:  c.Address,
+				Status:   c.Status,
+			}
+			if !c.LastSeen.IsZero() {
+				entry.LastSeen = c.LastSeen.Local().Format(time.DateTime)
+			}
+			if !c.RegisteredAt.IsZero() {
+				entry.RegisteredAt = c.RegisteredAt.Local().Format(time.DateTime)
+			}
+			entries = append(entries, entry)
+		}
+
+		printOutput(entries, "")
+		return nil
+	}
+
+	if len(clients) == 0 {
+		fmt.Println("No clients registered.")
+		return nil
+	}
+
+	w := tabwriter.NewWriter(os.Stdout, 0, 4, 2, ' ', 0)
+	fmt.Fprintf(w, "CLIENT\tADDRESS\tSTATUS\tLAST SEEN\n")
+	fmt.Fprintf(w, "------\t-------\t------\t---------\n")
+	for _, c := range clients {
+		lastSeen := "never"
+		if !c.LastSeen.IsZero() {
+			lastSeen = formatTimeAgo(c.LastSeen)
+		}
+		fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", c.ClientID, c.Address, c.Status, lastSeen)
+	}
+	w.Flush()
+
+	return nil
+}
+
+func runClientStatus(clientID string) error {
+	reg, cleanup, err := openRegistry()
+	if err != nil {
+		return err
+	}
+	defer cleanup()
+
+	ci := reg.GetClient(clientID)
+	if ci == nil {
+		return fmt.Errorf("client %q not found in registry", clientID)
+	}
+
+	if jsonOut {
+		type clientStatus struct {
+			ClientID      string `json:"client_id"`
+			Address       string `json:"address"`
+			Status        string `json:"status"`
+			LastSeen      string `json:"last_seen,omitempty"`
+			LastBackup    string `json:"last_backup,omitempty"`
+			WatcherActive bool   `json:"watcher_active"`
+			RegisteredAt  string `json:"registered_at,omitempty"`
+			MissedBackups int    `json:"missed_backups"`
+			Schedule      *struct {
+				FullBackupCron string `json:"full_backup_cron,omitempty"`
+				AutoBackupCron string `json:"auto_backup_cron,omitempty"`
+			} `json:"schedule,omitempty"`
+		}
+
+		status := clientStatus{
+			ClientID:      ci.ClientID,
+			Address:       ci.Address,
+			Status:        ci.Status,
+			WatcherActive: ci.WatcherActive,
+			MissedBackups: len(ci.MissedBackups),
+		}
+		if !ci.LastSeen.IsZero() {
+			status.LastSeen = ci.LastSeen.Local().Format(time.DateTime)
+		}
+		if !ci.LastBackup.IsZero() {
+			status.LastBackup = ci.LastBackup.Local().Format(time.DateTime)
+		}
+		if !ci.RegisteredAt.IsZero() {
+			status.RegisteredAt = ci.RegisteredAt.Local().Format(time.DateTime)
+		}
+		if ci.Schedule != nil {
+			status.Schedule = &struct {
+				FullBackupCron string `json:"full_backup_cron,omitempty"`
+				AutoBackupCron string `json:"auto_backup_cron,omitempty"`
+			}{
+				FullBackupCron: ci.Schedule.FullBackupCron,
+				AutoBackupCron: ci.Schedule.AutoBackupCron,
+			}
+		}
+
+		printOutput(status, "")
+		return nil
+	}
+
+	// Human-friendly output.
+	fmt.Printf("Client:         %s\n", ci.ClientID)
+	fmt.Printf("Address:        %s\n", ci.Address)
+	fmt.Printf("Status:         %s\n", ci.Status)
+
+	if !ci.LastSeen.IsZero() {
+		fmt.Printf("Last Seen:      %s (%s)\n", ci.LastSeen.Local().Format(time.DateTime), formatTimeAgo(ci.LastSeen))
+	} else {
+		fmt.Printf("Last Seen:      never\n")
+	}
+
+	if !ci.LastBackup.IsZero() {
+		fmt.Printf("Last Backup:    %s (%s)\n", ci.LastBackup.Local().Format(time.DateTime), formatTimeAgo(ci.LastBackup))
+	} else {
+		fmt.Printf("Last Backup:    never\n")
+	}
+
+	fmt.Printf("Watcher Active: %v\n", ci.WatcherActive)
+
+	if !ci.RegisteredAt.IsZero() {
+		fmt.Printf("Registered:     %s\n", ci.RegisteredAt.Local().Format(time.DateTime))
+	}
+
+	if ci.Schedule != nil {
+		fmt.Printf("Schedule:\n")
+		if ci.Schedule.FullBackupCron != "" {
+			fmt.Printf("  Full Backup:  %s\n", ci.Schedule.FullBackupCron)
+		}
+		if ci.Schedule.AutoBackupCron != "" {
+			fmt.Printf("  Auto Backup:  %s\n", ci.Schedule.AutoBackupCron)
+		}
+	}
+
+	if len(ci.MissedBackups) > 0 {
+		fmt.Printf("Missed Backups: %d\n", len(ci.MissedBackups))
+		for _, mb := range ci.MissedBackups {
+			fmt.Printf("  - %s backup scheduled at %s\n", mb.Level, mb.ScheduledAt.Local().Format(time.DateTime))
+		}
+	}
+
+	return nil
+}
+
+// openRegistry opens a read-only connection to the registry database.
+// Returns the registry, a cleanup function, and any error.
+func openRegistry() (*registry.Registry, func(), error) {
+	cfg, err := config.Load(cfgFile)
+	if err != nil {
+		return nil, nil, fmt.Errorf("loading config: %w", err)
+	}
+
+	if cfg.Node.Role == "client" {
+		return nil, nil, fmt.Errorf("'tergum client' commands are only available on server or hybrid nodes")
+	}
+
+	dbPath := cfg.Database.Path
+	// Ensure the database file exists.
+	if _, err := os.Stat(dbPath); os.IsNotExist(err) {
+		return nil, nil, fmt.Errorf("database not found at %s (has the server been started?)", dbPath)
+	}
+
+	db, err := sql.Open("sqlite", filepath.Clean(dbPath))
+	if err != nil {
+		return nil, nil, fmt.Errorf("open database: %w", err)
+	}
+
+	reg, err := registry.New(registry.Config{
+		DB: db,
+	})
+	if err != nil {
+		db.Close()
+		return nil, nil, fmt.Errorf("open registry: %w", err)
+	}
+
+	cleanup := func() {
+		db.Close()
+	}
+
+	return reg, cleanup, nil
+}
+
+// formatTimeAgo returns a human-friendly relative time string.
+func formatTimeAgo(t time.Time) string {
+	d := time.Since(t)
+
+	switch {
+	case d < time.Minute:
+		return "just now"
+	case d < time.Hour:
+		mins := int(d.Minutes())
+		if mins == 1 {
+			return "1 minute ago"
+		}
+		return fmt.Sprintf("%d minutes ago", mins)
+	case d < 24*time.Hour:
+		hours := int(d.Hours())
+		if hours == 1 {
+			return "1 hour ago"
+		}
+		return fmt.Sprintf("%d hours ago", hours)
+	default:
+		days := int(d.Hours() / 24)
+		if days == 1 {
+			return "1 day ago"
+		}
+		return fmt.Sprintf("%d days ago", days)
+	}
 }

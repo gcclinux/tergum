@@ -123,12 +123,11 @@ func runServiceStart(envPath string) error {
 	}
 
 	// Determine which subcommand to run based on role.
+	// The "server" subcommand handles all roles internally (server, hybrid, client).
 	var subCmd string
 	switch cfg.Node.Role {
-	case "server", "hybrid":
+	case "server", "hybrid", "client":
 		subCmd = "server"
-	case "client":
-		subCmd = "client"
 	default:
 		return fmt.Errorf("unknown node role %q; expected client, server, or hybrid", cfg.Node.Role)
 	}

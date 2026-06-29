@@ -5,7 +5,10 @@
 | Command | Status | Description |
 |---------|--------|-------------|
 | [`tergum setup`](#tergum-setup) | ✅ Working | Interactive configuration wizard |
-| [`tergum server`](#tergum-server) | ✅ Working | Start server or client daemon (role-aware) |
+| [`tergum server`](#tergum-server) | ✅ Working | Start the Tergum daemon (role-aware: server, client, or hybrid) |
+| [`tergum client`](#tergum-client) | ✅ Working | Manage and view remote clients (server-side) |
+| [`tergum client list`](#tergum-client-list) | ✅ Working | List all registered clients and their status |
+| [`tergum client status`](#tergum-client-status) | ✅ Working | Show detailed status for a specific client |
 | [`tergum admin`](#tergum-admin) | ✅ Working | Start Web UI only (lightweight) |
 | [`tergum node`](#tergum-node) | ✅ Working | Manage node role and hostname settings |
 | [`tergum node show`](#tergum-node-show) | ✅ Working | Show current node role and hostname |
@@ -141,6 +144,93 @@ $env:TERGUM_PASSPHRASE="mypassphrase"; .\tergum.exe server
 
 # Start in the background
 Start-Process -FilePath ".\tergum.exe" -ArgumentList "server" -NoNewWindow
+```
+
+---
+
+### tergum client
+
+Manage and view remote backup clients registered with this server. Only available on nodes with role `server` or `hybrid`.
+
+```
+Usage: tergum client <subcommand>
+
+Subcommands:
+  list                   List all registered clients and their online/offline status
+  status <client-name>   Show detailed status for a specific client
+```
+
+---
+
+#### tergum client list
+
+List all registered clients with their address, online/offline status, and last seen time.
+
+```
+Usage: tergum client list [flags]
+
+Flags:
+  --json   Output as JSON
+```
+
+**Linux / macOS:**
+```bash
+tergum client list
+tergum client list --json
+```
+
+**PowerShell (Windows):**
+```powershell
+.\tergum.exe client list
+.\tergum.exe client list --json
+```
+
+**Example output:**
+```
+CLIENT          ADDRESS           STATUS    LAST SEEN
+------          -------           ------    ---------
+fedora-laptop   192.168.1.100     online    2 minutes ago
+ubuntu-server   192.168.1.214     offline   3 hours ago
+win-desktop     192.168.1.50      online    just now
+```
+
+---
+
+#### tergum client status
+
+Show detailed status for a specific client, including last backup time, watcher state, schedule configuration, and any missed backups.
+
+```
+Usage: tergum client status <client-name> [flags]
+
+Flags:
+  --json   Output as JSON
+```
+
+**Linux / macOS:**
+```bash
+tergum client status fedora-laptop
+tergum client status fedora-laptop --json
+```
+
+**PowerShell (Windows):**
+```powershell
+.\tergum.exe client status fedora-laptop
+.\tergum.exe client status fedora-laptop --json
+```
+
+**Example output:**
+```
+Client:         fedora-laptop
+Address:        192.168.1.100
+Status:         online
+Last Seen:      2026-06-29 14:32:10 (2 minutes ago)
+Last Backup:    2026-06-29 03:00:05 (11 hours ago)
+Watcher Active: true
+Registered:     2026-06-15 09:20:00
+Schedule:
+  Full Backup:  0 3 * * 0
+  Auto Backup:  0 */6 * * *
 ```
 
 ---
