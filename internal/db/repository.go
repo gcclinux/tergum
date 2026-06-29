@@ -122,7 +122,14 @@ type SQLiteRepository struct {
 // If isServer is true, server-specific tables (retention_policies) are created.
 // Use ":memory:" as dbPath for in-memory testing.
 func NewRepository(dbPath string, isServer bool) (*SQLiteRepository, error) {
-	db, err := sql.Open("sqlite", dbPath)
+	// Use _busy_timeout to wait up to 5s when the database is locked by another
+	// connection, avoiding immediate SQLITE_BUSY errors during concurrent writes.
+	dsn := dbPath + "?_busy_timeout=5000"
+	if dbPath == ":memory:" {
+		dsn = dbPath
+	}
+
+	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("open database: %w", err)
 	}
@@ -132,6 +139,10 @@ func NewRepository(dbPath string, isServer bool) (*SQLiteRepository, error) {
 		db.Close()
 		return nil, fmt.Errorf("enable WAL mode: %w", err)
 	}
+
+	// Limit to a single open connection so all writes are serialized through
+	// one connection, eliminating SQLITE_BUSY from connection-level contention.
+	db.SetMaxOpenConns(1)
 
 	repo := &SQLiteRepository{db: db, isServer: isServer}
 	if err := repo.createSchema(); err != nil {

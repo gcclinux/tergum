@@ -67,6 +67,7 @@ type Server struct {
 	// Infrastructure
 	repo       db.Repository
 	store      storage.Store
+	writeQueue *db.WriteQueue
 	registry   *registry.Registry
 	registryDB *sql.DB
 
@@ -113,6 +114,9 @@ func (s *Server) Start(ctx context.Context) error {
 		return fmt.Errorf("open database: %w", err)
 	}
 	s.repo = repo
+
+	// Start write queue to serialize concurrent DB writes from upload streams.
+	s.writeQueue = db.NewWriteQueue(256)
 
 	// Fail any stale jobs that were left running from a previous instance.
 	if affected, err := repo.FailStaleJobs(ctx, "Interrupted by server restart"); err == nil && affected > 0 {
@@ -185,6 +189,7 @@ func (s *Server) Start(ctx context.Context) error {
 	dataServer := grpcpkg.NewDataServer(grpcpkg.DataServerConfig{
 		Store:       cas,
 		Repo:        repo,
+		WriteQueue:  s.writeQueue,
 		ClientsDir:  clientsDir,
 		MaxRestores: s.cfg.Backup.MaxConcurrentDownloads,
 	})
@@ -452,6 +457,12 @@ func (s *Server) Stop() error {
 			if err := s.watcherController.StopWatcher(); err != nil {
 				s.logger.Error("failed to stop file watcher", "error", err)
 			}
+		}
+
+		// Close write queue (drain pending writes before closing DB).
+		if s.writeQueue != nil {
+			s.writeQueue.Close()
+			s.logger.Info("write queue closed")
 		}
 
 		// Close database.
@@ -909,7 +920,7 @@ func loadMasterKeyFromEnv(cfg *config.Config) ([]byte, error) {
 // client registry. The registry manages its own tables (client_registry, missed_schedules)
 // and needs a separate connection to avoid lifecycle conflicts with the main repository.
 func openRegistryDB(dbPath string) (*sql.DB, error) {
-	db, err := sql.Open("sqlite", dbPath)
+	db, err := sql.Open("sqlite", dbPath+"?_busy_timeout=5000")
 	if err != nil {
 		return nil, fmt.Errorf("open sqlite for registry: %w", err)
 	}
@@ -919,6 +930,9 @@ func openRegistryDB(dbPath string) (*sql.DB, error) {
 		db.Close()
 		return nil, fmt.Errorf("set WAL mode: %w", err)
 	}
+
+	// Single connection to avoid contention with the main repository connection.
+	db.SetMaxOpenConns(1)
 
 	return db, nil
 }

@@ -25,6 +25,7 @@ type DataServer struct {
 
 	store      storage.Store
 	repo       db.Repository
+	writeQueue *db.WriteQueue
 	clientsDir string // directory for storing client database copies
 	restoreSem *Semaphore
 }
@@ -33,8 +34,9 @@ type DataServer struct {
 type DataServerConfig struct {
 	Store       storage.Store
 	Repo        db.Repository
-	ClientsDir  string // path to clients/ directory for SyncDatabase
-	MaxRestores int    // max concurrent restores, default 8
+	WriteQueue  *db.WriteQueue // serializes DB writes to avoid SQLITE_BUSY
+	ClientsDir  string         // path to clients/ directory for SyncDatabase
+	MaxRestores int            // max concurrent restores, default 8
 }
 
 // NewDataServer creates a new DataServer with the given configuration.
@@ -47,6 +49,7 @@ func NewDataServer(cfg DataServerConfig) *DataServer {
 	return &DataServer{
 		store:      cfg.Store,
 		repo:       cfg.Repo,
+		writeQueue: cfg.WriteQueue,
 		clientsDir: cfg.ClientsDir,
 		restoreSem: NewSemaphore(maxRestores),
 	}
@@ -147,6 +150,17 @@ func (s *DataServer) storeFile(ctx context.Context, header *proto.FileHeader, da
 	if header.Permissions != 0 {
 		perm := header.Permissions
 		entry.Permissions = &perm
+	}
+
+	// Serialize the DB write through the write queue to avoid SQLITE_BUSY
+	// when multiple upload streams run concurrently.
+	if s.writeQueue != nil {
+		if err := s.writeQueue.Submit(ctx, func() error {
+			return s.repo.InsertBackupEntry(ctx, entry)
+		}); err != nil {
+			return MapError(err)
+		}
+		return nil
 	}
 
 	if err := s.repo.InsertBackupEntry(ctx, entry); err != nil {
