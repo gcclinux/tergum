@@ -203,10 +203,15 @@ func runServiceStop() error {
 		return fmt.Errorf("finding process %d: %w", pid, err)
 	}
 
-	// Send SIGTERM (or TerminateProcess on Windows).
+	// Send termination signal and wait for process to exit.
 	if err := terminateProcess(process); err != nil {
 		removePIDFile()
 		return fmt.Errorf("stopping process %d: %w", pid, err)
+	}
+
+	// Verify the process is actually gone.
+	if isProcessRunning(pid) {
+		return fmt.Errorf("process %d is still running after stop attempt", pid)
 	}
 
 	removePIDFile()
