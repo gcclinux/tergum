@@ -906,12 +906,37 @@ Pages and capabilities:
 - **Dashboard** — storage stats, total files, total size
 - **Backups** — job history with status, file count, and delete functionality
 - **Restore** — browse, search, and restore files from any client's backup (including cross-client restore with passphrase)
-- **Config** — node settings (role, hostname), include/exclude paths (syncs to TOML)
+- **Config** — system information, node settings, network, storage, encryption, authentication, watcher, logging, and scheduler
 - **Retention** — add/remove retention policies with pattern matching
 - **Watchers** — add/remove watch paths for file monitoring
 - **Activity** — real-time event log (SSE)
 - **Clients** — connected client nodes with trigger backup, start/stop watcher, schedule config (server role only)
 - **Metrics** — backup and storage metrics
+
+### Config Page
+
+The Config page is divided into two parts:
+
+**1. System Information (read-only)** — A dark gradient panel at the top showing:
+- Node Role, Version, Platform (OS/arch), Uptime
+- Data Directory, Storage Path, Config File path, Encryption status
+
+These values auto-update in the UI when settings are changed below.
+
+**2. Editable Settings** — Each section is a collapsible card with color-coded icons. All fields auto-save on change (no save buttons). A toast notification confirms the save or warns if a restart is required.
+
+| Section | Settings |
+|---------|----------|
+| **Node Settings** | Role (select), Hostname, NAT Mode (toggle) |
+| **Network & Ports** | Server address, Command/Data/Bootstrap/WebUI/Metrics ports |
+| **Storage & Backup** | Storage path, chunk size, max concurrent uploads/downloads |
+| **Encryption** | At-rest encryption toggle |
+| **Web UI & Authentication** | Session timeout (hours), username, password (with show/hide toggle) |
+| **File Watcher** | Debounce ms, stability seconds, batch interval minutes |
+| **Logging & Metrics** | Log level (select), format (select), metrics toggle |
+| **Scheduler** | Full backup cron, auto backup cron |
+
+Changes are written to `tergum.toml` immediately. Settings that require a restart (ports, role, encryption, storage path) display an informational toast indicating a restart is needed.
 
 ---
 

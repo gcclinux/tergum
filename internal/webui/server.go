@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"runtime"
 	"sync"
 	"time"
 
@@ -305,6 +306,7 @@ func (s *Server) routes() http.Handler {
 	// Node settings API endpoints.
 	authed.HandleFunc("/api/config/node/role", s.handleAPINodeRole)
 	authed.HandleFunc("/api/config/node/hostname", s.handleAPINodeHostname)
+	authed.HandleFunc("/api/config/settings", s.handleAPIConfigSettings)
 
 	// Backup API endpoints.
 	authed.HandleFunc("/api/backups/trigger", s.handleAPIBackupTrigger)
@@ -603,11 +605,14 @@ type restoreData struct {
 }
 
 type configData struct {
-	Title    string
-	NodeRole string
-	NavItems []NavItem
-	Config   *config.Config
-	Version  string
+	Title      string
+	NodeRole   string
+	NavItems   []NavItem
+	Config     *config.Config
+	Version    string
+	Uptime     string
+	OS         string
+	ConfigPath string
 }
 
 type pathsData struct {
@@ -840,11 +845,19 @@ func (s *Server) handleRestore(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
+	uptime := "N/A"
+	if !s.startTime.IsZero() {
+		uptime = time.Since(s.startTime).Round(time.Second).String()
+	}
+
 	data := configData{
-		Title:    "Configuration",
-		NodeRole: s.nodeRole(),
-		NavItems: FilterNavItems(s.nodeRole()),
-		Version:  version.Version,
+		Title:      "Configuration",
+		NodeRole:   s.nodeRole(),
+		NavItems:   FilterNavItems(s.nodeRole()),
+		Version:    version.Version,
+		Uptime:     uptime,
+		OS:         runtime.GOOS + "/" + runtime.GOARCH,
+		ConfigPath: s.configPath,
 	}
 	if s.fullCfg != nil {
 		data.Config = s.fullCfg

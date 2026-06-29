@@ -1,240 +1,420 @@
 {{define "content"}}
-<div class="space-y-6">
-    <!-- System Information (read-only, distinct section) -->
-    <div class="bg-blue-50 dark:bg-blue-900/20 rounded-lg shadow-sm p-6 border border-blue-100 dark:border-blue-800">
-        <h2 class="text-base font-semibold text-gray-800 dark:text-gray-100 mb-4 flex items-center gap-2">
-            <svg class="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+<div class="space-y-6" x-data="configPage()">
+
+    <!-- System Information (read-only) -->
+    <div class="bg-gradient-to-r from-slate-800 to-slate-900 rounded-xl shadow-lg p-6 border border-slate-700">
+        <h2 class="text-base font-semibold text-white mb-5 flex items-center gap-2">
+            <svg class="w-5 h-5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
             </svg>
             System Information
         </h2>
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-6">
             <div>
-                <span class="text-sm text-blue-600 dark:text-blue-400 font-medium">Node Role</span>
-                <p class="text-sm text-gray-800 dark:text-gray-100 mt-1">{{.NodeRole}}</p>
+                <span class="text-xs uppercase tracking-wider text-blue-400 font-semibold">Node Role</span>
+                <p class="text-sm text-white mt-1 font-medium" x-text="settings['node.role'] || '{{.NodeRole}}'"></p>
             </div>
             <div>
-                <span class="text-sm text-blue-600 dark:text-blue-400 font-medium">Version</span>
-                <p class="text-sm text-gray-800 dark:text-gray-100 mt-1">{{.Version}}</p>
+                <span class="text-xs uppercase tracking-wider text-blue-400 font-semibold">Version</span>
+                <p class="text-sm text-white mt-1 font-medium">{{.Version}}</p>
             </div>
             <div>
-                <span class="text-sm text-blue-600 dark:text-blue-400 font-medium">Data Directory</span>
-                <p class="text-sm text-gray-800 dark:text-gray-100 mt-1 font-mono break-all">{{.Config.Database.Path}}</p>
+                <span class="text-xs uppercase tracking-wider text-blue-400 font-semibold">Platform</span>
+                <p class="text-sm text-white mt-1 font-medium">{{.OS}}</p>
             </div>
             <div>
-                <span class="text-sm text-blue-600 dark:text-blue-400 font-medium">Storage Path</span>
-                <p class="text-sm text-gray-800 dark:text-gray-100 mt-1 font-mono break-all">{{.Config.StorageDir}}</p>
+                <span class="text-xs uppercase tracking-wider text-blue-400 font-semibold">Uptime</span>
+                <p class="text-sm text-white mt-1 font-medium">{{.Uptime}}</p>
+            </div>
+            <div>
+                <span class="text-xs uppercase tracking-wider text-blue-400 font-semibold">Data Directory</span>
+                <p class="text-sm text-white mt-1 font-mono break-all">{{.Config.Database.Path}}</p>
+            </div>
+            <div>
+                <span class="text-xs uppercase tracking-wider text-blue-400 font-semibold">Storage Path</span>
+                <p class="text-sm text-white mt-1 font-mono break-all" x-text="settings['backup.storage_path'] || '{{.Config.StorageDir}}'"></p>
+            </div>
+            <div>
+                <span class="text-xs uppercase tracking-wider text-blue-400 font-semibold">Config File</span>
+                <p class="text-sm text-white mt-1 font-mono break-all">{{.ConfigPath}}</p>
+            </div>
+            <div>
+                <span class="text-xs uppercase tracking-wider text-blue-400 font-semibold">Encryption</span>
+                <p class="text-sm mt-1">
+                    <template x-if="settings['encryption.enabled'] === 'true' || settings['encryption.enabled'] === true">
+                        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-500/20 text-green-300 border border-green-500/30">Enabled</span>
+                    </template>
+                    <template x-if="settings['encryption.enabled'] !== 'true' && settings['encryption.enabled'] !== true">
+                        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-500/20 text-gray-300 border border-gray-500/30">Disabled</span>
+                    </template>
+                </p>
             </div>
         </div>
     </div>
 
-    <!-- Node Settings (collapsible, editable) -->
-    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-sm" x-data="nodeSettings()">
-        <button @click="open = !open" class="w-full flex items-center justify-between p-6 text-left">
-            <h2 class="text-base font-semibold text-gray-800 dark:text-gray-100">Node Settings</h2>
-            <svg :class="open ? 'rotate-180' : ''" class="w-5 h-5 text-gray-500 transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <!-- Toast notification -->
+    <div x-show="toast.show" x-transition:enter="transition ease-out duration-300"
+         x-transition:enter-start="opacity-0 translate-y-2" x-transition:enter-end="opacity-100 translate-y-0"
+         x-transition:leave="transition ease-in duration-200"
+         x-transition:leave-start="opacity-100 translate-y-0" x-transition:leave-end="opacity-0 translate-y-2"
+         class="fixed bottom-4 right-4 z-50 px-4 py-3 rounded-lg shadow-lg text-sm font-medium"
+         :class="toast.type === 'success' ? 'bg-green-600 text-white' : toast.type === 'error' ? 'bg-red-600 text-white' : 'bg-blue-600 text-white'"
+         x-text="toast.message">
+    </div>
+
+    <!-- Node Settings -->
+    <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
+        <button @click="sections.node = !sections.node" class="w-full flex items-center justify-between p-5 text-left hover:bg-gray-50 dark:hover:bg-gray-750 transition-colors">
+            <div class="flex items-center gap-3">
+                <div class="w-8 h-8 rounded-lg bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center">
+                    <svg class="w-4 h-4 text-purple-600 dark:text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2"/>
+                    </svg>
+                </div>
+                <h2 class="text-base font-semibold text-gray-800 dark:text-gray-100">Node Settings</h2>
+            </div>
+            <svg :class="sections.node ? 'rotate-180' : ''" class="w-5 h-5 text-gray-400 transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
             </svg>
         </button>
-        <div x-show="open" x-transition class="px-6 pb-6 border-t border-gray-100 dark:border-gray-700 pt-4">
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div x-show="sections.node" x-transition class="px-5 pb-5 border-t border-gray-100 dark:border-gray-700 pt-4">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
                 <!-- Role -->
-                <div>
-                    <label class="block text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">Role</label>
-                    <div class="flex items-center gap-2">
-                        <select x-model="role"
-                                class="block w-full rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm text-gray-800 dark:text-gray-100 px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
-                            <option value="server">server</option>
-                            <option value="hybrid">hybrid</option>
-                        </select>
-                        <button @click="saveRole()" :disabled="saving"
-                                class="bg-blue-600 text-white px-4 py-2 rounded text-sm hover:bg-blue-700 disabled:opacity-50 whitespace-nowrap">
-                            Save
-                        </button>
-                    </div>
-                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                        <strong>server</strong> — serves remote clients only.
-                        <strong>hybrid</strong> — server + local backups and watcher.
-                    </p>
+                <div class="space-y-1.5">
+                    <label class="block text-sm font-medium text-gray-600 dark:text-gray-400">Role</label>
+                    <select x-model="settings['node.role']" @change="save('node.role')"
+                            class="block w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm text-gray-800 dark:text-gray-100 px-3 py-2.5 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-shadow">
+                        <option value="server">server</option>
+                        <option value="hybrid">hybrid</option>
+                        <option value="client">client</option>
+                    </select>
+                    <p class="text-xs text-gray-500 dark:text-gray-400">Determines whether this node acts as server, client, or both</p>
                 </div>
                 <!-- Hostname -->
-                <div>
-                    <label class="block text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">Hostname</label>
-                    <div class="flex items-center gap-2">
-                        <input type="text" x-model="hostname"
-                               placeholder="e.g. 192.168.1.10 or backup.local"
-                               class="block w-full rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm text-gray-800 dark:text-gray-100 px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
-                        <button @click="saveHostname()" :disabled="saving"
-                                class="bg-blue-600 text-white px-4 py-2 rounded text-sm hover:bg-blue-700 disabled:opacity-50 whitespace-nowrap">
-                            Save
-                        </button>
-                        <button x-show="hostname !== ''" @click="clearHostname()" :disabled="saving"
-                                class="text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300 px-2 py-2 rounded text-sm hover:bg-red-50 dark:hover:bg-red-900/20 whitespace-nowrap">
-                            Clear
+                <div class="space-y-1.5">
+                    <label class="block text-sm font-medium text-gray-600 dark:text-gray-400">Hostname</label>
+                    <input type="text" x-model="settings['node.hostname']" @change="save('node.hostname')"
+                           placeholder="e.g. 192.168.1.10 or backup.local"
+                           class="block w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm text-gray-800 dark:text-gray-100 px-3 py-2.5 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-shadow">
+                    <p class="text-xs text-gray-500 dark:text-gray-400">Network interface address. Leave blank for system default.</p>
+                </div>
+                <!-- NAT Mode -->
+                <div class="space-y-1.5">
+                    <label class="block text-sm font-medium text-gray-600 dark:text-gray-400">NAT Mode</label>
+                    <label class="relative inline-flex items-center cursor-pointer">
+                        <input type="checkbox" :checked="settings['node.nat_mode'] === 'true'" @change="save('node.nat_mode', $event.target.checked ? 'true' : 'false')" class="sr-only peer">
+                        <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-500 dark:peer-focus:ring-blue-600 rounded-full peer dark:bg-gray-600 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:after:border-gray-500 peer-checked:bg-blue-600"></div>
+                    </label>
+                    <p class="text-xs text-gray-500 dark:text-gray-400">Uses command tunnel instead of listening for inbound connections</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Network & Ports -->
+    <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
+        <button @click="sections.network = !sections.network" class="w-full flex items-center justify-between p-5 text-left hover:bg-gray-50 dark:hover:bg-gray-750 transition-colors">
+            <div class="flex items-center gap-3">
+                <div class="w-8 h-8 rounded-lg bg-cyan-100 dark:bg-cyan-900/30 flex items-center justify-center">
+                    <svg class="w-4 h-4 text-cyan-600 dark:text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9"/>
+                    </svg>
+                </div>
+                <h2 class="text-base font-semibold text-gray-800 dark:text-gray-100">Network & Ports</h2>
+            </div>
+            <svg :class="sections.network ? 'rotate-180' : ''" class="w-5 h-5 text-gray-400 transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+            </svg>
+        </button>
+        <div x-show="sections.network" x-transition class="px-5 pb-5 border-t border-gray-100 dark:border-gray-700 pt-4">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+                <div class="space-y-1.5">
+                    <label class="block text-sm font-medium text-gray-600 dark:text-gray-400">Server Address</label>
+                    <input type="text" x-model="settings['server.address']" @change="save('server.address')"
+                           placeholder="e.g. backup.example.com"
+                           class="block w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm text-gray-800 dark:text-gray-100 px-3 py-2.5 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-shadow">
+                    <p class="text-xs text-gray-500 dark:text-gray-400">Target server address for client connections</p>
+                </div>
+                <div class="space-y-1.5">
+                    <label class="block text-sm font-medium text-gray-600 dark:text-gray-400">Command Port</label>
+                    <input type="number" x-model="settings['server.command_port']" @change="save('server.command_port')" min="1" max="65535"
+                           class="block w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm text-gray-800 dark:text-gray-100 px-3 py-2.5 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-shadow">
+                    <p class="text-xs text-gray-500 dark:text-gray-400">gRPC command channel port</p>
+                </div>
+                <div class="space-y-1.5">
+                    <label class="block text-sm font-medium text-gray-600 dark:text-gray-400">Data Port</label>
+                    <input type="number" x-model="settings['server.data_port']" @change="save('server.data_port')" min="1" max="65535"
+                           class="block w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm text-gray-800 dark:text-gray-100 px-3 py-2.5 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-shadow">
+                    <p class="text-xs text-gray-500 dark:text-gray-400">gRPC data transfer port (uploads/downloads)</p>
+                </div>
+                <div class="space-y-1.5">
+                    <label class="block text-sm font-medium text-gray-600 dark:text-gray-400">Bootstrap Port</label>
+                    <input type="number" x-model="settings['server.bootstrap_port']" @change="save('server.bootstrap_port')" min="1" max="65535"
+                           class="block w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm text-gray-800 dark:text-gray-100 px-3 py-2.5 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-shadow">
+                    <p class="text-xs text-gray-500 dark:text-gray-400">Client certificate provisioning port</p>
+                </div>
+                <div class="space-y-1.5">
+                    <label class="block text-sm font-medium text-gray-600 dark:text-gray-400">Web UI Port</label>
+                    <input type="number" x-model="settings['webui.port']" @change="save('webui.port')" min="1" max="65535"
+                           class="block w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm text-gray-800 dark:text-gray-100 px-3 py-2.5 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-shadow">
+                    <p class="text-xs text-gray-500 dark:text-gray-400">Web management interface port</p>
+                </div>
+                <div class="space-y-1.5">
+                    <label class="block text-sm font-medium text-gray-600 dark:text-gray-400">Metrics Port</label>
+                    <input type="number" x-model="settings['metrics.port']" @change="save('metrics.port')" min="1" max="65535"
+                           class="block w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm text-gray-800 dark:text-gray-100 px-3 py-2.5 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-shadow">
+                    <p class="text-xs text-gray-500 dark:text-gray-400">Prometheus metrics endpoint port</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Storage & Backup -->
+    <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
+        <button @click="sections.storage = !sections.storage" class="w-full flex items-center justify-between p-5 text-left hover:bg-gray-50 dark:hover:bg-gray-750 transition-colors">
+            <div class="flex items-center gap-3">
+                <div class="w-8 h-8 rounded-lg bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center">
+                    <svg class="w-4 h-4 text-amber-600 dark:text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4"/>
+                    </svg>
+                </div>
+                <h2 class="text-base font-semibold text-gray-800 dark:text-gray-100">Storage & Backup</h2>
+            </div>
+            <svg :class="sections.storage ? 'rotate-180' : ''" class="w-5 h-5 text-gray-400 transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+            </svg>
+        </button>
+        <div x-show="sections.storage" x-transition class="px-5 pb-5 border-t border-gray-100 dark:border-gray-700 pt-4">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+                <div class="space-y-1.5 md:col-span-2">
+                    <label class="block text-sm font-medium text-gray-600 dark:text-gray-400">Storage Path</label>
+                    <input type="text" x-model="settings['backup.storage_path']" @change="save('backup.storage_path')"
+                           placeholder="Path to content-addressable storage"
+                           class="block w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm text-gray-800 dark:text-gray-100 px-3 py-2.5 font-mono focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-shadow">
+                    <p class="text-xs text-gray-500 dark:text-gray-400">Directory for content-addressable file storage</p>
+                </div>
+                <div class="space-y-1.5">
+                    <label class="block text-sm font-medium text-gray-600 dark:text-gray-400">Chunk Size (bytes)</label>
+                    <input type="number" x-model="settings['backup.chunk_size']" @change="save('backup.chunk_size')" min="1024"
+                           class="block w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm text-gray-800 dark:text-gray-100 px-3 py-2.5 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-shadow">
+                    <p class="text-xs text-gray-500 dark:text-gray-400">Data chunk size for streaming transfers</p>
+                </div>
+                <div class="space-y-1.5">
+                    <label class="block text-sm font-medium text-gray-600 dark:text-gray-400">Max Concurrent Uploads</label>
+                    <input type="number" x-model="settings['backup.max_concurrent_uploads']" @change="save('backup.max_concurrent_uploads')" min="1" max="32"
+                           class="block w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm text-gray-800 dark:text-gray-100 px-3 py-2.5 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-shadow">
+                    <p class="text-xs text-gray-500 dark:text-gray-400">Maximum simultaneous upload streams</p>
+                </div>
+                <div class="space-y-1.5">
+                    <label class="block text-sm font-medium text-gray-600 dark:text-gray-400">Max Concurrent Downloads</label>
+                    <input type="number" x-model="settings['backup.max_concurrent_downloads']" @change="save('backup.max_concurrent_downloads')" min="1" max="32"
+                           class="block w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm text-gray-800 dark:text-gray-100 px-3 py-2.5 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-shadow">
+                    <p class="text-xs text-gray-500 dark:text-gray-400">Maximum simultaneous download/restore streams</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Encryption -->
+    <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
+        <button @click="sections.encryption = !sections.encryption" class="w-full flex items-center justify-between p-5 text-left hover:bg-gray-50 dark:hover:bg-gray-750 transition-colors">
+            <div class="flex items-center gap-3">
+                <div class="w-8 h-8 rounded-lg bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
+                    <svg class="w-4 h-4 text-green-600 dark:text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
+                    </svg>
+                </div>
+                <h2 class="text-base font-semibold text-gray-800 dark:text-gray-100">Encryption</h2>
+            </div>
+            <svg :class="sections.encryption ? 'rotate-180' : ''" class="w-5 h-5 text-gray-400 transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+            </svg>
+        </button>
+        <div x-show="sections.encryption" x-transition class="px-5 pb-5 border-t border-gray-100 dark:border-gray-700 pt-4">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+                <div class="space-y-1.5">
+                    <label class="block text-sm font-medium text-gray-600 dark:text-gray-400">At-Rest Encryption</label>
+                    <label class="relative inline-flex items-center cursor-pointer">
+                        <input type="checkbox" :checked="settings['encryption.enabled'] === 'true'" @change="save('encryption.enabled', $event.target.checked ? 'true' : 'false')" class="sr-only peer">
+                        <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-500 dark:peer-focus:ring-blue-600 rounded-full peer dark:bg-gray-600 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:after:border-gray-500 peer-checked:bg-green-600"></div>
+                        <span class="ml-3 text-sm text-gray-700 dark:text-gray-300" x-text="settings['encryption.enabled'] === 'true' ? 'Enabled' : 'Disabled'"></span>
+                    </label>
+                    <p class="text-xs text-gray-500 dark:text-gray-400">Encrypt file data at rest using AES-256-GCM with per-file keys</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Web UI & Authentication -->
+    <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
+        <button @click="sections.webui = !sections.webui" class="w-full flex items-center justify-between p-5 text-left hover:bg-gray-50 dark:hover:bg-gray-750 transition-colors">
+            <div class="flex items-center gap-3">
+                <div class="w-8 h-8 rounded-lg bg-indigo-100 dark:bg-indigo-900/30 flex items-center justify-center">
+                    <svg class="w-4 h-4 text-indigo-600 dark:text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
+                    </svg>
+                </div>
+                <h2 class="text-base font-semibold text-gray-800 dark:text-gray-100">Web UI & Authentication</h2>
+            </div>
+            <svg :class="sections.webui ? 'rotate-180' : ''" class="w-5 h-5 text-gray-400 transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+            </svg>
+        </button>
+        <div x-show="sections.webui" x-transition class="px-5 pb-5 border-t border-gray-100 dark:border-gray-700 pt-4">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+                <div class="space-y-1.5">
+                    <label class="block text-sm font-medium text-gray-600 dark:text-gray-400">Session Timeout (hours)</label>
+                    <input type="number" x-model="settings['webui.session_timeout_hours']" @change="save('webui.session_timeout_hours')" min="1" max="720"
+                           class="block w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm text-gray-800 dark:text-gray-100 px-3 py-2.5 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-shadow">
+                    <p class="text-xs text-gray-500 dark:text-gray-400">How long a login session stays active before requiring re-authentication</p>
+                </div>
+                <div class="space-y-1.5">
+                    <label class="block text-sm font-medium text-gray-600 dark:text-gray-400">Username</label>
+                    <input type="text" x-model="settings['webui.username']" @change="save('webui.username')"
+                           class="block w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm text-gray-800 dark:text-gray-100 px-3 py-2.5 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-shadow">
+                    <p class="text-xs text-gray-500 dark:text-gray-400">Web UI login username</p>
+                </div>
+                <div class="space-y-1.5">
+                    <label class="block text-sm font-medium text-gray-600 dark:text-gray-400">Password</label>
+                    <div class="relative">
+                        <input :type="showPassword ? 'text' : 'password'" x-model="settings['webui.password']" @change="save('webui.password')"
+                               class="block w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm text-gray-800 dark:text-gray-100 px-3 py-2.5 pr-10 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-shadow">
+                        <button type="button" @click="showPassword = !showPassword" class="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+                            <svg x-show="!showPassword" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+                            </svg>
+                            <svg x-show="showPassword" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21"/>
+                            </svg>
                         </button>
                     </div>
-                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                        Network interface address to advertise. Leave blank for system default.
-                    </p>
-                </div>
-            </div>
-            <!-- Status message -->
-            <div x-show="message" x-transition
-                 class="mt-4 p-3 rounded text-sm"
-                 :class="messageType === 'error' ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300' : 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300'"
-                 x-text="message">
-            </div>
-        </div>
-    </div>
-
-    <script>
-    function nodeSettings() {
-        return {
-            open: true,
-            role: '{{.Config.Node.Role}}',
-            hostname: '{{.Config.Node.Hostname}}',
-            saving: false,
-            message: '',
-            messageType: 'success',
-
-            showMessage(msg, type) {
-                this.message = msg;
-                this.messageType = type || 'success';
-                setTimeout(() => { this.message = ''; }, 5000);
-            },
-
-            async saveRole() {
-                this.saving = true;
-                try {
-                    const res = await fetch('/api/config/node/role', {
-                        method: 'POST',
-                        headers: {'Content-Type': 'application/json'},
-                        body: JSON.stringify({ role: this.role })
-                    });
-                    if (!res.ok) {
-                        const text = await res.text();
-                        throw new Error(text);
-                    }
-                    const data = await res.json();
-                    if (data.restart_required) {
-                        this.showMessage('Role changed to "' + this.role + '". Refresh the page to see updated navigation.', 'success');
-                    } else {
-                        this.showMessage('Role is already "' + this.role + '". No change needed.', 'success');
-                    }
-                } catch (e) {
-                    this.showMessage('Failed to save role: ' + e.message, 'error');
-                } finally {
-                    this.saving = false;
-                }
-            },
-
-            async saveHostname() {
-                this.saving = true;
-                try {
-                    const res = await fetch('/api/config/node/hostname', {
-                        method: 'POST',
-                        headers: {'Content-Type': 'application/json'},
-                        body: JSON.stringify({ hostname: this.hostname })
-                    });
-                    if (!res.ok) {
-                        const text = await res.text();
-                        throw new Error(text);
-                    }
-                    this.showMessage('Hostname saved. Refresh the page to apply.', 'success');
-                } catch (e) {
-                    this.showMessage('Failed to save hostname: ' + e.message, 'error');
-                } finally {
-                    this.saving = false;
-                }
-            },
-
-            async clearHostname() {
-                this.hostname = '';
-                await this.saveHostname();
-            }
-        };
-    }
-    </script>
-
-    <!-- Storage Settings (collapsible) -->
-    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-sm" x-data="{ open: true }">
-        <button @click="open = !open" class="w-full flex items-center justify-between p-6 text-left">
-            <h2 class="text-base font-semibold text-gray-800 dark:text-gray-100">Storage</h2>
-            <svg :class="open ? 'rotate-180' : ''" class="w-5 h-5 text-gray-500 transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
-            </svg>
-        </button>
-        <div x-show="open" x-transition class="px-6 pb-6 border-t border-gray-100 dark:border-gray-700 pt-4">
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                    <label class="block text-sm font-medium text-gray-600 dark:text-gray-400">Storage Path</label>
-                    <p class="mt-1 text-sm text-gray-800 dark:text-gray-100 font-mono break-all">{{.Config.StorageDir}}</p>
-                </div>
-                <div>
-                    <label class="block text-sm font-medium text-gray-600 dark:text-gray-400">Chunk Size</label>
-                    <p class="mt-1 text-sm text-gray-800 dark:text-gray-100">{{.Config.Backup.ChunkSize}} bytes</p>
-                </div>
-                <div>
-                    <label class="block text-sm font-medium text-gray-600 dark:text-gray-400">Max Concurrent Uploads</label>
-                    <p class="mt-1 text-sm text-gray-800 dark:text-gray-100">{{.Config.Backup.MaxConcurrentUploads}}</p>
-                </div>
-                <div>
-                    <label class="block text-sm font-medium text-gray-600 dark:text-gray-400">Max Concurrent Downloads</label>
-                    <p class="mt-1 text-sm text-gray-800 dark:text-gray-100">{{.Config.Backup.MaxConcurrentDownloads}}</p>
+                    <p class="text-xs text-gray-500 dark:text-gray-400">Web UI login password (takes effect on next login)</p>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- Encryption Settings (collapsible) -->
-    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-sm" x-data="{ open: true }">
-        <button @click="open = !open" class="w-full flex items-center justify-between p-6 text-left">
-            <h2 class="text-base font-semibold text-gray-800 dark:text-gray-100">Encryption</h2>
-            <svg :class="open ? 'rotate-180' : ''" class="w-5 h-5 text-gray-500 transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <!-- Watcher Settings -->
+    <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
+        <button @click="sections.watcher = !sections.watcher" class="w-full flex items-center justify-between p-5 text-left hover:bg-gray-50 dark:hover:bg-gray-750 transition-colors">
+            <div class="flex items-center gap-3">
+                <div class="w-8 h-8 rounded-lg bg-rose-100 dark:bg-rose-900/30 flex items-center justify-center">
+                    <svg class="w-4 h-4 text-rose-600 dark:text-rose-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+                    </svg>
+                </div>
+                <h2 class="text-base font-semibold text-gray-800 dark:text-gray-100">File Watcher</h2>
+            </div>
+            <svg :class="sections.watcher ? 'rotate-180' : ''" class="w-5 h-5 text-gray-400 transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
             </svg>
         </button>
-        <div x-show="open" x-transition class="px-6 pb-6 border-t border-gray-100 dark:border-gray-700 pt-4">
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                    <label class="block text-sm font-medium text-gray-600 dark:text-gray-400">Encryption Enabled</label>
-                    <p class="mt-1 text-sm text-gray-800 dark:text-gray-100">
-                        {{if .Config.Encryption.Enabled}}
-                            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 dark:bg-green-900/40 text-green-800 dark:text-green-300">Enabled</span>
-                        {{else}}
-                            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400">Disabled</span>
-                        {{end}}
-                    </p>
+        <div x-show="sections.watcher" x-transition class="px-5 pb-5 border-t border-gray-100 dark:border-gray-700 pt-4">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+                <div class="space-y-1.5">
+                    <label class="block text-sm font-medium text-gray-600 dark:text-gray-400">Debounce (ms)</label>
+                    <input type="number" x-model="settings['watcher.debounce_ms']" @change="save('watcher.debounce_ms')" min="0" max="60000"
+                           class="block w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm text-gray-800 dark:text-gray-100 px-3 py-2.5 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-shadow">
+                    <p class="text-xs text-gray-500 dark:text-gray-400">Wait time before processing file change events</p>
+                </div>
+                <div class="space-y-1.5">
+                    <label class="block text-sm font-medium text-gray-600 dark:text-gray-400">Stability (seconds)</label>
+                    <input type="number" x-model="settings['watcher.stability_seconds']" @change="save('watcher.stability_seconds')" min="0"
+                           class="block w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm text-gray-800 dark:text-gray-100 px-3 py-2.5 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-shadow">
+                    <p class="text-xs text-gray-500 dark:text-gray-400">Seconds a file must be unchanged before it's considered stable</p>
+                </div>
+                <div class="space-y-1.5">
+                    <label class="block text-sm font-medium text-gray-600 dark:text-gray-400">Batch Interval (minutes)</label>
+                    <input type="number" x-model="settings['watcher.batch_interval_minutes']" @change="save('watcher.batch_interval_minutes')" min="1"
+                           class="block w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm text-gray-800 dark:text-gray-100 px-3 py-2.5 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-shadow">
+                    <p class="text-xs text-gray-500 dark:text-gray-400">How often file changes are batched into a backup operation</p>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- Network Settings (collapsible) -->
-    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-sm" x-data="{ open: true }">
-        <button @click="open = !open" class="w-full flex items-center justify-between p-6 text-left">
-            <h2 class="text-base font-semibold text-gray-800 dark:text-gray-100">Network</h2>
-            <svg :class="open ? 'rotate-180' : ''" class="w-5 h-5 text-gray-500 transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <!-- Logging & Metrics -->
+    <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
+        <button @click="sections.logging = !sections.logging" class="w-full flex items-center justify-between p-5 text-left hover:bg-gray-50 dark:hover:bg-gray-750 transition-colors">
+            <div class="flex items-center gap-3">
+                <div class="w-8 h-8 rounded-lg bg-teal-100 dark:bg-teal-900/30 flex items-center justify-center">
+                    <svg class="w-4 h-4 text-teal-600 dark:text-teal-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                    </svg>
+                </div>
+                <h2 class="text-base font-semibold text-gray-800 dark:text-gray-100">Logging & Metrics</h2>
+            </div>
+            <svg :class="sections.logging ? 'rotate-180' : ''" class="w-5 h-5 text-gray-400 transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
             </svg>
         </button>
-        <div x-show="open" x-transition class="px-6 pb-6 border-t border-gray-100 dark:border-gray-700 pt-4">
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                    <label class="block text-sm font-medium text-gray-600 dark:text-gray-400">Server Address</label>
-                    <p class="mt-1 text-sm text-gray-800 dark:text-gray-100 font-mono">{{if .Config.Server.Address}}{{.Config.Server.Address}}{{else}}<span class="text-gray-400 italic">not set</span>{{end}}</p>
+        <div x-show="sections.logging" x-transition class="px-5 pb-5 border-t border-gray-100 dark:border-gray-700 pt-4">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+                <div class="space-y-1.5">
+                    <label class="block text-sm font-medium text-gray-600 dark:text-gray-400">Log Level</label>
+                    <select x-model="settings['logging.level']" @change="save('logging.level')"
+                            class="block w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm text-gray-800 dark:text-gray-100 px-3 py-2.5 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-shadow">
+                        <option value="debug">debug</option>
+                        <option value="info">info</option>
+                        <option value="warn">warn</option>
+                        <option value="error">error</option>
+                    </select>
+                    <p class="text-xs text-gray-500 dark:text-gray-400">Minimum log severity to output</p>
                 </div>
-                <div>
-                    <label class="block text-sm font-medium text-gray-600 dark:text-gray-400">gRPC Command Port</label>
-                    <p class="mt-1 text-sm text-gray-800 dark:text-gray-100">{{.Config.Server.CommandPort}}</p>
+                <div class="space-y-1.5">
+                    <label class="block text-sm font-medium text-gray-600 dark:text-gray-400">Log Format</label>
+                    <select x-model="settings['logging.format']" @change="save('logging.format')"
+                            class="block w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm text-gray-800 dark:text-gray-100 px-3 py-2.5 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-shadow">
+                        <option value="text">text</option>
+                        <option value="json">json</option>
+                    </select>
+                    <p class="text-xs text-gray-500 dark:text-gray-400">Log output format (text for humans, json for log aggregators)</p>
                 </div>
-                <div>
-                    <label class="block text-sm font-medium text-gray-600 dark:text-gray-400">gRPC Data Port</label>
-                    <p class="mt-1 text-sm text-gray-800 dark:text-gray-100">{{.Config.Server.DataPort}}</p>
+                <div class="space-y-1.5">
+                    <label class="block text-sm font-medium text-gray-600 dark:text-gray-400">Metrics Enabled</label>
+                    <label class="relative inline-flex items-center cursor-pointer">
+                        <input type="checkbox" :checked="settings['metrics.enabled'] === 'true'" @change="save('metrics.enabled', $event.target.checked ? 'true' : 'false')" class="sr-only peer">
+                        <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-500 dark:peer-focus:ring-blue-600 rounded-full peer dark:bg-gray-600 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:after:border-gray-500 peer-checked:bg-teal-600"></div>
+                        <span class="ml-3 text-sm text-gray-700 dark:text-gray-300" x-text="settings['metrics.enabled'] === 'true' ? 'Enabled' : 'Disabled'"></span>
+                    </label>
+                    <p class="text-xs text-gray-500 dark:text-gray-400">Enable Prometheus metrics endpoint</p>
                 </div>
-                <div>
-                    <label class="block text-sm font-medium text-gray-600 dark:text-gray-400">Web UI Port</label>
-                    <p class="mt-1 text-sm text-gray-800 dark:text-gray-100">{{.Config.WebUI.Port}}</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scheduler -->
+    <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
+        <button @click="sections.scheduler = !sections.scheduler" class="w-full flex items-center justify-between p-5 text-left hover:bg-gray-50 dark:hover:bg-gray-750 transition-colors">
+            <div class="flex items-center gap-3">
+                <div class="w-8 h-8 rounded-lg bg-orange-100 dark:bg-orange-900/30 flex items-center justify-center">
+                    <svg class="w-4 h-4 text-orange-600 dark:text-orange-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                    </svg>
+                </div>
+                <h2 class="text-base font-semibold text-gray-800 dark:text-gray-100">Scheduler</h2>
+            </div>
+            <svg :class="sections.scheduler ? 'rotate-180' : ''" class="w-5 h-5 text-gray-400 transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+            </svg>
+        </button>
+        <div x-show="sections.scheduler" x-transition class="px-5 pb-5 border-t border-gray-100 dark:border-gray-700 pt-4">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+                <div class="space-y-1.5">
+                    <label class="block text-sm font-medium text-gray-600 dark:text-gray-400">Full Backup Cron</label>
+                    <input type="text" x-model="settings['scheduler.full_backup_cron']" @change="save('scheduler.full_backup_cron')"
+                           placeholder="e.g. 0 2 * * 0 (Sundays at 2 AM)"
+                           class="block w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm text-gray-800 dark:text-gray-100 px-3 py-2.5 font-mono focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-shadow">
+                    <p class="text-xs text-gray-500 dark:text-gray-400">Cron expression for scheduled full backups</p>
+                </div>
+                <div class="space-y-1.5">
+                    <label class="block text-sm font-medium text-gray-600 dark:text-gray-400">Auto Backup Cron</label>
+                    <input type="text" x-model="settings['scheduler.auto_backup_cron']" @change="save('scheduler.auto_backup_cron')"
+                           placeholder="e.g. 0 */4 * * * (every 4 hours)"
+                           class="block w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm text-gray-800 dark:text-gray-100 px-3 py-2.5 font-mono focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-shadow">
+                    <p class="text-xs text-gray-500 dark:text-gray-400">Cron expression for scheduled incremental backups</p>
                 </div>
             </div>
         </div>
@@ -242,5 +422,81 @@
 
 </div>
 
-{{end}}
+<script>
+function configPage() {
+    return {
+        showPassword: false,
+        toast: { show: false, message: '', type: 'success' },
+        sections: {
+            node: true,
+            network: true,
+            storage: true,
+            encryption: true,
+            webui: true,
+            watcher: false,
+            logging: false,
+            scheduler: false,
+        },
+        settings: {
+            'node.role': '{{.Config.Node.Role}}',
+            'node.hostname': '{{.Config.Node.Hostname}}',
+            'node.nat_mode': '{{if .Config.Node.NATMode}}true{{else}}false{{end}}',
+            'server.address': '{{.Config.Server.Address}}',
+            'server.command_port': '{{.Config.Server.CommandPort}}',
+            'server.data_port': '{{.Config.Server.DataPort}}',
+            'server.bootstrap_port': '{{.Config.Server.BootstrapPort}}',
+            'backup.storage_path': '{{.Config.Backup.StoragePath}}',
+            'backup.chunk_size': '{{.Config.Backup.ChunkSize}}',
+            'backup.max_concurrent_uploads': '{{.Config.Backup.MaxConcurrentUploads}}',
+            'backup.max_concurrent_downloads': '{{.Config.Backup.MaxConcurrentDownloads}}',
+            'encryption.enabled': '{{if .Config.Encryption.Enabled}}true{{else}}false{{end}}',
+            'webui.port': '{{.Config.WebUI.Port}}',
+            'webui.session_timeout_hours': '{{.Config.WebUI.SessionTimeoutHours}}',
+            'webui.username': '{{.Config.WebUI.Username}}',
+            'webui.password': '{{.Config.WebUI.Password}}',
+            'logging.level': '{{.Config.Logging.Level}}',
+            'logging.format': '{{.Config.Logging.Format}}',
+            'watcher.debounce_ms': '{{.Config.Watcher.DebounceMs}}',
+            'watcher.stability_seconds': '{{.Config.Watcher.StabilitySeconds}}',
+            'watcher.batch_interval_minutes': '{{.Config.Watcher.BatchIntervalMinutes}}',
+            'metrics.enabled': '{{if .Config.Metrics.Enabled}}true{{else}}false{{end}}',
+            'metrics.port': '{{.Config.Metrics.Port}}',
+            'scheduler.full_backup_cron': '{{.Config.Scheduler.FullBackupCron}}',
+            'scheduler.auto_backup_cron': '{{.Config.Scheduler.AutoBackupCron}}',
+        },
 
+        showToast(message, type) {
+            this.toast = { show: true, message, type: type || 'success' };
+            setTimeout(() => { this.toast.show = false; }, 3000);
+        },
+
+        async save(key, overrideValue) {
+            const value = overrideValue !== undefined ? overrideValue : String(this.settings[key]);
+            if (overrideValue !== undefined) {
+                this.settings[key] = overrideValue;
+            }
+            try {
+                const res = await fetch('/api/config/settings', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ key, value })
+                });
+                if (!res.ok) {
+                    const text = await res.text();
+                    throw new Error(text);
+                }
+                const data = await res.json();
+                if (data.restart_required) {
+                    this.showToast('Saved. Restart required for ' + key.replace('.', ' > '), 'info');
+                } else {
+                    this.showToast('Saved: ' + key.replace('.', ' > '));
+                }
+            } catch (e) {
+                this.showToast('Error: ' + e.message, 'error');
+            }
+        }
+    };
+}
+</script>
+
+{{end}}
