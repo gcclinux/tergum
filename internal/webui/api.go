@@ -1674,8 +1674,12 @@ func (s *Server) handleAPIClientsList(w http.ResponseWriter, r *http.Request) {
 			lastSeen = ci.LastSeen.Local().Format("2006-01-02 15:04:05")
 		}
 		lastBackup := "never"
-		if !ci.LastBackup.IsZero() {
-			lastBackup = ci.LastBackup.Local().Format("2006-01-02 15:04:05")
+		lastBackupTime := ci.LastBackup
+		if lastBackupTime.IsZero() {
+			lastBackupTime = s.resolveClientLastBackup(ci.ClientID)
+		}
+		if !lastBackupTime.IsZero() {
+			lastBackup = lastBackupTime.Local().Format("2006-01-02 15:04:05")
 		}
 
 		watcherStatus := "Stopped"

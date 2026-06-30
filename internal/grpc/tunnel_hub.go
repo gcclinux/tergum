@@ -106,15 +106,11 @@ func (h *TunnelHub) SendCommand(ctx context.Context, clientID string, cmd *proto
 	t.pending[requestID] = respCh
 	t.mu.Unlock()
 
-	// Clean up on exit.
-	defer func() {
+	// Send the command over the stream.
+	if err := t.stream.Send(cmd); err != nil {
 		t.mu.Lock()
 		delete(t.pending, requestID)
 		t.mu.Unlock()
-	}()
-
-	// Send the command over the stream.
-	if err := t.stream.Send(cmd); err != nil {
 		return nil, fmt.Errorf("send tunnel command to %s: %w", clientID, err)
 	}
 
@@ -128,13 +124,39 @@ func (h *TunnelHub) SendCommand(ctx context.Context, clientID string, cmd *proto
 
 	select {
 	case resp, ok := <-respCh:
+		// Response arrived normally — clean up and return.
+		t.mu.Lock()
+		delete(t.pending, requestID)
+		t.mu.Unlock()
 		if !ok {
 			return nil, fmt.Errorf("tunnel closed for client %q", clientID)
 		}
 		return resp, nil
 	case <-timer.C:
+		// Command timed out — clean up immediately.
+		t.mu.Lock()
+		delete(t.pending, requestID)
+		t.mu.Unlock()
 		return nil, fmt.Errorf("tunnel command timed out for client %q (request %s)", clientID, requestID)
 	case <-ctx.Done():
+		// Context was cancelled (e.g. short HTTP timeout). The client may
+		// still respond shortly, so delay removal of the pending entry to
+		// avoid spurious "received tunnel response for unknown request"
+		// warnings. A goroutine drains the late response or cleans up after
+		// a grace period.
+		go func() {
+			grace := time.NewTimer(30 * time.Second)
+			defer grace.Stop()
+			select {
+			case <-respCh:
+				// Late response arrived — consumed and discarded.
+			case <-grace.C:
+				// Grace period expired — clean up.
+			}
+			t.mu.Lock()
+			delete(t.pending, requestID)
+			t.mu.Unlock()
+		}()
 		return nil, ctx.Err()
 	}
 }

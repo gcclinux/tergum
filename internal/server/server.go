@@ -326,6 +326,7 @@ func (s *Server) Start(ctx context.Context) error {
 					StabilitySec:    s.cfg.Watcher.StabilitySeconds,
 					BatchMinutes:    s.cfg.Watcher.BatchIntervalMinutes,
 					ExcludePatterns: excludes,
+					DatabasePath:    s.cfg.Database.Path,
 				})
 				s.watcherController = wc
 				webuiOpts = append(webuiOpts, webui.WithWatcherController(wc))
@@ -587,6 +588,7 @@ func (s *Server) startClient(ctx context.Context) error {
 			Encryptor:     encryptor,
 			MasterKey:     masterKey,
 			BatchInterval: batchInterval,
+			DatabasePath:  s.cfg.Database.Path,
 		})
 		if startErr := ongoing.Start(factoryCtx); startErr != nil {
 			_ = fw.Stop()
@@ -738,6 +740,7 @@ func (s *Server) startClient(ctx context.Context) error {
 						Encryptor:     encryptor,
 						MasterKey:     masterKey,
 						BatchInterval: batchInterval,
+						DatabasePath:  s.cfg.Database.Path,
 					})
 
 					if startErr := ongoing.Start(watchCtx); startErr != nil {

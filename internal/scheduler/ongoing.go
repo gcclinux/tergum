@@ -27,6 +27,7 @@ type OngoingBackup struct {
 	encryptor     *crypto.AESEncryptor
 	masterKey     []byte
 	batchInterval time.Duration
+	databasePath  string
 
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -44,6 +45,7 @@ type OngoingConfig struct {
 	Encryptor     *crypto.AESEncryptor
 	MasterKey     []byte
 	BatchInterval time.Duration // default 5 minutes
+	DatabasePath  string        // path to local SQLite DB for SyncDatabase after each batch
 }
 
 // NewOngoingBackup creates a new OngoingBackup instance with the given configuration.
@@ -60,6 +62,7 @@ func NewOngoingBackup(cfg OngoingConfig) *OngoingBackup {
 		encryptor:     cfg.Encryptor,
 		masterKey:     cfg.MasterKey,
 		batchInterval: interval,
+		databasePath:  cfg.DatabasePath,
 	}
 }
 
@@ -248,6 +251,39 @@ func (o *OngoingBackup) processBatch(ctx context.Context, batch []watcher.Stable
 		"bytes_new", bytesNew,
 		"files_deduped", filesDeduped,
 	)
+
+	// Sync the local database to the server so the server's activity feed
+	// and "last backup" display reflect this ongoing backup immediately.
+	if o.databasePath != "" {
+		if cp, ok := o.repo.(interface {
+			Checkpoint(context.Context) error
+		}); ok {
+			if err := cp.Checkpoint(ctx); err != nil {
+				slog.Warn("ongoing backup: database checkpoint failed before sync", "error", err)
+			}
+		}
+		syncCtx := ctx
+		if syncCtx.Err() != nil {
+			// Use a fresh context if the batch context was cancelled (e.g. shutdown).
+			var cancel context.CancelFunc
+			syncCtx, cancel = context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+		}
+		var syncErr error
+		for attempt := 0; attempt < 3; attempt++ {
+			syncErr = o.server.SyncDatabase(syncCtx, o.databasePath)
+			if syncErr == nil {
+				break
+			}
+			slog.Warn("ongoing backup: database sync failed (retrying)",
+				"backup_id", backupID, "attempt", attempt+1, "error", syncErr)
+			time.Sleep(time.Duration(attempt+1) * 2 * time.Second)
+		}
+		if syncErr != nil {
+			slog.Error("ongoing backup: database sync failed after retries — server may show stale data",
+				"backup_id", backupID, "error", syncErr)
+		}
+	}
 }
 
 // processFile handles a single stable file: manifest exchange, encrypt, upload, and record.

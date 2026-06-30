@@ -24,6 +24,7 @@ type LocalWatcherController struct {
 	stabilitySec    int
 	batchMinutes    int
 	excludePatterns []string
+	databasePath    string
 	broker          *SSEBroker
 
 	mu      sync.Mutex
@@ -44,6 +45,7 @@ type LocalWatcherConfig struct {
 	StabilitySec    int
 	BatchMinutes    int
 	ExcludePatterns []string
+	DatabasePath    string
 }
 
 // NewLocalWatcherController creates a new watcher controller.
@@ -57,6 +59,7 @@ func NewLocalWatcherController(cfg LocalWatcherConfig) *LocalWatcherController {
 		stabilitySec:    cfg.StabilitySec,
 		batchMinutes:    cfg.BatchMinutes,
 		excludePatterns: cfg.ExcludePatterns,
+		databasePath:    cfg.DatabasePath,
 	}
 }
 
@@ -153,6 +156,7 @@ func (c *LocalWatcherController) StartWatcher() error {
 			Encryptor:     encryptor,
 			MasterKey:     c.masterKey,
 			BatchInterval: batchInterval,
+			DatabasePath:  c.databasePath,
 		})
 
 		if err := ongoing.Start(bgCtx); err != nil {

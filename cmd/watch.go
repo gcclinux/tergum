@@ -208,6 +208,7 @@ func runWatch(cmd *cobra.Command, args []string) error {
 		Encryptor:     encryptor,
 		MasterKey:     masterKey,
 		BatchInterval: batchInterval,
+		DatabasePath:  cfg.Database.Path,
 	})
 
 	// Start the ongoing backup processor.
