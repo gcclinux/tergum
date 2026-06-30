@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -320,7 +321,7 @@ func (o *OngoingBackup) processFile(ctx context.Context, backupID string, sf wat
 	}
 
 	// Read file content.
-	data, err := os.ReadFile(sf.Path)
+	data, err := readFileRetry(ctx, sf.Path)
 	if err != nil {
 		return 0, 0, 0, fmt.Errorf("read file: %w", err)
 	}
@@ -374,4 +375,36 @@ func (o *OngoingBackup) buildEntry(backupID string, sf watcher.StableFile, info 
 		Nonce:        nonce,
 		BackupDate:   time.Now().UTC(),
 	}
+}
+
+// readFileRetry reads a file, retrying with exponential backoff on "too many open files" errors.
+func readFileRetry(ctx context.Context, path string) ([]byte, error) {
+	const maxRetries = 5
+	backoff := 500 * time.Millisecond
+
+	var lastErr error
+	for attempt := 0; attempt <= maxRetries; attempt++ {
+		data, err := os.ReadFile(path)
+		if err == nil {
+			return data, nil
+		}
+
+		if !strings.Contains(err.Error(), "too many open files") {
+			return nil, err
+		}
+
+		lastErr = err
+		if attempt < maxRetries {
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case <-time.After(backoff):
+			}
+			backoff *= 2
+			if backoff > 10*time.Second {
+				backoff = 10 * time.Second
+			}
+		}
+	}
+	return nil, lastErr
 }

@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
+	"time"
 
 	"github.com/gcclinux/tergum/internal/grpc/proto"
 )
@@ -22,7 +24,29 @@ func SyncDatabaseToServer(ctx context.Context, client proto.DataServiceClient, d
 		return fmt.Errorf("clientID is required for database sync")
 	}
 
-	f, err := os.Open(dbPath)
+	// Retry os.Open if FD limit is temporarily exhausted (e.g. file watcher
+	// holding many directory handles on macOS with a low ulimit).
+	var f *os.File
+	var err error
+	backoff := 500 * time.Millisecond
+	for attempt := 0; attempt < 5; attempt++ {
+		f, err = os.Open(dbPath)
+		if err == nil {
+			break
+		}
+		if !isEMFILEError(err) {
+			return fmt.Errorf("opening database file %s: %w", dbPath, err)
+		}
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("opening database file %s: %w", dbPath, err)
+		case <-time.After(backoff):
+		}
+		backoff *= 2
+		if backoff > 10*time.Second {
+			backoff = 10 * time.Second
+		}
+	}
 	if err != nil {
 		return fmt.Errorf("opening database file %s: %w", dbPath, err)
 	}
@@ -68,4 +92,13 @@ func SyncDatabaseToServer(ctx context.Context, client proto.DataServiceClient, d
 	}
 
 	return nil
+}
+
+// isEMFILEError returns true if the error is caused by file descriptor exhaustion.
+func isEMFILEError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "too many open files")
 }

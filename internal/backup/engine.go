@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -159,18 +160,32 @@ func (e *BackupEngine) RunBackup(ctx context.Context, req BackupRequest) (*Backu
 					slog.Warn("database checkpoint failed before sync", "error", err)
 				}
 			}
-			// Retry SyncDatabase up to 3 times with short backoff to ensure
+			// Retry SyncDatabase up to 5 times with exponential backoff to ensure
 			// the server gets the final job status. A failed sync leaves the
 			// server's copy of the client DB showing "running" indefinitely.
+			// On macOS, FD exhaustion from the file watcher can persist for a
+			// while; the extended retry gives time for FDs to be released.
 			var syncErr error
-			for attempt := 0; attempt < 3; attempt++ {
-				syncErr = e.server.SyncDatabase(ctx, e.config.DatabasePath)
+			syncBackoff := 2 * time.Second
+			for attempt := 0; attempt < 5; attempt++ {
+				// Use a fresh context if the original was cancelled (e.g. during shutdown).
+				syncCtx := ctx
+				if syncCtx.Err() != nil {
+					var cancel context.CancelFunc
+					syncCtx, cancel = context.WithTimeout(context.Background(), 30*time.Second)
+					defer cancel()
+				}
+				syncErr = e.server.SyncDatabase(syncCtx, e.config.DatabasePath)
 				if syncErr == nil {
 					break
 				}
 				slog.Warn("database sync failed during job finalization (retrying)",
 					"status", status, "attempt", attempt+1, "error", syncErr)
-				time.Sleep(time.Duration(attempt+1) * 2 * time.Second)
+				time.Sleep(syncBackoff)
+				syncBackoff *= 2
+				if syncBackoff > 30*time.Second {
+					syncBackoff = 30 * time.Second
+				}
 			}
 			if syncErr != nil {
 				slog.Error("database sync failed after retries — server may show stale job status",
@@ -309,7 +324,7 @@ func (e *BackupEngine) RunBackup(ctx context.Context, req BackupRequest) (*Backu
 		}
 
 		// Read file content.
-		data, err := os.ReadFile(sf.Path)
+		data, err := readFileWithRetry(ctx, sf.Path)
 		if err != nil {
 			slog.Warn("failed to read file for upload", "path", sf.Path, "error", err)
 			continue
@@ -518,6 +533,50 @@ func (l *LocalServerConnection) UploadFile(ctx context.Context, hash string, dat
 func (l *LocalServerConnection) SyncDatabase(ctx context.Context, dbPath string) error {
 	// In local mode, client and server share the same database — nothing to sync.
 	return nil
+}
+
+// readFileWithRetry reads a file, retrying with exponential backoff if the
+// error is "too many open files" (EMFILE/ENFILE). This handles transient FD
+// pressure caused by the file watcher holding many directory handles open.
+func readFileWithRetry(ctx context.Context, path string) ([]byte, error) {
+	const maxRetries = 5
+	backoff := 500 * time.Millisecond
+
+	var lastErr error
+	for attempt := 0; attempt <= maxRetries; attempt++ {
+		data, err := os.ReadFile(path)
+		if err == nil {
+			return data, nil
+		}
+
+		if !isEMFILE(err) {
+			return nil, err
+		}
+
+		lastErr = err
+		if attempt < maxRetries {
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case <-time.After(backoff):
+			}
+			backoff *= 2
+			if backoff > 10*time.Second {
+				backoff = 10 * time.Second
+			}
+		}
+	}
+	return nil, lastErr
+}
+
+// isEMFILE returns true if the error is caused by file descriptor exhaustion
+// (EMFILE "too many open files" or ENFILE "too many open files in system").
+func isEMFILE(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "too many open files")
 }
 
 // Ensure interfaces are satisfied at compile time.

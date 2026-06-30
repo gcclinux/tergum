@@ -103,6 +103,10 @@ func (s *Server) Start(ctx context.Context) error {
 		return fmt.Errorf("setup logging: %w", err)
 	}
 
+	// Raise file descriptor limit early — the file watcher and backup engine
+	// can consume many FDs on macOS/Linux.
+	raiseFileLimit(65536)
+
 	// If role is "client", start the client daemon flow instead of the server.
 	if s.cfg.Node.Role == "client" {
 		return s.startClient(ctx)
@@ -501,6 +505,10 @@ func (s *Server) Stop() error {
 // master key, starts a client-side CommandService, connects to the remote server,
 // registers, starts heartbeat, optionally starts file watcher, and waits for shutdown.
 func (s *Server) startClient(ctx context.Context) error {
+	// Raise file descriptor limit early — the file watcher uses one FD per
+	// monitored directory, and large backup sets can exhaust the default macOS limit (256).
+	raiseFileLimit(65536)
+
 	// 1. Open local database.
 	repo, err := db.NewRepository(s.cfg.Database.Path, s.cfg.Database.WALMode)
 	if err != nil {
