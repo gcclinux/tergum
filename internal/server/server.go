@@ -518,6 +518,12 @@ func (s *Server) startClient(ctx context.Context) error {
 	// monitored directory, and large backup sets can exhaust the default macOS limit (256).
 	raiseFileLimit(65536)
 
+	// Reserve a pipe for signal delivery BEFORE the file watcher consumes FDs.
+	// On macOS, pipe() can fail with "too many open files" if called after
+	// fsnotify has registered thousands of kqueue watches.
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGTERM, syscall.SIGINT)
+
 	// 1. Open local database.
 	repo, err := db.NewRepository(s.cfg.Database.Path, s.cfg.Database.WALMode)
 	if err != nil {
@@ -783,9 +789,6 @@ func (s *Server) startClient(ctx context.Context) error {
 	)
 
 	// 8. Wait for SIGTERM/SIGINT, then graceful shutdown.
-	sigCh := make(chan os.Signal, 1)
-	signal.Notify(sigCh, syscall.SIGTERM, syscall.SIGINT)
-
 	select {
 	case sig := <-sigCh:
 		s.logger.Info("received shutdown signal", "signal", sig)

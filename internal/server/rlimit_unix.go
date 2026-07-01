@@ -22,17 +22,35 @@ func raiseFileLimit(minFDs uint64) {
 		return // already sufficient
 	}
 
+	// Determine a safe target: the minimum of our request and the hard limit.
 	target := minFDs
-	if target > rlim.Max {
+	if rlim.Max > 0 && target > rlim.Max {
 		target = rlim.Max
+	}
+
+	// On macOS, kern.maxfilesperproc caps what we can actually set.
+	// If the hard limit seems unreasonably high (>1M), cap at a safe value.
+	const macOSSafeMax = 1048576 // 1M — beyond this macOS may reject or misbehave
+	if target > macOSSafeMax {
+		target = macOSSafeMax
 	}
 
 	prev := rlim.Cur
 	rlim.Cur = target
 	if err := syscall.Setrlimit(syscall.RLIMIT_NOFILE, &rlim); err != nil {
-		slog.Warn("cannot raise file descriptor limit",
-			"current", prev, "target", target, "error", err)
-		return
+		// If the full target fails, try a more modest increase.
+		rlim.Cur = 10240
+		if rlim.Cur <= prev {
+			slog.Warn("cannot raise file descriptor limit",
+				"current", prev, "target", target, "error", err)
+			return
+		}
+		if err2 := syscall.Setrlimit(syscall.RLIMIT_NOFILE, &rlim); err2 != nil {
+			slog.Warn("cannot raise file descriptor limit",
+				"current", prev, "target", target, "error", err)
+			return
+		}
+		target = 10240
 	}
 
 	slog.Info("raised file descriptor limit", "from", prev, "to", target)
