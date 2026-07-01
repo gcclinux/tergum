@@ -204,6 +204,7 @@ func (s *Server) Start(ctx context.Context) error {
 		WriteQueue:  s.writeQueue,
 		ClientsDir:  clientsDir,
 		MaxRestores: s.cfg.Backup.MaxConcurrentDownloads,
+		Registry:    reg,
 		OnSync: func(clientID string, dbPath string) {
 			// After receiving a client DB sync, query it for the latest
 			// completed backup and update the registry.

@@ -89,6 +89,13 @@ func (s *CommandServer) TriggerBackup(ctx context.Context, req *proto.BackupRequ
 		return nil, MapError(&model.ConfigError{Message: "client_id is required"})
 	}
 
+	// Reject if the client is disabled.
+	if s.registry != nil {
+		if ci := s.registry.GetClient(req.ClientId); ci != nil && ci.Disabled {
+			return nil, MapError(&model.ConfigError{Message: fmt.Sprintf("client %q is disabled", req.ClientId)})
+		}
+	}
+
 	// Acquire backup semaphore slot.
 	if err := s.backupSem.Acquire(ctx); err != nil {
 		return nil, MapError(&model.ConnectionError{Message: "server at maximum backup capacity"})
@@ -182,6 +189,16 @@ func (s *CommandServer) Ping(ctx context.Context, req *proto.PingRequest) (*prot
 	// If registry is configured, update the client's heartbeat and sync state.
 	if s.registry != nil {
 		if clientID, err := clientIDFromContext(ctx); err == nil && clientID != "" {
+			// Skip state updates for disabled clients.
+			ci := s.registry.GetClient(clientID)
+			if ci != nil && ci.Disabled {
+				uptime := time.Since(s.startedAt).Truncate(time.Second)
+				return &proto.PingResponse{
+					Version: s.version,
+					Uptime:  uptime.String(),
+				}, nil
+			}
+
 			_ = s.registry.Heartbeat(clientID)
 
 			// Sync watcher state from client's heartbeat payload.

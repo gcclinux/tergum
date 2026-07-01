@@ -52,6 +52,10 @@ func NewRemoteClientConnector(cfg RemoteClientConnectorConfig) *RemoteClientConn
 
 // TriggerClientBackup connects to the client and sends a TriggerBackup RPC.
 func (c *RemoteClientConnector) TriggerClientBackup(ctx context.Context, clientID string) error {
+	if err := c.checkNotDisabled(clientID); err != nil {
+		return err
+	}
+
 	// Try tunnel first if available.
 	if c.tunnelHub != nil && c.tunnelHub.HasTunnel(clientID) {
 		_, err := c.tunnelHub.TriggerBackup(ctx, clientID, &proto.BackupRequest{
@@ -77,6 +81,10 @@ func (c *RemoteClientConnector) TriggerClientBackup(ctx context.Context, clientI
 // StartClientWatcher connects to the client and sends a StartWatcher RPC.
 // On success, it updates the registry watcher status.
 func (c *RemoteClientConnector) StartClientWatcher(ctx context.Context, clientID string) error {
+	if err := c.checkNotDisabled(clientID); err != nil {
+		return err
+	}
+
 	// Try tunnel first if available.
 	if c.tunnelHub != nil && c.tunnelHub.HasTunnel(clientID) {
 		resp, err := c.tunnelHub.StartWatcher(ctx, clientID, &proto.WatcherRequest{ClientId: clientID})
@@ -119,6 +127,10 @@ func (c *RemoteClientConnector) StartClientWatcher(ctx context.Context, clientID
 // StopClientWatcher connects to the client and sends a StopWatcher RPC.
 // On success, it updates the registry watcher status.
 func (c *RemoteClientConnector) StopClientWatcher(ctx context.Context, clientID string) error {
+	if err := c.checkNotDisabled(clientID); err != nil {
+		return err
+	}
+
 	// Try tunnel first if available.
 	if c.tunnelHub != nil && c.tunnelHub.HasTunnel(clientID) {
 		resp, err := c.tunnelHub.StopWatcher(ctx, clientID, &proto.WatcherRequest{ClientId: clientID})
@@ -160,6 +172,10 @@ func (c *RemoteClientConnector) StopClientWatcher(ctx context.Context, clientID 
 
 // GetClientStatus connects to the client and sends a GetStatus RPC.
 func (c *RemoteClientConnector) GetClientStatus(ctx context.Context, clientID string) (*ClientStatusInfo, error) {
+	if err := c.checkNotDisabled(clientID); err != nil {
+		return nil, err
+	}
+
 	// Try tunnel first if available.
 	if c.tunnelHub != nil && c.tunnelHub.HasTunnel(clientID) {
 		resp, err := c.tunnelHub.GetStatus(ctx, clientID, &proto.StatusRequest{ClientId: clientID})
@@ -267,6 +283,15 @@ func (c *RemoteClientConnector) connectToClient(clientID string) (*grpcpkg.Tergu
 	})
 
 	return client, nil
+}
+
+// checkNotDisabled returns an error if the client is disabled in the registry.
+func (c *RemoteClientConnector) checkNotDisabled(clientID string) error {
+	ci := c.registry.GetClient(clientID)
+	if ci != nil && ci.Disabled {
+		return fmt.Errorf("client %q is disabled", clientID)
+	}
+	return nil
 }
 
 // Ensure RemoteClientConnector satisfies the ClientConnector interface at compile time.

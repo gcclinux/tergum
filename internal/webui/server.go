@@ -87,6 +87,7 @@ type ClientRegistry interface {
 	ListClients() []registryPkg.ClientInfo
 	GetClient(clientID string) *registryPkg.ClientInfo
 	SetSchedule(clientID string, schedule registryPkg.ScheduleConfig) error
+	SetDisabled(clientID string, disabled bool) error
 }
 
 // ServerOption is a functional option for configuring the web UI server.

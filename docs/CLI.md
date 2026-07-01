@@ -9,6 +9,8 @@
 | [`tergum client`](#tergum-client) | ✅ Working | Manage and view remote clients (server-side) |
 | [`tergum client list`](#tergum-client-list) | ✅ Working | List all registered clients and their status |
 | [`tergum client status`](#tergum-client-status) | ✅ Working | Show detailed status for a specific client |
+| [`tergum client disable`](#tergum-client-disable) | ✅ Working | Disable a client (no backups, restores, or monitoring) |
+| [`tergum client enable`](#tergum-client-enable) | ✅ Working | Re-enable a previously disabled client |
 | [`tergum admin`](#tergum-admin) | ✅ Working | Start Web UI only (lightweight) |
 | [`tergum node`](#tergum-node) | ✅ Working | Manage node role and hostname settings |
 | [`tergum node show`](#tergum-node-show) | ✅ Working | Show current node role and hostname |
@@ -158,6 +160,8 @@ Usage: tergum client <subcommand>
 Subcommands:
   list                   List all registered clients and their online/offline status
   status <client-name>   Show detailed status for a specific client
+  disable <client-name>  Disable a client (no backups, restores, or monitoring from server)
+  enable <client-name>   Re-enable a previously disabled client
 ```
 
 ---
@@ -231,6 +235,71 @@ Registered:     2026-06-15 09:20:00
 Schedule:
   Full Backup:  0 3 * * 0
   Auto Backup:  0 */6 * * *
+```
+
+---
+
+#### tergum client disable
+
+Disable a client on the server side. A disabled client is fully ignored by the server:
+- No scheduled backups will be triggered
+- No heartbeat/status polling (client appears frozen in time)
+- Incoming backup uploads and database syncs from the client are rejected
+- Cannot be triggered for backup, watcher start/stop, or restore from the server
+- The client record is preserved and can be re-enabled at any time
+
+```
+Usage: tergum client disable <client-name> [flags]
+
+Flags:
+  --json   Output as JSON
+```
+
+**Linux / macOS:**
+```bash
+tergum client disable fedora-laptop
+tergum client disable fedora-laptop --json
+```
+
+**PowerShell (Windows):**
+```powershell
+.\tergum.exe client disable fedora-laptop
+.\tergum.exe client disable fedora-laptop --json
+```
+
+**Example output:**
+```
+Client "fedora-laptop" disabled.
+```
+
+---
+
+#### tergum client enable
+
+Re-enable a previously disabled client. The client will resume normal operation on the next heartbeat cycle (within 30 seconds).
+
+```
+Usage: tergum client enable <client-name> [flags]
+
+Flags:
+  --json   Output as JSON
+```
+
+**Linux / macOS:**
+```bash
+tergum client enable fedora-laptop
+tergum client enable fedora-laptop --json
+```
+
+**PowerShell (Windows):**
+```powershell
+.\tergum.exe client enable fedora-laptop
+.\tergum.exe client enable fedora-laptop --json
+```
+
+**Example output:**
+```
+Client "fedora-laptop" enabled.
 ```
 
 ---

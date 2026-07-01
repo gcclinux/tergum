@@ -312,6 +312,9 @@ func (cs *ClientScheduler) syncSchedules() {
 
 	clients := cs.registry.ListClients()
 	for _, ci := range clients {
+		if ci.Disabled {
+			continue
+		}
 		if ci.Schedule == nil {
 			continue
 		}
@@ -381,6 +384,11 @@ func (cs *ClientScheduler) makeJob(clientID string, level model.BackupLevel) fun
 		if ci == nil {
 			cs.logger.Warn("scheduled backup for unknown client (removed?)",
 				"client_id", clientID, "level", level.String())
+			return
+		}
+
+		// Skip disabled clients entirely — no backups, no missed backup recording.
+		if ci.Disabled {
 			return
 		}
 

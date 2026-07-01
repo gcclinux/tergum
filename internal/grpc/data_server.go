@@ -11,6 +11,7 @@ import (
 	"github.com/gcclinux/tergum/internal/db"
 	"github.com/gcclinux/tergum/internal/grpc/proto"
 	"github.com/gcclinux/tergum/internal/model"
+	"github.com/gcclinux/tergum/internal/registry"
 	"github.com/gcclinux/tergum/internal/storage"
 )
 
@@ -29,6 +30,7 @@ type DataServer struct {
 	clientsDir string // directory for storing client database copies
 	restoreSem *Semaphore
 	onSync     func(clientID string, dbPath string)
+	registry   *registry.Registry // optional; used to reject disabled clients
 }
 
 // DataServerConfig holds configuration for the DataServer.
@@ -39,6 +41,7 @@ type DataServerConfig struct {
 	ClientsDir  string                               // path to clients/ directory for SyncDatabase
 	MaxRestores int                                  // max concurrent restores, default 8
 	OnSync      func(clientID string, dbPath string) // called after a successful SyncDatabase
+	Registry    *registry.Registry                   // optional; enables disabled-client checks
 }
 
 // NewDataServer creates a new DataServer with the given configuration.
@@ -55,12 +58,22 @@ func NewDataServer(cfg DataServerConfig) *DataServer {
 		clientsDir: cfg.ClientsDir,
 		restoreSem: NewSemaphore(maxRestores),
 		onSync:     cfg.OnSync,
+		registry:   cfg.Registry,
 	}
 }
 
 // Upload receives a stream of FileChunks (Header → Data → Trailer),
 // reconstructs the file, stores it in the CAS, and inserts a DB entry.
 func (s *DataServer) Upload(stream proto.DataService_UploadServer) error {
+	// Reject uploads from disabled clients.
+	if s.registry != nil {
+		if clientID, err := clientIDFromContext(stream.Context()); err == nil && clientID != "" {
+			if ci := s.registry.GetClient(clientID); ci != nil && ci.Disabled {
+				return MapError(&model.ConfigError{Message: fmt.Sprintf("client %q is disabled", clientID)})
+			}
+		}
+	}
+
 	var (
 		header     *proto.FileHeader
 		buf        bytes.Buffer
@@ -292,6 +305,12 @@ func (s *DataServer) SyncDatabase(stream proto.DataService_SyncDatabaseServer) e
 			clientID = chunk.ClientId
 			if clientID == "" {
 				return MapError(&model.ConfigError{Message: "client_id is required in the first database chunk"})
+			}
+			// Reject sync from disabled clients.
+			if s.registry != nil {
+				if ci := s.registry.GetClient(clientID); ci != nil && ci.Disabled {
+					return MapError(&model.ConfigError{Message: fmt.Sprintf("client %q is disabled", clientID)})
+				}
 			}
 			firstChunk = false
 		}

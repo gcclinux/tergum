@@ -38,6 +38,7 @@ type ClientInfo struct {
 	LastSeen      time.Time
 	LastBackup    time.Time
 	WatcherActive bool
+	Disabled      bool // when true, server ignores this client (no backups, no pings, no restores)
 	Schedule      *ScheduleConfig
 	MissedBackups []MissedBackup
 	RegisteredAt  time.Time
@@ -128,6 +129,10 @@ func (r *Registry) createTables() error {
 			return fmt.Errorf("exec schema: %w", err)
 		}
 	}
+
+	// Migration: add 'disabled' column if it doesn't exist yet.
+	_, _ = r.db.Exec(`ALTER TABLE client_registry ADD COLUMN disabled INTEGER DEFAULT 0`)
+
 	return nil
 }
 
@@ -135,7 +140,8 @@ func (r *Registry) createTables() error {
 func (r *Registry) loadClients() error {
 	rows, err := r.db.Query(
 		`SELECT client_id, address, status, last_seen, last_backup,
-		        watcher_active, full_backup_cron, auto_backup_cron, registered_at
+		        watcher_active, full_backup_cron, auto_backup_cron, registered_at,
+		        COALESCE(disabled, 0)
 		 FROM client_registry`)
 	if err != nil {
 		return err
@@ -146,19 +152,21 @@ func (r *Registry) loadClients() error {
 	for rows.Next() {
 		var ci ClientInfo
 		var lastSeen, lastBackup, registeredAt *string
-		var watcherActive int
+		var watcherActive, disabled int
 		var fullCron, autoCron string
 
 		if err := rows.Scan(
 			&ci.ClientID, &ci.Address, &ci.Status,
 			&lastSeen, &lastBackup,
 			&watcherActive, &fullCron, &autoCron, &registeredAt,
+			&disabled,
 		); err != nil {
 			rows.Close()
 			return err
 		}
 
 		ci.WatcherActive = watcherActive == 1
+		ci.Disabled = disabled == 1
 		// Parse timestamps, handling both legacy local-time and current UTC storage.
 		if lastSeen != nil {
 			ci.LastSeen = parseDBTime(*lastSeen)
@@ -458,6 +466,27 @@ func (r *Registry) SetWatcherActive(clientID string, active bool) error {
 	return r.persistClientLocked(ci)
 }
 
+// SetDisabled enables or disables a client. A disabled client is fully
+// ignored by the server: no scheduled backups, no heartbeat processing,
+// no restore operations. The client record is preserved for re-enabling later.
+func (r *Registry) SetDisabled(clientID string, disabled bool) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	ci, exists := r.clients[clientID]
+	if !exists {
+		return fmt.Errorf("registry: unknown client %q", clientID)
+	}
+
+	ci.Disabled = disabled
+	if disabled {
+		r.logger.Info("registry: client disabled", "client_id", clientID)
+	} else {
+		r.logger.Info("registry: client enabled", "client_id", clientID)
+	}
+	return r.persistClientLocked(ci)
+}
+
 // SetLastBackup updates the last backup timestamp for a client.
 func (r *Registry) SetLastBackup(clientID string, t time.Time) error {
 	r.mu.Lock()
@@ -554,6 +583,11 @@ func (r *Registry) persistClientLocked(ci *ClientInfo) error {
 		watcherActive = 1
 	}
 
+	var disabled int
+	if ci.Disabled {
+		disabled = 1
+	}
+
 	var fullCron, autoCron string
 	if ci.Schedule != nil {
 		fullCron = ci.Schedule.FullBackupCron
@@ -564,8 +598,8 @@ func (r *Registry) persistClientLocked(ci *ClientInfo) error {
 
 	_, err := r.db.Exec(
 		`INSERT INTO client_registry (client_id, address, status, last_seen, last_backup,
-		                              watcher_active, full_backup_cron, auto_backup_cron, registered_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		                              watcher_active, full_backup_cron, auto_backup_cron, registered_at, disabled)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT(client_id) DO UPDATE SET
 		   address = excluded.address,
 		   status = excluded.status,
@@ -573,9 +607,10 @@ func (r *Registry) persistClientLocked(ci *ClientInfo) error {
 		   last_backup = excluded.last_backup,
 		   watcher_active = excluded.watcher_active,
 		   full_backup_cron = excluded.full_backup_cron,
-		   auto_backup_cron = excluded.auto_backup_cron`,
+		   auto_backup_cron = excluded.auto_backup_cron,
+		   disabled = excluded.disabled`,
 		ci.ClientID, ci.Address, ci.Status, lastSeen, lastBackup,
-		watcherActive, fullCron, autoCron, registeredAt,
+		watcherActive, fullCron, autoCron, registeredAt, disabled,
 	)
 	return err
 }

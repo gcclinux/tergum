@@ -26,6 +26,8 @@ Requires the node role to be "server" or "hybrid".`,
 
 	cmd.AddCommand(newClientListCmd())
 	cmd.AddCommand(newClientStatusCmd())
+	cmd.AddCommand(newClientDisableCmd())
+	cmd.AddCommand(newClientEnableCmd())
 
 	return cmd
 }
@@ -53,6 +55,65 @@ func newClientStatusCmd() *cobra.Command {
 	}
 
 	return cmd
+}
+
+func newClientDisableCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "disable <client-name>",
+		Short: "Disable a client — no backups, restores, or status polling from the server",
+		Long: `Disables a registered client on the server side. A disabled client:
+  - Will not receive scheduled backups
+  - Will not have its heartbeat processed (appears frozen)
+  - Cannot be triggered for backup, watcher start/stop, or restore from the server
+  - Remains registered and can be re-enabled at any time`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runClientSetDisabled(args[0], true)
+		},
+	}
+}
+
+func newClientEnableCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "enable <client-name>",
+		Short: "Re-enable a previously disabled client",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runClientSetDisabled(args[0], false)
+		},
+	}
+}
+
+func runClientSetDisabled(clientID string, disabled bool) error {
+	reg, _, cleanup, err := openRegistry()
+	if err != nil {
+		return err
+	}
+	defer cleanup()
+
+	ci := reg.GetClient(clientID)
+	if ci == nil {
+		return fmt.Errorf("client %q not found in registry", clientID)
+	}
+
+	if err := reg.SetDisabled(clientID, disabled); err != nil {
+		return err
+	}
+
+	action := "disabled"
+	if !disabled {
+		action = "enabled"
+	}
+
+	printOutput(
+		map[string]interface{}{
+			"client_id": clientID,
+			"disabled":  disabled,
+			"status":    action,
+		},
+		fmt.Sprintf("Client %q %s.", clientID, action),
+	)
+	return nil
 }
 
 func runClientList() error {
@@ -142,6 +203,7 @@ func runClientStatus(clientID string) error {
 			ClientID      string `json:"client_id"`
 			Address       string `json:"address"`
 			Status        string `json:"status"`
+			Disabled      bool   `json:"disabled"`
 			LastSeen      string `json:"last_seen,omitempty"`
 			LastBackup    string `json:"last_backup,omitempty"`
 			WatcherActive bool   `json:"watcher_active"`
@@ -157,6 +219,7 @@ func runClientStatus(clientID string) error {
 			ClientID:      ci.ClientID,
 			Address:       ci.Address,
 			Status:        ci.Status,
+			Disabled:      ci.Disabled,
 			WatcherActive: ci.WatcherActive,
 			MissedBackups: len(ci.MissedBackups),
 		}
@@ -187,6 +250,9 @@ func runClientStatus(clientID string) error {
 	fmt.Printf("Client:         %s\n", ci.ClientID)
 	fmt.Printf("Address:        %s\n", ci.Address)
 	fmt.Printf("Status:         %s\n", ci.Status)
+	if ci.Disabled {
+		fmt.Printf("Disabled:       true\n")
+	}
 
 	if !ci.LastSeen.IsZero() {
 		fmt.Printf("Last Seen:      %s (%s)\n", ci.LastSeen.Local().Format(time.DateTime), formatTimeAgo(ci.LastSeen))

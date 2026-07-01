@@ -1335,6 +1335,10 @@ func (s *Server) handleAPIClientAction(w http.ResponseWriter, r *http.Request) {
 		s.handleAPIClientSchedule(w, r, clientID)
 	case action == "history" && r.Method == http.MethodGet:
 		s.handleAPIClientHistory(w, r, clientID)
+	case action == "disable" && r.Method == http.MethodPost:
+		s.handleAPIClientDisable(w, r, clientID)
+	case action == "enable" && r.Method == http.MethodPost:
+		s.handleAPIClientEnable(w, r, clientID)
 	default:
 		http.Error(w, "not found", http.StatusNotFound)
 	}
@@ -1497,6 +1501,66 @@ func (s *Server) handleAPIClientWatcherStop(w http.ResponseWriter, r *http.Reque
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"success": true,
 		"message": fmt.Sprintf("watcher stopped on client %s", clientID),
+	})
+}
+
+// handleAPIClientDisable handles POST /api/clients/{id}/disable — disables a client.
+func (s *Server) handleAPIClientDisable(w http.ResponseWriter, r *http.Request, clientID string) {
+	if s.clientRegistry == nil {
+		setErrorToast(w, "Client registry not available")
+		writeJSONError(w, "registry not available", http.StatusServiceUnavailable)
+		return
+	}
+
+	ci := s.clientRegistry.GetClient(clientID)
+	if ci == nil {
+		setErrorToast(w, fmt.Sprintf("Client %s not found", clientID))
+		writeJSONError(w, "client not found", http.StatusNotFound)
+		return
+	}
+
+	if err := s.clientRegistry.SetDisabled(clientID, true); err != nil {
+		s.logger.Error("disable client failed", "client_id", clientID, "error", err)
+		setErrorToast(w, fmt.Sprintf("Failed to disable client %s: %v", clientID, err))
+		writeJSONError(w, fmt.Sprintf("disable failed: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	setSuccessToast(w, fmt.Sprintf("Client %s disabled", clientID))
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"message": fmt.Sprintf("client %s disabled", clientID),
+	})
+}
+
+// handleAPIClientEnable handles POST /api/clients/{id}/enable — re-enables a disabled client.
+func (s *Server) handleAPIClientEnable(w http.ResponseWriter, r *http.Request, clientID string) {
+	if s.clientRegistry == nil {
+		setErrorToast(w, "Client registry not available")
+		writeJSONError(w, "registry not available", http.StatusServiceUnavailable)
+		return
+	}
+
+	ci := s.clientRegistry.GetClient(clientID)
+	if ci == nil {
+		setErrorToast(w, fmt.Sprintf("Client %s not found", clientID))
+		writeJSONError(w, "client not found", http.StatusNotFound)
+		return
+	}
+
+	if err := s.clientRegistry.SetDisabled(clientID, false); err != nil {
+		s.logger.Error("enable client failed", "client_id", clientID, "error", err)
+		setErrorToast(w, fmt.Sprintf("Failed to enable client %s: %v", clientID, err))
+		writeJSONError(w, fmt.Sprintf("enable failed: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	setSuccessToast(w, fmt.Sprintf("Client %s enabled", clientID))
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"message": fmt.Sprintf("client %s enabled", clientID),
 	})
 }
 
@@ -1732,6 +1796,9 @@ func (s *Server) handleAPIClientsList(w http.ResponseWriter, r *http.Request) {
 		if isOffline {
 			fmt.Fprint(w, `<span class="text-xs font-medium px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200">Offline</span>`)
 			fmt.Fprint(w, `<span class="w-3 h-3 rounded-full bg-red-500 shrink-0"></span>`)
+		} else if ci.Disabled {
+			fmt.Fprint(w, `<span class="text-xs font-medium px-2 py-0.5 rounded-full bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-400">Disabled</span>`)
+			fmt.Fprint(w, `<span class="w-3 h-3 rounded-full bg-gray-400 shrink-0"></span>`)
 		} else {
 			fmt.Fprint(w, `<span class="w-3 h-3 rounded-full bg-green-500 shrink-0"></span>`)
 		}
@@ -1752,19 +1819,26 @@ func (s *Server) handleAPIClientsList(w http.ResponseWriter, r *http.Request) {
 		// Action buttons
 		disabledAttr := ""
 		disabledClass := "hover:bg-blue-50 dark:hover:bg-gray-700 cursor-pointer"
-		if isOffline {
+		if isOffline || ci.Disabled {
 			disabledAttr = " disabled"
 			disabledClass = "opacity-50 cursor-not-allowed"
 		}
 		fmt.Fprint(w, `<div class="flex flex-wrap gap-2 pt-2 border-t border-gray-100 dark:border-gray-700">`)
-		if clientStatus == "Running" {
-			fmt.Fprintf(w, `<button hx-post="/api/clients/%s/backup/stop" hx-swap="none" class="text-xs px-2.5 py-1.5 rounded border border-red-200 dark:border-red-700 text-red-700 dark:text-red-300 hover:bg-red-50 dark:hover:bg-gray-700 cursor-pointer">Stop Backup</button>`, ci.ClientID)
+		if ci.Disabled {
+			// Disabled client: only show Enable button.
+			fmt.Fprintf(w, `<button hx-post="/api/clients/%s/enable" hx-swap="none" class="text-xs px-2.5 py-1.5 rounded border border-green-200 dark:border-green-700 text-green-700 dark:text-green-300 hover:bg-green-50 dark:hover:bg-gray-700 cursor-pointer">Enable Client</button>`, ci.ClientID)
+			fmt.Fprint(w, `<span class="text-xs text-red-500 dark:text-red-400 italic self-center">Client disabled</span>`)
 		} else {
-			fmt.Fprintf(w, `<button hx-post="/api/clients/%s/backup" hx-swap="none" class="text-xs px-2.5 py-1.5 rounded border border-blue-200 dark:border-blue-700 text-blue-700 dark:text-blue-300 %s"%s>Trigger Backup</button>`, ci.ClientID, disabledClass, disabledAttr)
+			if clientStatus == "Running" {
+				fmt.Fprintf(w, `<button hx-post="/api/clients/%s/backup/stop" hx-swap="none" class="text-xs px-2.5 py-1.5 rounded border border-red-200 dark:border-red-700 text-red-700 dark:text-red-300 hover:bg-red-50 dark:hover:bg-gray-700 cursor-pointer">Stop Backup</button>`, ci.ClientID)
+			} else {
+				fmt.Fprintf(w, `<button hx-post="/api/clients/%s/backup" hx-swap="none" class="text-xs px-2.5 py-1.5 rounded border border-blue-200 dark:border-blue-700 text-blue-700 dark:text-blue-300 %s"%s>Trigger Backup</button>`, ci.ClientID, disabledClass, disabledAttr)
+			}
+			fmt.Fprintf(w, `<button hx-post="/api/clients/%s/watcher/start" hx-swap="none" class="text-xs px-2.5 py-1.5 rounded border border-green-200 dark:border-green-700 text-green-700 dark:text-green-300 %s"%s>Start Watcher</button>`, ci.ClientID, disabledClass, disabledAttr)
+			fmt.Fprintf(w, `<a href="/restore?client=%s" hx-get="/restore?client=%s" hx-target="#content-area" hx-push-url="true" class="text-xs px-2.5 py-1.5 rounded border border-yellow-200 dark:border-yellow-700 text-yellow-700 dark:text-yellow-300 hover:bg-yellow-50 dark:hover:bg-gray-700 cursor-pointer no-underline">Restore</a>`, ci.ClientID, ci.ClientID)
+			fmt.Fprintf(w, `<button hx-post="/api/clients/%s/watcher/stop" hx-swap="none" class="text-xs px-2.5 py-1.5 rounded border border-red-200 dark:border-red-700 text-red-700 dark:text-red-300 %s"%s>Stop Watcher</button>`, ci.ClientID, disabledClass, disabledAttr)
+			fmt.Fprintf(w, `<button hx-post="/api/clients/%s/disable" hx-swap="none" hx-confirm="Disable client %s? It will no longer receive backups or be monitored." class="text-xs px-2.5 py-1.5 rounded border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer">Disable</button>`, ci.ClientID, ci.ClientID)
 		}
-		fmt.Fprintf(w, `<button hx-post="/api/clients/%s/watcher/start" hx-swap="none" class="text-xs px-2.5 py-1.5 rounded border border-green-200 dark:border-green-700 text-green-700 dark:text-green-300 %s"%s>Start Watcher</button>`, ci.ClientID, disabledClass, disabledAttr)
-		fmt.Fprintf(w, `<a href="/restore?client=%s" hx-get="/restore?client=%s" hx-target="#content-area" hx-push-url="true" class="text-xs px-2.5 py-1.5 rounded border border-yellow-200 dark:border-yellow-700 text-yellow-700 dark:text-yellow-300 hover:bg-yellow-50 dark:hover:bg-gray-700 cursor-pointer no-underline">Restore</a>`, ci.ClientID, ci.ClientID)
-		fmt.Fprintf(w, `<button hx-post="/api/clients/%s/watcher/stop" hx-swap="none" class="text-xs px-2.5 py-1.5 rounded border border-red-200 dark:border-red-700 text-red-700 dark:text-red-300 %s"%s>Stop Watcher</button>`, ci.ClientID, disabledClass, disabledAttr)
 		fmt.Fprint(w, `</div>`)
 
 		// Card end
