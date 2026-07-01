@@ -79,6 +79,7 @@ type ClientStatusInfo struct {
 	BytesTransferred int64  `json:"bytes_transferred"`
 	StartedAt        string `json:"started_at,omitempty"`
 	Message          string `json:"message,omitempty"`
+	WatcherActive    bool   `json:"watcher_active"`
 }
 
 // ClientRegistry is the subset of registry.Registry needed by the webui.

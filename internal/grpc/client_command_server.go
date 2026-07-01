@@ -196,12 +196,14 @@ func (s *ClientCommandServer) StopBackup(ctx context.Context, req *proto.StopReq
 func (s *ClientCommandServer) GetStatus(ctx context.Context, req *proto.StatusRequest) (*proto.StatusResponse, error) {
 	s.mu.Lock()
 	engine := s.engine
+	watcherRunning := s.watcher != nil && s.watcher.Status().Running
 	s.mu.Unlock()
 
 	if engine == nil {
 		return &proto.StatusResponse{
-			Status:  "idle",
-			Message: "no active operations",
+			Status:        "idle",
+			Message:       "no active operations",
+			WatcherActive: watcherRunning,
 		}, nil
 	}
 
@@ -216,8 +218,9 @@ func (s *ClientCommandServer) GetStatus(ctx context.Context, req *proto.StatusRe
 	if err != nil || len(jobs) == 0 {
 		// Engine is set but no running job found yet (just started).
 		return &proto.StatusResponse{
-			Status:  "running",
-			Message: "backup in progress",
+			Status:        "running",
+			Message:       "backup in progress",
+			WatcherActive: watcherRunning,
 		}, nil
 	}
 
@@ -229,6 +232,7 @@ func (s *ClientCommandServer) GetStatus(ctx context.Context, req *proto.StatusRe
 		BytesTransferred: job.BytesNew,
 		StartedAt:        job.StartedAt.Format(time.RFC3339),
 		Message:          fmt.Sprintf("backup %s in progress", job.BackupID),
+		WatcherActive:    watcherRunning,
 	}, nil
 }
 

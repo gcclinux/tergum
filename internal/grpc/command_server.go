@@ -40,6 +40,7 @@ type CommandServer struct {
 	backupSem       *Semaphore
 	version         string
 	startedAt       time.Time
+	onClientConnect func(clientID string) // called after a tunnel client reconnects
 }
 
 // CommandServerConfig holds configuration for the CommandServer.
@@ -52,6 +53,7 @@ type CommandServerConfig struct {
 	TunnelHub       *TunnelHub         // optional; nil disables command tunnels
 	MaxBackups      int                // max concurrent backups, default 4
 	Version         string
+	OnClientConnect func(clientID string) // called after a tunnel client reconnects
 }
 
 // NewCommandServer creates a new CommandServer with the given configuration.
@@ -76,6 +78,7 @@ func NewCommandServer(cfg CommandServerConfig) *CommandServer {
 		backupSem:       NewSemaphore(maxBackups),
 		version:         version,
 		startedAt:       time.Now(),
+		onClientConnect: cfg.OnClientConnect,
 	}
 }
 
@@ -394,7 +397,14 @@ func (s *CommandServer) CommandTunnel(stream proto.CommandService_CommandTunnelS
 
 	// Register the tunnel.
 	s.tunnelHub.Register(clientID, stream)
-	defer s.tunnelHub.Unregister(clientID)
+	defer func() {
+		s.tunnelHub.Unregister(clientID)
+		// When the tunnel disconnects, reset watcher status since the client's
+		// watcher is no longer reachable from the server.
+		if s.registry != nil {
+			_ = s.registry.SetWatcherActive(clientID, false)
+		}
+	}()
 
 	// Also mark the client as online in the registry if available.
 	if s.registry != nil {
@@ -402,6 +412,11 @@ func (s *CommandServer) CommandTunnel(stream proto.CommandService_CommandTunnelS
 		// knows to use the tunnel instead of dialing directly.
 		_, _ = s.registry.Register(clientID, "tunnel://"+clientID)
 	}
+
+	// Query the client's actual watcher/backup state asynchronously so the
+	// registry reflects reality after a reconnect (e.g. client restarted
+	// with watcher disabled).
+	go s.syncClientStateOnConnect(stream.Context(), clientID)
 
 	// Read responses from the client and deliver them to waiting callers.
 	for {
@@ -411,6 +426,39 @@ func (s *CommandServer) CommandTunnel(stream proto.CommandService_CommandTunnelS
 		}
 
 		s.tunnelHub.DeliverResponse(clientID, resp)
+	}
+}
+
+// syncClientStateOnConnect queries the client's actual status via the tunnel
+// shortly after connection and updates the registry to reflect reality. This
+// handles the case where the server thinks the watcher is running (from a
+// previous session) but the client restarted with it disabled.
+func (s *CommandServer) syncClientStateOnConnect(ctx context.Context, clientID string) {
+	if s.tunnelHub == nil || s.registry == nil {
+		return
+	}
+
+	// Small delay to let the tunnel fully establish before sending commands.
+	select {
+	case <-ctx.Done():
+		return
+	case <-time.After(2 * time.Second):
+	}
+
+	// Query the client's status via the tunnel.
+	statusResp, err := s.tunnelHub.GetStatus(ctx, clientID, &proto.StatusRequest{ClientId: clientID})
+	if err != nil {
+		// Client may have disconnected already — that's fine.
+		return
+	}
+
+	// Update watcher status from the client's actual response.
+	_ = s.registry.SetWatcherActive(clientID, statusResp.WatcherActive)
+
+	// Invoke the onClientConnect callback to refresh last backup time
+	// from the server's copy of the client's synced database.
+	if s.onClientConnect != nil {
+		s.onClientConnect(clientID)
 	}
 }
 

@@ -53,6 +53,7 @@ type StatusResponse struct {
 	BytesTransferred int64  `json:"bytes_transferred"`
 	StartedAt        string `json:"started_at"`
 	Message          string `json:"message"`
+	WatcherActive    bool   `json:"watcher_active"`
 }
 
 // PingRequest is an empty health check request.

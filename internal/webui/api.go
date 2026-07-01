@@ -1700,6 +1700,16 @@ func (s *Server) handleAPIClientsList(w http.ResponseWriter, r *http.Request) {
 			status, err := s.clientConnector.GetClientStatus(ctx, ci.ClientID)
 			cancel()
 			if err == nil && status != nil {
+				// Use the real-time watcher state from the client, which is
+				// authoritative over the registry's potentially stale value.
+				if status.WatcherActive {
+					watcherStatus = "Running"
+					watcherColor = "text-green-600 dark:text-green-400"
+				} else {
+					watcherStatus = "Stopped"
+					watcherColor = "text-gray-500"
+				}
+
 				if status.Status == "running" {
 					clientStatus = "Running"
 					clientStatusColor = "text-blue-600 dark:text-blue-400 font-semibold"

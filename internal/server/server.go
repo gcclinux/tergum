@@ -186,6 +186,14 @@ func (s *Server) Start(ctx context.Context) error {
 		TunnelHub:       tunnelHub,
 		MaxBackups:      s.cfg.Backup.MaxConcurrentUploads,
 		Version:         version.Version,
+		OnClientConnect: func(clientID string) {
+			// Refresh last backup time from the server's copy of the client DB.
+			dbPath := filepath.Join(clientsDirFromDB(s.cfg.Database.Path), clientID+".db")
+			lastBackup := queryClientLastBackup(dbPath)
+			if !lastBackup.IsZero() {
+				_ = reg.SetLastBackup(clientID, lastBackup)
+			}
+		},
 	})
 
 	// Build gRPC data server.

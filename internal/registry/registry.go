@@ -292,6 +292,8 @@ func (r *Registry) checkOfflineClients() {
 		if ci.Status == "online" && !ci.LastSeen.IsZero() {
 			if now.Sub(ci.LastSeen) > r.offlineThreshold {
 				ci.Status = "offline"
+				// An offline client cannot have a running watcher — reset to avoid stale state.
+				ci.WatcherActive = false
 				r.logger.Warn("registry: client marked offline",
 					"client_id", ci.ClientID,
 					"last_seen", ci.LastSeen)

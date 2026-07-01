@@ -31,7 +31,7 @@ type RemoteClientConnector struct {
 // RemoteClientConnectorConfig holds configuration for the RemoteClientConnector.
 type RemoteClientConnectorConfig struct {
 	Registry  *registry.Registry
-	TLSCfg   *tls.Config
+	TLSCfg    *tls.Config
 	TunnelHub *grpcpkg.TunnelHub // optional; enables NAT tunnel dispatch
 	Logger    *slog.Logger
 }
@@ -173,6 +173,7 @@ func (c *RemoteClientConnector) GetClientStatus(ctx context.Context, clientID st
 			BytesTransferred: resp.BytesTransferred,
 			StartedAt:        resp.StartedAt,
 			Message:          resp.Message,
+			WatcherActive:    resp.WatcherActive,
 		}, nil
 	}
 
@@ -193,6 +194,7 @@ func (c *RemoteClientConnector) GetClientStatus(ctx context.Context, clientID st
 		BytesTransferred: resp.BytesTransferred,
 		StartedAt:        resp.StartedAt,
 		Message:          resp.Message,
+		WatcherActive:    resp.WatcherActive,
 	}, nil
 }
 
