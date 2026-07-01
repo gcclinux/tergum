@@ -176,11 +176,17 @@ func (c *TergumClient) GetStatus(ctx context.Context, clientID string) (*proto.S
 
 // Ping checks server health.
 func (c *TergumClient) Ping(ctx context.Context) (*proto.PingResponse, error) {
+	return c.PingWithState(ctx, proto.PingRequest{})
+}
+
+// PingWithState checks server health and reports client state (watcher, last backup)
+// for bidirectional sync on every heartbeat cycle.
+func (c *TergumClient) PingWithState(ctx context.Context, req proto.PingRequest) (*proto.PingResponse, error) {
 	ctx = c.contextWithMetadata(ctx)
 	var resp *proto.PingResponse
 	err := c.withRetry(ctx, func() error {
 		var e error
-		resp, e = c.command.Ping(ctx, &proto.PingRequest{})
+		resp, e = c.command.Ping(ctx, &req)
 		return e
 	})
 	return resp, err

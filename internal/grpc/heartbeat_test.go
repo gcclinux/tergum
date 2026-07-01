@@ -22,7 +22,7 @@ func TestStartHeartbeat_PingsAndRegisters(t *testing.T) {
 
 	done := make(chan struct{})
 	go func() {
-		StartHeartbeat(ctx, client, "test-client", "192.168.1.10:7400", 10*time.Millisecond)
+		StartHeartbeat(ctx, client, "test-client", "192.168.1.10:7400", 10*time.Millisecond, nil)
 		close(done)
 	}()
 
@@ -58,7 +58,7 @@ func TestStartHeartbeat_RegistersOnlyOnce(t *testing.T) {
 
 	done := make(chan struct{})
 	go func() {
-		StartHeartbeat(ctx, client, "test-client", "10.0.0.1:7400", 10*time.Millisecond)
+		StartHeartbeat(ctx, client, "test-client", "10.0.0.1:7400", 10*time.Millisecond, nil)
 		close(done)
 	}()
 
@@ -83,7 +83,7 @@ func TestStartHeartbeat_StopsOnContextCancel(t *testing.T) {
 
 	done := make(chan struct{})
 	go func() {
-		StartHeartbeat(ctx, client, "test-client", "10.0.0.1:7400", 10*time.Millisecond)
+		StartHeartbeat(ctx, client, "test-client", "10.0.0.1:7400", 10*time.Millisecond, nil)
 		close(done)
 	}()
 
@@ -119,7 +119,7 @@ func TestStartHeartbeat_ContinuesOnPingFailure(t *testing.T) {
 
 	done := make(chan struct{})
 	go func() {
-		StartHeartbeat(ctx, client, "test-client", "10.0.0.1:7400", 10*time.Millisecond)
+		StartHeartbeat(ctx, client, "test-client", "10.0.0.1:7400", 10*time.Millisecond, nil)
 		close(done)
 	}()
 
@@ -156,7 +156,7 @@ func TestStartHeartbeat_NoRegisterWhenPingAlwaysFails(t *testing.T) {
 
 	done := make(chan struct{})
 	go func() {
-		StartHeartbeat(ctx, client, "test-client", "10.0.0.1:7400", 10*time.Millisecond)
+		StartHeartbeat(ctx, client, "test-client", "10.0.0.1:7400", 10*time.Millisecond, nil)
 		close(done)
 	}()
 

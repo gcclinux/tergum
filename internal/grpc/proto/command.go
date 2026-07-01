@@ -56,8 +56,13 @@ type StatusResponse struct {
 	WatcherActive    bool   `json:"watcher_active"`
 }
 
-// PingRequest is an empty health check request.
-type PingRequest struct{}
+// PingRequest is a health check request that also carries client state for
+// bidirectional sync. The server uses these fields to keep the registry
+// consistent without requiring separate status queries.
+type PingRequest struct {
+	WatcherActive bool   `json:"watcher_active,omitempty"` // true if the client's file watcher is running
+	LastBackupAt  string `json:"last_backup_at,omitempty"` // RFC3339 timestamp of most recent completed backup
+}
 
 // PingResponse contains server health information.
 type PingResponse struct {

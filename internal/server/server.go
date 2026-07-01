@@ -623,6 +623,7 @@ func (s *Server) startClient(ctx context.Context) error {
 		Repo:           repo,
 		Encryptor:      encryptor,
 		Cfg:            s.cfg,
+		ConfigPath:     config.DefaultConfigPath(),
 		MasterKey:      masterKey,
 		Version:        version.Version,
 		WatcherFactory: watcherFactory,
@@ -689,7 +690,7 @@ func (s *Server) startClient(ctx context.Context) error {
 
 	// 6. Start heartbeat loop.
 	heartbeatCtx, heartbeatCancel := context.WithCancel(ctx)
-	go grpcpkg.StartHeartbeat(heartbeatCtx, serverClient, clientID, clientAddress, 30*time.Second)
+	go grpcpkg.StartHeartbeat(heartbeatCtx, serverClient, clientID, clientAddress, 30*time.Second, cmdHandler)
 
 	// 6b. In NAT mode, start the command tunnel so the server can reach us.
 	if s.cfg.Node.NATMode {

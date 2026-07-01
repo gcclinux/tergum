@@ -38,6 +38,7 @@ type ClientCommandServer struct {
 	repo       db.Repository
 	encryptor  *crypto.AESEncryptor
 	cfg        *config.Config
+	configPath string
 	masterKey  []byte
 
 	// Watcher instance for server-initiated watcher control.
@@ -67,6 +68,7 @@ type ClientCommandServerConfig struct {
 	Repo           db.Repository
 	Encryptor      *crypto.AESEncryptor
 	Cfg            *config.Config
+	ConfigPath     string // path to the config file for persisting changes
 	MasterKey      []byte
 	Version        string
 	Watcher        watcher.Watcher          // pre-started watcher (optional)
@@ -86,6 +88,7 @@ func NewClientCommandServer(cfg ClientCommandServerConfig) *ClientCommandServer 
 		repo:           cfg.Repo,
 		encryptor:      cfg.Encryptor,
 		cfg:            cfg.Cfg,
+		configPath:     cfg.ConfigPath,
 		masterKey:      cfg.MasterKey,
 		watcher:        cfg.Watcher,
 		ongoingBackup:  cfg.OngoingBackup,
@@ -274,6 +277,7 @@ func (s *ClientCommandServer) StartWatcher(ctx context.Context, req *proto.Watch
 			}, nil
 		}
 		slog.Info("watcher restarted via server command", "client_id", req.ClientId)
+		s.persistWatcherEnabled(true)
 		return &proto.WatcherResponse{
 			Success: true,
 			Message: "watcher started successfully",
@@ -303,6 +307,10 @@ func (s *ClientCommandServer) StartWatcher(ctx context.Context, req *proto.Watch
 	s.watcher = fw
 	s.ongoingBackup = ongoing
 	slog.Info("watcher created and started on-demand via server command", "client_id", req.ClientId)
+
+	// Persist watcher enabled state to config so it survives a service restart.
+	s.persistWatcherEnabled(true)
+
 	return &proto.WatcherResponse{
 		Success: true,
 		Message: "watcher created and started successfully",
@@ -352,10 +360,51 @@ func (s *ClientCommandServer) StopWatcher(ctx context.Context, req *proto.Watche
 	}
 
 	slog.Info("watcher stopped via server command", "client_id", req.ClientId)
+	s.persistWatcherEnabled(false)
 	return &proto.WatcherResponse{
 		Success: true,
 		Message: "watcher stopped successfully",
 	}, nil
+}
+
+// WatcherRunning implements HeartbeatStateProvider — reports whether the file watcher is active.
+func (s *ClientCommandServer) WatcherRunning() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.watcher != nil && s.watcher.Status().Running
+}
+
+// LastBackupTime implements HeartbeatStateProvider — returns the most recent
+// completed backup timestamp in RFC3339, or "" if unknown.
+func (s *ClientCommandServer) LastBackupTime() string {
+	if s.repo == nil {
+		return ""
+	}
+	completed := model.JobCompleted
+	jobs, err := s.repo.ListJobs(context.Background(), db.JobFilter{Status: &completed, Limit: 1})
+	if err != nil || len(jobs) == 0 {
+		return ""
+	}
+	if jobs[0].FinishedAt != nil {
+		return jobs[0].FinishedAt.UTC().Format(time.RFC3339)
+	}
+	return ""
+}
+
+// persistWatcherEnabled saves the watcher.enabled state to the config file
+// so that a remotely started/stopped watcher survives a service restart.
+func (s *ClientCommandServer) persistWatcherEnabled(enabled bool) {
+	if s.cfg == nil || s.configPath == "" {
+		return
+	}
+	s.cfg.Watcher.Enabled = enabled
+	if err := config.Save(s.configPath, s.cfg); err != nil {
+		slog.Warn("failed to persist watcher enabled state to config",
+			"enabled", enabled, "error", err)
+	} else {
+		slog.Info("persisted watcher enabled state to config",
+			"enabled", enabled, "path", s.configPath)
+	}
 }
 
 // SetWatcher sets or replaces the watcher instance on the ClientCommandServer.

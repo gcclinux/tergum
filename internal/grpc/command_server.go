@@ -179,10 +179,20 @@ func (s *CommandServer) GetStatus(ctx context.Context, req *proto.StatusRequest)
 
 // Ping returns server version and uptime.
 func (s *CommandServer) Ping(ctx context.Context, req *proto.PingRequest) (*proto.PingResponse, error) {
-	// If registry is configured, update the client's heartbeat.
+	// If registry is configured, update the client's heartbeat and sync state.
 	if s.registry != nil {
 		if clientID, err := clientIDFromContext(ctx); err == nil && clientID != "" {
 			_ = s.registry.Heartbeat(clientID)
+
+			// Sync watcher state from client's heartbeat payload.
+			_ = s.registry.SetWatcherActive(clientID, req.WatcherActive)
+
+			// Sync last backup time if reported.
+			if req.LastBackupAt != "" {
+				if t, err := time.Parse(time.RFC3339, req.LastBackupAt); err == nil && !t.IsZero() {
+					_ = s.registry.SetLastBackup(clientID, t)
+				}
+			}
 		}
 	}
 

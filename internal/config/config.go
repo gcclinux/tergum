@@ -308,3 +308,29 @@ func ParseMaxFileSize(s string) (int64, error) {
 	}
 	return val, nil
 }
+
+// Save writes the configuration back to the specified TOML file path.
+// It creates parent directories if needed.
+func Save(path string, cfg *Config) error {
+	if path == "" {
+		path = DefaultConfigPath()
+	}
+
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		return fmt.Errorf("creating config directory: %w", err)
+	}
+
+	f, err := os.Create(path)
+	if err != nil {
+		return fmt.Errorf("creating config file: %w", err)
+	}
+	defer f.Close()
+
+	encoder := toml.NewEncoder(f)
+	if err := encoder.Encode(cfg); err != nil {
+		return fmt.Errorf("encoding config: %w", err)
+	}
+
+	return nil
+}
