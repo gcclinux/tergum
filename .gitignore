@@ -32,3 +32,6 @@ go.work.sum
 # .vscode/
 
 .kiro/
+dist/tergum-aarch64-linux
+dist/tergum-amd64-linux
+dist/tergum-macos

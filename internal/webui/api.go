@@ -1809,7 +1809,9 @@ func (s *Server) handleAPIClientsList(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, `<p><span class="font-medium">Last seen:</span> %s</p>`, lastSeen)
 		fmt.Fprintf(w, `<p><span class="font-medium">Last backup:</span> %s</p>`, lastBackup)
 		fmt.Fprintf(w, `<p><span class="font-medium">Watcher:</span> <span class="%s">%s</span></p>`, watcherColor, watcherStatus)
-		if clientStatus == "Running" {
+		if ci.Disabled {
+			fmt.Fprint(w, `<p><span class="font-medium">Status:</span> <span class="text-gray-400">Disabled</span></p>`)
+		} else if clientStatus == "Running" {
 			fmt.Fprintf(w, `<p><span class="font-medium">Status:</span> <span class="inline-flex items-center %s"><span class="w-2 h-2 rounded-full bg-blue-500 animate-pulse mr-1"></span>%s%s</span></p>`, clientStatusColor, clientStatus, clientStatusDetail)
 		} else {
 			fmt.Fprintf(w, `<p><span class="font-medium">Status:</span> <span class="%s">%s</span></p>`, clientStatusColor, clientStatus)
@@ -1827,7 +1829,6 @@ func (s *Server) handleAPIClientsList(w http.ResponseWriter, r *http.Request) {
 		if ci.Disabled {
 			// Disabled client: only show Enable button.
 			fmt.Fprintf(w, `<button hx-post="/api/clients/%s/enable" hx-swap="none" class="text-xs px-2.5 py-1.5 rounded border border-green-200 dark:border-green-700 text-green-700 dark:text-green-300 hover:bg-green-50 dark:hover:bg-gray-700 cursor-pointer">Enable Client</button>`, ci.ClientID)
-			fmt.Fprint(w, `<span class="text-xs text-red-500 dark:text-red-400 italic self-center">Client disabled</span>`)
 		} else {
 			if clientStatus == "Running" {
 				fmt.Fprintf(w, `<button hx-post="/api/clients/%s/backup/stop" hx-swap="none" class="text-xs px-2.5 py-1.5 rounded border border-red-200 dark:border-red-700 text-red-700 dark:text-red-300 hover:bg-red-50 dark:hover:bg-gray-700 cursor-pointer">Stop Backup</button>`, ci.ClientID)

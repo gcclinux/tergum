@@ -8,6 +8,7 @@ import (
 	"database/sql"
 	"fmt"
 	"log/slog"
+	"sort"
 	"sync"
 	"time"
 
@@ -405,6 +406,9 @@ func (r *Registry) ListClients() []ClientInfo {
 		}
 		result = append(result, copy)
 	}
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].ClientID < result[j].ClientID
+	})
 	return result
 }
 
