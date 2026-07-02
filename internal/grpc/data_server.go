@@ -190,6 +190,15 @@ func (s *DataServer) storeFile(ctx context.Context, header *proto.FileHeader, da
 func (s *DataServer) Download(req *proto.RestoreRequest, stream proto.DataService_DownloadServer) error {
 	ctx := stream.Context()
 
+	// Reject downloads from disabled clients.
+	if s.registry != nil {
+		if clientID, err := clientIDFromContext(ctx); err == nil && clientID != "" {
+			if ci := s.registry.GetClient(clientID); ci != nil && ci.Disabled {
+				return MapError(&model.ConfigError{Message: fmt.Sprintf("client %q is disabled", clientID)})
+			}
+		}
+	}
+
 	// Acquire restore semaphore.
 	if err := s.restoreSem.Acquire(ctx); err != nil {
 		return MapError(&model.ConnectionError{Message: "server at maximum restore capacity"})
@@ -355,6 +364,15 @@ func (s *DataServer) SyncDatabase(stream proto.DataService_SyncDatabaseServer) e
 // ExchangeManifest compares the received manifest against the CAS and returns
 // a ManifestDiff indicating which hashes the server still needs.
 func (s *DataServer) ExchangeManifest(ctx context.Context, manifest *proto.Manifest) (*proto.ManifestDiff, error) {
+	// Reject manifest exchange from disabled clients.
+	if s.registry != nil {
+		if clientID, err := clientIDFromContext(ctx); err == nil && clientID != "" {
+			if ci := s.registry.GetClient(clientID); ci != nil && ci.Disabled {
+				return nil, MapError(&model.ConfigError{Message: fmt.Sprintf("client %q is disabled", clientID)})
+			}
+		}
+	}
+
 	if manifest == nil || len(manifest.Entries) == 0 {
 		return &proto.ManifestDiff{
 			NeededHashes: nil,
