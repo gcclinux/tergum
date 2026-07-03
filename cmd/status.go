@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/gcclinux/tergum/internal/config"
+	"github.com/gcclinux/tergum/internal/connection"
 	"github.com/gcclinux/tergum/internal/db"
 	"github.com/gcclinux/tergum/internal/model"
 	"github.com/spf13/cobra"
@@ -136,6 +137,22 @@ func runStatus(cmd *cobra.Command, args []string) error {
 		status["nat_mode"] = true
 	}
 
+	// For client nodes, check whether the server has disabled this client.
+	var clientDisabled *bool
+	if cfg.Node.Role == "client" {
+		if err := connection.CheckClientEnabled(cfg); err != nil {
+			if strings.Contains(err.Error(), "disabled") {
+				disabled := true
+				clientDisabled = &disabled
+				status["server_disabled"] = true
+			}
+		} else {
+			disabled := false
+			clientDisabled = &disabled
+			status["server_disabled"] = false
+		}
+	}
+
 	if lastBackup != nil {
 		status["last_backup_id"] = lastBackup.BackupID
 		status["last_backup_at"] = lastBackup.StartedAt.Format("2006-01-02 15:04:05")
@@ -158,6 +175,13 @@ func runStatus(cmd *cobra.Command, args []string) error {
 		fmt.Printf("  Watcher:          %v\n", cfg.Watcher.Enabled)
 		if cfg.Node.NATMode {
 			fmt.Printf("  NAT Mode:         true\n")
+		}
+		if clientDisabled != nil {
+			if *clientDisabled {
+				fmt.Printf("  Server Disabled:  true (this client is disabled on the server)\n")
+			} else {
+				fmt.Printf("  Server Disabled:  false\n")
+			}
 		}
 		fmt.Printf("  Web UI:           %v (port %d)\n", cfg.WebUI.Enabled, cfg.WebUI.Port)
 		fmt.Println()
