@@ -58,6 +58,11 @@ func runBackup(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("loading config: %w", err)
 	}
 
+	// Pre-flight check: ask the server if this client is disabled.
+	if err := connection.CheckClientEnabled(cfg); err != nil {
+		return err
+	}
+
 	// Open database.
 	repo, err := db.NewRepository(cfg.Database.Path, cfg.Database.WALMode)
 	if err != nil {

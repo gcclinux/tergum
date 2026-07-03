@@ -189,13 +189,14 @@ func (s *CommandServer) Ping(ctx context.Context, req *proto.PingRequest) (*prot
 	// If registry is configured, update the client's heartbeat and sync state.
 	if s.registry != nil {
 		if clientID, err := clientIDFromContext(ctx); err == nil && clientID != "" {
-			// Skip state updates for disabled clients.
+			// Skip state updates for disabled clients but inform them.
 			ci := s.registry.GetClient(clientID)
 			if ci != nil && ci.Disabled {
 				uptime := time.Since(s.startedAt).Truncate(time.Second)
 				return &proto.PingResponse{
-					Version: s.version,
-					Uptime:  uptime.String(),
+					Version:        s.version,
+					Uptime:         uptime.String(),
+					ClientDisabled: true,
 				}, nil
 			}
 

@@ -97,6 +97,11 @@ func runRestore(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("loading config: %w", err)
 	}
 
+	// Pre-flight check: ask the server if this client is disabled.
+	if err := connection.CheckClientEnabled(cfg); err != nil {
+		return err
+	}
+
 	dbPath := cfg.Database.Path
 	if clientID != "" {
 		if cfg.Node.Role == "client" {

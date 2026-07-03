@@ -66,8 +66,9 @@ type PingRequest struct {
 
 // PingResponse contains server health information.
 type PingResponse struct {
-	Version string `json:"version"`
-	Uptime  string `json:"uptime"`
+	Version        string `json:"version"`
+	Uptime         string `json:"uptime"`
+	ClientDisabled bool   `json:"client_disabled,omitempty"` // true when the server has disabled this client
 }
 
 // ListBackupsRequest queries backup history.
