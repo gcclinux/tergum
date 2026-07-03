@@ -286,6 +286,7 @@ func (r *Registry) Start(ctx context.Context) {
 			return
 		case <-ticker.C:
 			r.checkOfflineClients()
+			r.refreshDisabledFlags()
 		}
 	}
 }
@@ -308,6 +309,31 @@ func (r *Registry) checkOfflineClients() {
 					"last_seen", ci.LastSeen)
 				r.persistClientLocked(ci)
 			}
+		}
+	}
+}
+
+// refreshDisabledFlags re-reads the disabled column from the database for all
+// clients. This picks up external changes made by the CLI or other processes
+// that write to the same SQLite database outside this server process.
+func (r *Registry) refreshDisabledFlags() {
+	rows, err := r.db.Query(`SELECT client_id, COALESCE(disabled, 0) FROM client_registry`)
+	if err != nil {
+		return
+	}
+	defer rows.Close()
+
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	for rows.Next() {
+		var clientID string
+		var disabled int
+		if err := rows.Scan(&clientID, &disabled); err != nil {
+			continue
+		}
+		if ci, exists := r.clients[clientID]; exists {
+			ci.Disabled = disabled == 1
 		}
 	}
 }
