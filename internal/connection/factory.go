@@ -25,7 +25,7 @@ func CheckClientEnabled(cfg *config.Config) error {
 		return fmt.Errorf("server.address is required when node.role is \"client\"")
 	}
 
-	tlsCfg, _, err := LoadClientTLS(cfg)
+	tlsCfg, clientID, err := LoadClientTLS(cfg)
 	if err != nil {
 		return fmt.Errorf("loading client TLS credentials: %w", err)
 	}
@@ -40,6 +40,8 @@ func CheckClientEnabled(cfg *config.Config) error {
 	if err != nil {
 		return fmt.Errorf("connecting to server: %w", err)
 	}
+
+	client.SetClientID(clientID)
 
 	resp, err := client.Ping(context.Background())
 	if err != nil {
