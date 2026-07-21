@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -57,15 +58,18 @@ func newVersionCmd() *cobra.Command {
 var serverVersionInfo map[string]string
 
 // queryServerVersion attempts to ping the server and return a formatted version string.
-// Returns an empty string if the server cannot be reached.
+// Returns an empty string if the server cannot be reached within 3 seconds.
 func queryServerVersion(cfg *config.Config) string {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
 	tlsCfg, clientID, err := connection.LoadClientTLS(cfg)
 	if err != nil {
 		return ""
 	}
 
 	client, err := tergumgrpc.Connect(
-		context.Background(),
+		ctx,
 		cfg.Server.Address,
 		cfg.Server.CommandPort,
 		cfg.Server.DataPort,
@@ -77,7 +81,7 @@ func queryServerVersion(cfg *config.Config) string {
 
 	client.SetClientID(clientID)
 
-	resp, err := client.Ping(context.Background())
+	resp, err := client.Ping(ctx)
 	if err != nil {
 		return ""
 	}
