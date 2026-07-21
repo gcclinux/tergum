@@ -189,9 +189,9 @@ func runRestore(cmd *cobra.Command, args []string) error {
 		// Search by query.
 		searchQuery := restore.SearchQuery{}
 
-		if strings.Contains(query, "/") {
+		if strings.Contains(query, "/") || strings.Contains(query, "\\") {
 			// Looks like a path pattern.
-			searchQuery.Path = query + "%"
+			searchQuery.Path = "%" + query + "%"
 		} else if strings.Contains(query, "*") || strings.Contains(query, "?") {
 			// Glob pattern.
 			searchQuery.Pattern = query
@@ -230,7 +230,7 @@ func runRestore(cmd *cobra.Command, args []string) error {
 			}
 			entries = filtered
 		} else {
-			// Deduplicate by file path (keep latest backup_date).
+			// Deduplicate by file path (prefer valid encryption metadata, then latest backup_date).
 			seen := make(map[string]restore.RestoreEntry)
 			for _, entry := range results {
 				destination := resolveDestination(dest, entry.FilePath)
@@ -242,8 +242,20 @@ func runRestore(cmd *cobra.Command, args []string) error {
 					Metadata:    &entry,
 				}
 				existing, exists := seen[entry.FilePath]
-				if !exists || entry.BackupDate.After(existing.Metadata.BackupDate) {
+				if !exists {
 					seen[entry.FilePath] = re
+				} else {
+					existingHasDEK := len(existing.Metadata.EncryptedDEK) > 0 && len(existing.Metadata.Nonce) > 0
+					newHasDEK := len(entry.EncryptedDEK) > 0 && len(entry.Nonce) > 0
+					if newHasDEK && !existingHasDEK {
+						// Prefer entry with valid encryption metadata
+						seen[entry.FilePath] = re
+					} else if !newHasDEK && existingHasDEK {
+						// Keep existing which has valid metadata
+					} else if entry.BackupDate.After(existing.Metadata.BackupDate) {
+						// Both have same metadata status, prefer latest
+						seen[entry.FilePath] = re
+					}
 				}
 			}
 			for _, e := range seen {

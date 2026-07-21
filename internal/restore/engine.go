@@ -153,6 +153,17 @@ func (e *RestoreEngine) RestoreFile(ctx context.Context, hash string, dest strin
 		metadata = &entries[0]
 	}
 
+	// Fallback: if metadata has nil EncryptedDEK/Nonce but encryption is enabled,
+	// look for another entry with the same hash that has valid encryption metadata.
+	if metadata != nil && len(metadata.EncryptedDEK) == 0 && e.encryptor != nil && len(e.masterKey) > 0 {
+		for i := range entries {
+			if len(entries[i].EncryptedDEK) > 0 && len(entries[i].Nonce) > 0 {
+				metadata = &entries[i]
+				break
+			}
+		}
+	}
+
 	// Decrypt if the entry has encryption metadata.
 	fileData := data
 	if metadata != nil && len(metadata.EncryptedDEK) > 0 && len(metadata.Nonce) > 0 {
@@ -273,6 +284,20 @@ func (e *RestoreEngine) restoreEntry(ctx context.Context, entry RestoreEntry) er
 		entries, err := e.repo.FindByHash(ctx, entry.Hash)
 		if err == nil && len(entries) > 0 {
 			metadata = &entries[0]
+		}
+	}
+
+	// Fallback: if metadata has nil EncryptedDEK/Nonce but encryption is enabled,
+	// look for another entry with the same hash that has valid encryption metadata.
+	if metadata != nil && len(metadata.EncryptedDEK) == 0 && e.encryptor != nil && len(e.masterKey) > 0 {
+		altEntries, err := e.repo.FindByHash(ctx, entry.Hash)
+		if err == nil {
+			for i := range altEntries {
+				if len(altEntries[i].EncryptedDEK) > 0 && len(altEntries[i].Nonce) > 0 {
+					metadata = &altEntries[i]
+					break
+				}
+			}
 		}
 	}
 

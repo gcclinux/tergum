@@ -1,0 +1,31 @@
+# 2026/07/21 10:38:58.386329 [TestProperty_WindowsPathNotExactName] [rapid] draw segmentCount: 2
+# 2026/07/21 10:38:58.386329 [TestProperty_WindowsPathNotExactName] [rapid] draw segment: "00"
+# 2026/07/21 10:38:58.386329 [TestProperty_WindowsPathNotExactName] [rapid] draw segment: "00"
+# 2026/07/21 10:38:58.386329 [TestProperty_WindowsPathNotExactName] [rapid] draw ext: ".txt"
+# 2026/07/21 10:38:58.386329 [TestProperty_WindowsPathNotExactName] Windows path query "00\\00.txt" was incorrectly classified as exact name: Name="00\\00.txt"
+# Expected: Path field to be set (path pattern detection)
+# 
+v0.4.8#13207714204945993885
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0

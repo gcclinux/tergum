@@ -1,0 +1,23 @@
+# 2026/07/21 10:38:58.383592 [TestProperty_WindowsPathDetection] [rapid] draw segmentCount: 2
+# 2026/07/21 10:38:58.383592 [TestProperty_WindowsPathDetection] [rapid] draw segment: "-"
+# 2026/07/21 10:38:58.383592 [TestProperty_WindowsPathDetection] [rapid] draw segment: "-"
+# 2026/07/21 10:38:58.383592 [TestProperty_WindowsPathDetection] [rapid] draw useDrive: false
+# 2026/07/21 10:38:58.383592 [TestProperty_WindowsPathDetection] Windows path query "-\\-" was not classified as path pattern.
+# Expected: Path="%-\\-%"
+# Got: Path="", Name="-\\-", Pattern=""
+# 
+v0.4.8#12166279783300331820
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
