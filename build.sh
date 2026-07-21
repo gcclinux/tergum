@@ -20,13 +20,18 @@ if [ "$PROD" = "1" ]; then
     fi
 fi
 
+# Read version from release file (single source of truth)
+if [ -f "release" ]; then
+    RELEASE_VERSION=$(cat release | tr -d '[:space:]')
+fi
+
 # Read from version.json if available
 if [ -f "version.json" ]; then
     JSON_VERSION=$(sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' version.json)
     JSON_BUILD=$(sed -n 's/.*"build": *"\([^"]*\)".*/\1/p' version.json)
 fi
 
-VERSION="${VERSION:-${JSON_VERSION:-3.0.0}}"
+VERSION="${VERSION:-${RELEASE_VERSION:-${JSON_VERSION:-3.0.0}}}"
 BUILD="${BUILD:-${JSON_BUILD:-dev}}"
 COMMIT="${COMMIT:-$(git rev-parse --short HEAD 2>/dev/null || echo "none")}"
 BUILD_DATE="${BUILD_DATE:-$(date -u +"%Y-%m-%dT%H:%M:%SZ")}"

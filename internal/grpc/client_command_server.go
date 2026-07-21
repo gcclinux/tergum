@@ -243,8 +243,10 @@ func (s *ClientCommandServer) GetStatus(ctx context.Context, req *proto.StatusRe
 func (s *ClientCommandServer) Ping(ctx context.Context, req *proto.PingRequest) (*proto.PingResponse, error) {
 	uptime := time.Since(s.startedAt).Truncate(time.Second)
 	return &proto.PingResponse{
-		Version: s.version,
-		Uptime:  uptime.String(),
+		Version:   s.version,
+		Commit:    versionPkg.Commit,
+		BuildDate: versionPkg.BuildDate,
+		Uptime:    uptime.String(),
 	}, nil
 }
 

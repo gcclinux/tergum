@@ -67,6 +67,8 @@ type PingRequest struct {
 // PingResponse contains server health information.
 type PingResponse struct {
 	Version        string `json:"version"`
+	Commit         string `json:"commit,omitempty"`
+	BuildDate      string `json:"build_date,omitempty"`
 	Uptime         string `json:"uptime"`
 	ClientDisabled bool   `json:"client_disabled,omitempty"` // true when the server has disabled this client
 }

@@ -195,6 +195,8 @@ func (s *CommandServer) Ping(ctx context.Context, req *proto.PingRequest) (*prot
 				uptime := time.Since(s.startedAt).Truncate(time.Second)
 				return &proto.PingResponse{
 					Version:        s.version,
+					Commit:         versionPkg.Commit,
+					BuildDate:      versionPkg.BuildDate,
 					Uptime:         uptime.String(),
 					ClientDisabled: true,
 				}, nil
@@ -216,8 +218,10 @@ func (s *CommandServer) Ping(ctx context.Context, req *proto.PingRequest) (*prot
 
 	uptime := time.Since(s.startedAt).Truncate(time.Second)
 	return &proto.PingResponse{
-		Version: s.version,
-		Uptime:  uptime.String(),
+		Version:   s.version,
+		Commit:    versionPkg.Commit,
+		BuildDate: versionPkg.BuildDate,
+		Uptime:    uptime.String(),
 	}, nil
 }
 

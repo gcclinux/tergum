@@ -14,13 +14,21 @@ if ($Prod) {
     }
 }
 
+# Read version from release file (single source of truth)
+$ReleaseVersion = $null
+if (Test-Path "release") {
+    $ReleaseVersion = (Get-Content "release" -Raw).Trim()
+}
+
 if (Test-Path "version.json") {
     $versionJson = Get-Content "version.json" -Raw | ConvertFrom-Json
-    $Version = $versionJson.version
+    $JsonVersion = $versionJson.version
     $Build = $versionJson.build
 }
 
-if (-not $Version) { $Version = "3.0.0" }
+if ($ReleaseVersion) { $Version = $ReleaseVersion }
+elseif ($JsonVersion) { $Version = $JsonVersion }
+else { $Version = "3.0.0" }
 if (-not $Build) { $Build = "dev" }
 
 $Commit = git rev-parse --short HEAD 2>$null
