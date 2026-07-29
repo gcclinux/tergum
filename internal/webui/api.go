@@ -640,8 +640,6 @@ func (s *Server) handleAPIRestoreBackups(w http.ResponseWriter, r *http.Request)
 			statusClass = "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300"
 		case model.JobRunning:
 			statusClass = "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300"
-		case model.JobDeleted:
-			statusClass = "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300"
 		}
 
 		if i > 0 {

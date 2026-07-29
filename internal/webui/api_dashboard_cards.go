@@ -283,6 +283,10 @@ func (s *Server) handleAPIDashboardActivity(w http.ResponseWriter, r *http.Reque
 				for _, j := range cJobs {
 					icon := getStatusIcon(string(j.Status))
 					statusColor := getStatusColor(string(j.Status))
+					if j.InitiatedBy == "cli-delete" {
+						icon = "🗑️"
+						statusColor = "bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400"
+					}
 					started := j.StartedAt.Local().Format("Jan 02, 15:04")
 					backupIDTrunc := j.BackupID
 					if len(backupIDTrunc) > 12 {
@@ -290,7 +294,7 @@ func (s *Server) handleAPIDashboardActivity(w http.ResponseWriter, r *http.Reque
 					}
 
 					var htmlContent string
-					if j.Status == model.JobDeleted {
+					if j.InitiatedBy == "cli-delete" {
 						detail := j.ErrorMessage
 						if detail == "" {
 							detail = "all backups deleted"
@@ -416,8 +420,6 @@ func getStatusIcon(status string) string {
 		return "❌"
 	case "stopped":
 		return "⏹️"
-	case "deleted":
-		return "🗑️"
 	default:
 		return "🔵"
 	}
@@ -434,8 +436,6 @@ func getStatusColor(status string) string {
 		return "bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400"
 	case "stopped":
 		return "bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-400"
-	case "deleted":
-		return "bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400"
 	default:
 		return "bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400"
 	}

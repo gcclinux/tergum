@@ -165,11 +165,11 @@ func runDelete(cmd *cobra.Command, args []string) error {
 			ClientID:    deleteClientID,
 			InitiatedBy: "cli-delete",
 			StartedAt:   now,
-			Status:      model.JobDeleted,
+			Status:      model.JobCompleted,
 		}
 		if err := repo.CreateJob(ctx, deleteJob); err == nil {
 			finishedAt := now
-			status := model.JobDeleted
+			status := model.JobCompleted
 			filesDeleted := result.EntriesDeleted
 			_ = repo.UpdateJob(ctx, deleteJob.BackupID, db.JobUpdate{
 				Status:       &status,

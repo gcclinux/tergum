@@ -38,7 +38,6 @@ const (
 	JobFailed    JobStatus = "failed"
 	JobStopped   JobStatus = "stopped"
 	JobExpired   JobStatus = "expired"
-	JobDeleted   JobStatus = "deleted"
 )
 
 // BackupEntry represents a single file record in the backup database.
