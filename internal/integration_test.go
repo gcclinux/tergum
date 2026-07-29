@@ -722,6 +722,10 @@ func (s *stoppingServerConnection) SyncDatabase(ctx context.Context, dbPath stri
 	return nil
 }
 
+func (s *stoppingServerConnection) LogActivity(ctx context.Context, backupID string, status model.JobStatus, clientID string, errMsg string) error {
+	return nil
+}
+
 // countPhysicalFiles counts all regular files in a directory tree.
 func countPhysicalFiles(t *testing.T, dir string) int {
 	t.Helper()

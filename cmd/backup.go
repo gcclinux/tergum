@@ -198,6 +198,18 @@ func runBackup(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("backup failed: %w", err)
 	}
 
+	// Check result status for failures that didn't return an error from RunBackup.
+	switch result.Status {
+	case model.JobFailed:
+		return &model.BackupFailedError{Message: fmt.Sprintf("[%s] %s", result.BackupID, result.ErrorMessage)}
+	case model.JobStopped:
+		return &model.StoppedError{Message: fmt.Sprintf("backup stopped [%s]", result.BackupID)}
+	case model.JobCompleted:
+		// Proceed with normal "Backup complete" output below.
+	default:
+		// Proceed normally for any other status.
+	}
+
 	printOutput(
 		map[string]interface{}{
 			"backup_id":       result.BackupID,

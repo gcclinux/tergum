@@ -4,6 +4,7 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"os"
 
 	"github.com/gcclinux/tergum/internal/model"
@@ -16,6 +17,7 @@ var (
 	cfgFile string
 	jsonOut bool
 	dryRun  bool
+	verbose bool
 )
 
 // Version information set at build time via ldflags.
@@ -36,12 +38,19 @@ A single binary acts as client, server, or hybrid depending on the subcommand
 and node role configuration.`,
 	SilenceUsage:  true,
 	SilenceErrors: true,
+	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+		if verbose {
+			slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo})))
+		}
+		return nil
+	},
 }
 
 func init() {
 	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file path (default: platform-specific tergum.toml)")
 	rootCmd.PersistentFlags().BoolVar(&jsonOut, "json", false, "output machine-readable JSON")
 	rootCmd.PersistentFlags().BoolVar(&dryRun, "dry-run", false, "preview destructive operations without executing")
+	rootCmd.PersistentFlags().BoolVar(&verbose, "verbose", false, "enable verbose logging output")
 
 	rootCmd.AddCommand(newSetupCmd())
 	rootCmd.AddCommand(newServerCmd())

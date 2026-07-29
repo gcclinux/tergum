@@ -66,6 +66,10 @@ func (m *mockServerConnection) SyncDatabase(ctx context.Context, dbPath string) 
 	return nil
 }
 
+func (m *mockServerConnection) LogActivity(ctx context.Context, backupID string, status model.JobStatus, clientID string, errMsg string) error {
+	return nil
+}
+
 // mockRepository implements a minimal db.Repository for testing.
 type mockRepository struct {
 	jobs    []model.BackupJob

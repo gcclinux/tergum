@@ -368,6 +368,10 @@ func (b *blockingServerConnection) SyncDatabase(ctx context.Context, dbPath stri
 	return nil
 }
 
+func (b *blockingServerConnection) LogActivity(ctx context.Context, backupID string, status model.JobStatus, clientID string, errMsg string) error {
+	return nil
+}
+
 func TestStop_Method(t *testing.T) {
 	engine, _, _, sourceDir := setupTestEngine(t, false)
 

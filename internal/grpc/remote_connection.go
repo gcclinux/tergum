@@ -130,5 +130,10 @@ func (r *RemoteServerConnection) SyncDatabase(ctx context.Context, dbPath string
 	return SyncDatabaseToServer(ctx, r.client, dbPath, r.clientID)
 }
 
+// LogActivity is a no-op for now — the server-side RPC is not yet implemented.
+func (r *RemoteServerConnection) LogActivity(ctx context.Context, backupID string, status model.JobStatus, clientID string, errMsg string) error {
+	return nil
+}
+
 // Ensure RemoteServerConnection satisfies the backup.ServerConnection interface at compile time.
 var _ backup.ServerConnection = (*RemoteServerConnection)(nil)

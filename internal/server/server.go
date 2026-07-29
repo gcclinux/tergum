@@ -219,9 +219,14 @@ func (s *Server) Start(ctx context.Context) error {
 	})
 
 	// Create gRPC servers with TLS credentials.
+	const maxMsgSize = 64 << 20 // 64 MB
 	creds := credentials.NewTLS(serverTLS)
 	s.grpcCmd = grpc.NewServer(grpc.Creds(creds))
-	s.grpcData = grpc.NewServer(grpc.Creds(creds))
+	s.grpcData = grpc.NewServer(
+		grpc.Creds(creds),
+		grpc.MaxRecvMsgSize(maxMsgSize),
+		grpc.MaxSendMsgSize(maxMsgSize),
+	)
 
 	proto.RegisterCommandServiceServer(s.grpcCmd, cmdServer)
 	proto.RegisterDataServiceServer(s.grpcData, dataServer)

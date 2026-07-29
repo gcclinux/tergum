@@ -35,3 +35,4 @@ go.work.sum
 dist/tergum-aarch64-linux
 dist/tergum-amd64-linux
 dist/tergum-macos
+graphify-out/cache

@@ -38,6 +38,7 @@ type BackupResult struct {
 	BytesNew       int64
 	FilesDeduped   int64
 	Status         model.JobStatus
+	ErrorMessage   string
 }
 
 // ServerConnection abstracts server-side operations for the backup engine.
@@ -46,6 +47,7 @@ type ServerConnection interface {
 	ExchangeManifest(ctx context.Context, manifest []model.ManifestEntry) (ManifestDiff, error)
 	UploadFile(ctx context.Context, hash string, data []byte, wrappedDEK []byte, nonce []byte, entry model.BackupEntry) error
 	SyncDatabase(ctx context.Context, dbPath string) error
+	LogActivity(ctx context.Context, backupID string, status model.JobStatus, clientID string, errMsg string) error
 }
 
 // EngineConfig holds configuration for the backup engine.
@@ -192,8 +194,14 @@ func (e *BackupEngine) RunBackup(ctx context.Context, req BackupRequest) (*Backu
 					"backup_id", backupID, "status", status, "error", syncErr)
 			}
 		}
+		if err := e.server.LogActivity(ctx, backupID, status, job.ClientID, errMsg); err != nil {
+			slog.Warn("activity logging failed", "backup_id", backupID, "error", err)
+		}
 		if result != nil {
 			result.Status = status
+			if errMsg != "" {
+				result.ErrorMessage = errMsg
+			}
 		}
 		return result, nil
 	}
@@ -532,6 +540,11 @@ func (l *LocalServerConnection) UploadFile(ctx context.Context, hash string, dat
 // SyncDatabase is a no-op for local connections (DB is already local).
 func (l *LocalServerConnection) SyncDatabase(ctx context.Context, dbPath string) error {
 	// In local mode, client and server share the same database — nothing to sync.
+	return nil
+}
+
+// LogActivity is a no-op for local connections (no remote server to notify).
+func (l *LocalServerConnection) LogActivity(ctx context.Context, backupID string, status model.JobStatus, clientID string, errMsg string) error {
 	return nil
 }
 

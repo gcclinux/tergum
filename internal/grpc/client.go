@@ -15,6 +15,10 @@ import (
 	"google.golang.org/grpc/status"
 )
 
+// maxMsgSize is the maximum gRPC message size for data connections (64 MB).
+// The default 4 MB limit is too small for large manifests (23k+ files).
+const maxMsgSize = 64 << 20
+
 // ClientConfig configures retry behavior for the TergumClient.
 type ClientConfig struct {
 	InitialBackoff time.Duration // default 1s
@@ -94,7 +98,13 @@ func Connect(ctx context.Context, address string, commandPort int, dataPort int,
 	}
 
 	dataAddr := fmt.Sprintf("%s:%d", address, dataPort)
-	dataConn, err := grpc.NewClient(dataAddr, grpc.WithTransportCredentials(creds))
+	dataConn, err := grpc.NewClient(dataAddr,
+		grpc.WithTransportCredentials(creds),
+		grpc.WithDefaultCallOptions(
+			grpc.MaxCallRecvMsgSize(maxMsgSize),
+			grpc.MaxCallSendMsgSize(maxMsgSize),
+		),
+	)
 	if err != nil {
 		return nil, fmt.Errorf("connecting to data service at %s: %w", dataAddr, err)
 	}
@@ -113,7 +123,13 @@ func ConnectWithConfig(ctx context.Context, address string, commandPort int, dat
 	}
 
 	dataAddr := fmt.Sprintf("%s:%d", address, dataPort)
-	dataConn, err := grpc.NewClient(dataAddr, grpc.WithTransportCredentials(creds))
+	dataConn, err := grpc.NewClient(dataAddr,
+		grpc.WithTransportCredentials(creds),
+		grpc.WithDefaultCallOptions(
+			grpc.MaxCallRecvMsgSize(maxMsgSize),
+			grpc.MaxCallSendMsgSize(maxMsgSize),
+		),
+	)
 	if err != nil {
 		return nil, fmt.Errorf("connecting to data service at %s: %w", dataAddr, err)
 	}
