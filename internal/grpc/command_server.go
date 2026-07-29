@@ -207,6 +207,9 @@ func (s *CommandServer) Ping(ctx context.Context, req *proto.PingRequest) (*prot
 			// Sync watcher state from client's heartbeat payload.
 			_ = s.registry.SetWatcherActive(clientID, req.WatcherActive)
 
+			// Sync backup active state from client's heartbeat payload.
+			_ = s.registry.SetBackupActive(clientID, req.BackupActive)
+
 			// Sync last backup time if reported.
 			if req.LastBackupAt != "" {
 				if t, err := time.Parse(time.RFC3339, req.LastBackupAt); err == nil && !t.IsZero() {

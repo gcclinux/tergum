@@ -393,6 +393,13 @@ func (s *ClientCommandServer) LastBackupTime() string {
 	return ""
 }
 
+// BackupRunning implements HeartbeatStateProvider — reports whether a backup is currently active.
+func (s *ClientCommandServer) BackupRunning() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.engine != nil
+}
+
 // persistWatcherEnabled saves the watcher.enabled state to the config file
 // so that a remotely started/stopped watcher survives a service restart.
 func (s *ClientCommandServer) persistWatcherEnabled(enabled bool) {

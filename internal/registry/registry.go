@@ -35,10 +35,11 @@ type MissedBackup struct {
 type ClientInfo struct {
 	ClientID      string
 	Address       string
-	Status        string // "online" or "offline"
+	Status        string // "online", "offline", or "backing_up"
 	LastSeen      time.Time
 	LastBackup    time.Time
 	WatcherActive bool
+	BackupActive  bool // true if a backup is currently in progress on this client
 	Disabled      bool // when true, server ignores this client (no backups, no pings, no restores)
 	Schedule      *ScheduleConfig
 	MissedBackups []MissedBackup
@@ -299,9 +300,10 @@ func (r *Registry) checkOfflineClients() {
 
 	now := time.Now()
 	for _, ci := range r.clients {
-		if ci.Status == "online" && !ci.LastSeen.IsZero() {
+		if (ci.Status == "online" || ci.Status == "backing_up") && !ci.LastSeen.IsZero() {
 			if now.Sub(ci.LastSeen) > r.offlineThreshold {
 				ci.Status = "offline"
+				ci.BackupActive = false
 				// An offline client cannot have a running watcher — reset to avoid stale state.
 				ci.WatcherActive = false
 				r.logger.Warn("registry: client marked offline",
@@ -493,6 +495,27 @@ func (r *Registry) SetWatcherActive(clientID string, active bool) error {
 	}
 
 	ci.WatcherActive = active
+	return r.persistClientLocked(ci)
+}
+
+// SetBackupActive updates the backup active state for a client.
+// When a client is backing up, it is kept online and its status is set to "backing_up".
+// When the backup finishes, status reverts to "online".
+func (r *Registry) SetBackupActive(clientID string, active bool) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	ci, exists := r.clients[clientID]
+	if !exists {
+		return fmt.Errorf("registry: unknown client %q", clientID)
+	}
+
+	ci.BackupActive = active
+	if active {
+		ci.Status = "backing_up"
+	} else if ci.Status == "backing_up" {
+		ci.Status = "online"
+	}
 	return r.persistClientLocked(ci)
 }
 

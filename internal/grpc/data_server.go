@@ -1,10 +1,10 @@
 package grpc
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 
@@ -63,7 +63,8 @@ func NewDataServer(cfg DataServerConfig) *DataServer {
 }
 
 // Upload receives a stream of FileChunks (Header → Data → Trailer),
-// reconstructs the file, stores it in the CAS, and inserts a DB entry.
+// streams data directly to a temp file to avoid memory pressure, then
+// stores the file in the CAS and inserts a DB entry.
 func (s *DataServer) Upload(stream proto.DataService_UploadServer) error {
 	// Reject uploads from disabled clients.
 	if s.registry != nil {
@@ -76,10 +77,62 @@ func (s *DataServer) Upload(stream proto.DataService_UploadServer) error {
 
 	var (
 		header     *proto.FileHeader
-		buf        bytes.Buffer
+		tmpFile    *os.File
+		tmpPath    string
+		fileBytes  int64
 		filesCount int64
 		bytesTotal int64
 	)
+
+	// cleanup ensures any open temp file is removed on error.
+	cleanup := func() {
+		if tmpFile != nil {
+			tmpFile.Close()
+			os.Remove(tmpPath)
+			tmpFile = nil
+			tmpPath = ""
+		}
+	}
+	defer cleanup()
+
+	// finishCurrentFile stores the current temp file to CAS and inserts the DB entry.
+	finishCurrentFile := func() error {
+		if header == nil || tmpFile == nil {
+			return nil
+		}
+
+		// Close the temp file so it can be read by the store.
+		if err := tmpFile.Close(); err != nil {
+			os.Remove(tmpPath)
+			tmpFile = nil
+			return MapError(&model.StorageError{Message: fmt.Sprintf("closing temp file: %v", err)})
+		}
+
+		// Open for reading and pass to store.
+		reader, err := os.Open(tmpPath)
+		if err != nil {
+			os.Remove(tmpPath)
+			tmpFile = nil
+			return MapError(&model.StorageError{Message: fmt.Sprintf("reopening temp file: %v", err)})
+		}
+
+		if err := s.storeFileFromReader(stream.Context(), header, reader, fileBytes); err != nil {
+			reader.Close()
+			os.Remove(tmpPath)
+			tmpFile = nil
+			return err
+		}
+		reader.Close()
+		os.Remove(tmpPath)
+
+		filesCount++
+		bytesTotal += fileBytes
+		tmpFile = nil
+		tmpPath = ""
+		fileBytes = 0
+		header = nil
+		return nil
+	}
 
 	for {
 		chunk, err := stream.Recv()
@@ -93,43 +146,48 @@ func (s *DataServer) Upload(stream proto.DataService_UploadServer) error {
 		if h := chunk.GetHeader(); h != nil {
 			// If we have a pending file from a previous header, store it.
 			if header != nil {
-				if err := s.storeFile(stream.Context(), header, buf.Bytes()); err != nil {
+				if err := finishCurrentFile(); err != nil {
 					return err
 				}
-				filesCount++
-				bytesTotal += int64(buf.Len())
-				buf.Reset()
 			}
 			header = h
+
+			// Create a new temp file for this upload.
+			tmpFile, err = os.CreateTemp("", "tergum-upload-*")
+			if err != nil {
+				return MapError(&model.StorageError{Message: fmt.Sprintf("creating temp file: %v", err)})
+			}
+			tmpPath = tmpFile.Name()
+			fileBytes = 0
 			continue
 		}
 
 		if data := chunk.GetData(); data != nil {
-			buf.Write(data)
+			if tmpFile == nil {
+				slog.Warn("received data chunk without header, ignoring")
+				continue
+			}
+			n, err := tmpFile.Write(data)
+			if err != nil {
+				return MapError(&model.StorageError{Message: fmt.Sprintf("writing to temp file: %v", err)})
+			}
+			fileBytes += int64(n)
 			continue
 		}
 
 		if t := chunk.GetTrailer(); t != nil {
 			// Trailer marks end of current file.
-			if header != nil {
-				if err := s.storeFile(stream.Context(), header, buf.Bytes()); err != nil {
-					return err
-				}
-				filesCount++
-				bytesTotal += int64(buf.Len())
-				buf.Reset()
-				header = nil
+			if err := finishCurrentFile(); err != nil {
+				return err
 			}
 		}
 	}
 
 	// Handle case where stream ends without trailer (last file).
 	if header != nil {
-		if err := s.storeFile(stream.Context(), header, buf.Bytes()); err != nil {
+		if err := finishCurrentFile(); err != nil {
 			return err
 		}
-		filesCount++
-		bytesTotal += int64(buf.Len())
 	}
 
 	return stream.SendAndClose(&proto.UploadSummary{
@@ -139,10 +197,10 @@ func (s *DataServer) Upload(stream proto.DataService_UploadServer) error {
 	})
 }
 
-// storeFile writes file data to the CAS and inserts a backup entry in the database.
-func (s *DataServer) storeFile(ctx context.Context, header *proto.FileHeader, data []byte) error {
+// storeFileFromReader writes file data from a reader to the CAS and inserts a backup entry.
+func (s *DataServer) storeFileFromReader(ctx context.Context, header *proto.FileHeader, reader io.Reader, size int64) error {
 	// Store in CAS.
-	if err := s.store.Put(ctx, header.Blake3Hash, bytes.NewReader(data)); err != nil {
+	if err := s.store.Put(ctx, header.Blake3Hash, reader); err != nil {
 		return MapError(&model.StorageError{Message: fmt.Sprintf("storing file %s: %v", header.Blake3Hash, err)})
 	}
 

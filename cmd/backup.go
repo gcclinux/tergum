@@ -188,12 +188,44 @@ func runBackup(cmd *cobra.Command, args []string) error {
 	fmt.Printf("Exclude patterns: %d\n", len(excludePatterns))
 	fmt.Println()
 
+	// Start heartbeat loop for client-mode so the server knows we're online and backing up.
+	var heartbeatCancel context.CancelFunc
+	if cfg.Node.Role == "client" && cfg.Server.Address != "" {
+		tlsCfg, hbClientID, err := connection.LoadClientTLS(cfg)
+		if err == nil {
+			hbClient, err := grpcpkg.Connect(ctx, cfg.Server.Address, cfg.Server.CommandPort, cfg.Server.DataPort, tlsCfg)
+			if err == nil {
+				hbClient.SetClientID(hbClientID)
+				hbCtx, cancel := context.WithCancel(ctx)
+				heartbeatCancel = cancel
+
+				// Build a state provider that reports backup as active.
+				state := &cliBackupState{
+					backupActive: true,
+					repo:         repo,
+				}
+				address := fmt.Sprintf("%s:%d", cfg.Node.Hostname, cfg.Server.CommandPort)
+				if cfg.Node.Hostname == "" {
+					h, _ := os.Hostname()
+					address = fmt.Sprintf("%s:%d", h, cfg.Server.CommandPort)
+				}
+				go grpcpkg.StartHeartbeat(hbCtx, hbClient, hbClientID, address, 30*time.Second, state)
+			}
+		}
+	}
+
 	// Run backup.
 	result, err := engine.RunBackup(ctx, backup.BackupRequest{
 		Level:       backupLevel,
 		ClientID:    clientID,
 		InitiatedBy: "cli",
 	})
+
+	// Stop heartbeat after backup completes.
+	if heartbeatCancel != nil {
+		heartbeatCancel()
+	}
+
 	if err != nil {
 		return fmt.Errorf("backup failed: %w", err)
 	}
@@ -326,7 +358,7 @@ func runRemoteClientBackup(clientID string, level string) error {
 	if ci == nil {
 		return fmt.Errorf("client %q not found in registry", clientID)
 	}
-	if ci.Status != "online" {
+	if ci.Status != "online" && ci.Status != "backing_up" {
 		return fmt.Errorf("client %q is offline (last seen: %v)", clientID, ci.LastSeen)
 	}
 
@@ -390,3 +422,29 @@ func runRemoteClientBackup(clientID string, level string) error {
 
 	return nil
 }
+
+// cliBackupState implements grpc.HeartbeatStateProvider for CLI-initiated backups.
+// It always reports the backup as active and no watcher running.
+type cliBackupState struct {
+	backupActive bool
+	repo         db.Repository
+}
+
+func (s *cliBackupState) WatcherRunning() bool { return false }
+
+func (s *cliBackupState) LastBackupTime() string {
+	if s.repo == nil {
+		return ""
+	}
+	completed := model.JobCompleted
+	jobs, err := s.repo.ListJobs(context.Background(), db.JobFilter{Status: &completed, Limit: 1})
+	if err != nil || len(jobs) == 0 {
+		return ""
+	}
+	if jobs[0].FinishedAt != nil {
+		return jobs[0].FinishedAt.UTC().Format(time.RFC3339)
+	}
+	return ""
+}
+
+func (s *cliBackupState) BackupRunning() bool { return s.backupActive }

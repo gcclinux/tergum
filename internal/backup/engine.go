@@ -307,16 +307,21 @@ func (e *BackupEngine) RunBackup(ctx context.Context, req BackupRequest) (*Backu
 		}
 	}
 
+	slog.Info("starting file upload", "backup_id", backupID, "files_to_upload", len(diff.NeededHashes))
+
 	uploadedHashes := make(map[string]bool, len(diff.NeededHashes))
 	type encMeta struct {
 		wrappedDEK []byte
 		nonce      []byte
 	}
 	hashEncryption := make(map[string]encMeta, len(diff.NeededHashes))
+	var uploadIndex int
 	for _, hash := range diff.NeededHashes {
 		if e.stopped.Load() {
 			return finishJob(model.JobStopped, result, "stopped during upload")
 		}
+
+		uploadIndex++
 
 		// Find a scanned file with this hash.
 		var sf *ScannedFile
@@ -330,6 +335,13 @@ func (e *BackupEngine) RunBackup(ctx context.Context, req BackupRequest) (*Backu
 			slog.Warn("no file found for needed hash", "hash", hash)
 			continue
 		}
+
+		slog.Debug("uploading file",
+			"backup_id", backupID,
+			"path", sf.Path,
+			"size", sf.Size,
+			"progress", fmt.Sprintf("%d/%d", uploadIndex, len(diff.NeededHashes)),
+		)
 
 		// Read file content.
 		data, err := readFileWithRetry(ctx, sf.Path)
@@ -351,6 +363,7 @@ func (e *BackupEngine) RunBackup(ctx context.Context, req BackupRequest) (*Backu
 			uploadData = ciphertext
 			wrappedDEK = wDEK
 			nonce = n
+			slog.Debug("file encrypted", "path", sf.Path, "plaintext_size", len(data), "ciphertext_size", len(uploadData))
 		}
 
 		// Store encryption metadata for use in step 7.
@@ -369,17 +382,35 @@ func (e *BackupEngine) RunBackup(ctx context.Context, req BackupRequest) (*Backu
 		result.BytesNew += int64(len(data))
 		result.FilesProcessed += hashFileCount[hash]
 		updateProgress()
+
+		slog.Debug("file uploaded",
+			"backup_id", backupID,
+			"path", sf.Path,
+			"bytes", len(data),
+			"total_new_bytes", result.BytesNew,
+			"files_processed", result.FilesProcessed,
+		)
 	}
+
+	slog.Info("file upload complete",
+		"backup_id", backupID,
+		"uploaded", len(uploadedHashes),
+		"bytes_new", result.BytesNew,
+	)
 
 	// 7. Insert backup entries for all manifest files.
 	// Files whose hash was uploaded are "new"; files whose hash already existed on server are "deduped".
 	// Within-backup dedup: if multiple files share the same hash and we uploaded it,
 	// only the first counts as "new bytes" — the rest are intra-backup dedup.
+	slog.Info("inserting backup entries", "backup_id", backupID, "total_entries", len(manifest))
 	seenUploaded := make(map[string]bool, len(diff.NeededHashes))
+	var entryIndex int
 	for _, mEntry := range manifest {
 		if e.stopped.Load() {
 			return finishJob(model.JobStopped, result, "stopped during entry insertion")
 		}
+
+		entryIndex++
 
 		sf := pathToScanned[mEntry.FilePath]
 		if sf == nil {
@@ -410,7 +441,23 @@ func (e *BackupEngine) RunBackup(ctx context.Context, req BackupRequest) (*Backu
 			seenUploaded[mEntry.Blake3Hash] = true
 		}
 		updateProgress()
+
+		if entryIndex%1000 == 0 {
+			slog.Debug("entry insertion progress",
+				"backup_id", backupID,
+				"progress", fmt.Sprintf("%d/%d", entryIndex, len(manifest)),
+				"files_processed", result.FilesProcessed,
+				"files_deduped", result.FilesDeduped,
+			)
+		}
 	}
+
+	slog.Info("backup entries complete",
+		"backup_id", backupID,
+		"files_processed", result.FilesProcessed,
+		"files_deduped", result.FilesDeduped,
+		"bytes_new", result.BytesNew,
+	)
 
 	// 8. Update job with completion status and sync database.
 	return finishJob(model.JobCompleted, result, "")

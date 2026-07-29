@@ -17,6 +17,8 @@ type HeartbeatStateProvider interface {
 	WatcherRunning() bool
 	// LastBackupTime returns the RFC3339 timestamp of the most recent completed backup, or "".
 	LastBackupTime() string
+	// BackupRunning returns true if a backup operation is currently in progress.
+	BackupRunning() bool
 }
 
 // StartHeartbeat runs a blocking loop that periodically pings the server and,
@@ -50,6 +52,7 @@ func StartHeartbeat(ctx context.Context, client *TergumClient, clientID string, 
 			if stateProvider != nil {
 				req.WatcherActive = stateProvider.WatcherRunning()
 				req.LastBackupAt = stateProvider.LastBackupTime()
+				req.BackupActive = stateProvider.BackupRunning()
 			}
 
 			_, err := client.PingWithState(ctx, req)

@@ -113,7 +113,7 @@ func (s *Server) handleAPIDashboardClients(w http.ResponseWriter, r *http.Reques
 	if s.clientRegistry != nil {
 		clients := s.clientRegistry.ListClients()
 		for _, c := range clients {
-			if c.Status == "online" {
+			if c.Status == "online" || c.Status == "backing_up" {
 				onlineClients[c.ClientID] = true
 			}
 		}
@@ -394,7 +394,6 @@ func (s *Server) handleAPIDashboardActivity(w http.ResponseWriter, r *http.Reque
 
 	fmt.Fprint(w, `</div>`)
 }
-
 
 // getStatusIcon returns an emoji icon for a job status.
 func getStatusIcon(status string) string {

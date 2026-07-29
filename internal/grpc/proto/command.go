@@ -62,6 +62,7 @@ type StatusResponse struct {
 type PingRequest struct {
 	WatcherActive bool   `json:"watcher_active,omitempty"` // true if the client's file watcher is running
 	LastBackupAt  string `json:"last_backup_at,omitempty"` // RFC3339 timestamp of most recent completed backup
+	BackupActive  bool   `json:"backup_active,omitempty"`  // true if a backup is currently in progress
 }
 
 // PingResponse contains server health information.

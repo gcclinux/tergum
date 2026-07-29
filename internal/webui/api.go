@@ -1722,7 +1722,7 @@ func (s *Server) handleAPIClientsList(w http.ResponseWriter, r *http.Request) {
 		// Treat clients whose LastSeen is more than 90 s ago as offline,
 		// matching the registry's default offlineThreshold.
 		const clientOfflineThreshold = 90 * time.Second
-		isOffline := ci.Status != "online"
+		isOffline := ci.Status == "offline"
 		if !isOffline && !ci.LastSeen.IsZero() {
 			if time.Since(ci.LastSeen) > clientOfflineThreshold {
 				isOffline = true
@@ -1783,7 +1783,16 @@ func (s *Server) handleAPIClientsList(w http.ResponseWriter, r *http.Request) {
 						clientStatusDetail = " (starting...)"
 					}
 				}
+			} else if ci.BackupActive {
+				// Client status query failed but registry reports backup is active
+				// (e.g., CLI-initiated backup without a client command server).
+				clientStatus = "Backing Up"
+				clientStatusColor = "text-blue-600 dark:text-blue-400 font-semibold"
 			}
+		} else if !isOffline && ci.BackupActive {
+			// No client connector but registry reports backup active.
+			clientStatus = "Backing Up"
+			clientStatusColor = "text-blue-600 dark:text-blue-400 font-semibold"
 		}
 
 		// Card start
@@ -1811,7 +1820,7 @@ func (s *Server) handleAPIClientsList(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, `<p><span class="font-medium">Watcher:</span> <span class="%s">%s</span></p>`, watcherColor, watcherStatus)
 		if ci.Disabled {
 			fmt.Fprint(w, `<p><span class="font-medium">Status:</span> <span class="text-gray-400">Disabled</span></p>`)
-		} else if clientStatus == "Running" {
+		} else if clientStatus == "Running" || clientStatus == "Backing Up" {
 			fmt.Fprintf(w, `<p><span class="font-medium">Status:</span> <span class="inline-flex items-center %s"><span class="w-2 h-2 rounded-full bg-blue-500 animate-pulse mr-1"></span>%s%s</span></p>`, clientStatusColor, clientStatus, clientStatusDetail)
 		} else {
 			fmt.Fprintf(w, `<p><span class="font-medium">Status:</span> <span class="%s">%s</span></p>`, clientStatusColor, clientStatus)
@@ -1830,7 +1839,7 @@ func (s *Server) handleAPIClientsList(w http.ResponseWriter, r *http.Request) {
 			// Disabled client: only show Enable button.
 			fmt.Fprintf(w, `<button hx-post="/api/clients/%s/enable" hx-swap="none" class="text-xs px-2.5 py-1.5 rounded border border-green-200 dark:border-green-700 text-green-700 dark:text-green-300 hover:bg-green-50 dark:hover:bg-gray-700 cursor-pointer">Enable Client</button>`, ci.ClientID)
 		} else {
-			if clientStatus == "Running" {
+			if clientStatus == "Running" || clientStatus == "Backing Up" {
 				fmt.Fprintf(w, `<button hx-post="/api/clients/%s/backup/stop" hx-swap="none" class="text-xs px-2.5 py-1.5 rounded border border-red-200 dark:border-red-700 text-red-700 dark:text-red-300 hover:bg-red-50 dark:hover:bg-gray-700 cursor-pointer">Stop Backup</button>`, ci.ClientID)
 			} else {
 				fmt.Fprintf(w, `<button hx-post="/api/clients/%s/backup" hx-swap="none" class="text-xs px-2.5 py-1.5 rounded border border-blue-200 dark:border-blue-700 text-blue-700 dark:text-blue-300 %s"%s>Trigger Backup</button>`, ci.ClientID, disabledClass, disabledAttr)
@@ -1941,7 +1950,7 @@ func (s *Server) handleAPIMetricsCards(w http.ResponseWriter, r *http.Request) {
 		clients := s.clientRegistry.ListClients()
 		count := 0
 		for _, ci := range clients {
-			if ci.Status == "online" {
+			if ci.Status == "online" || ci.Status == "backing_up" {
 				count++
 			}
 		}

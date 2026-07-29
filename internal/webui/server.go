@@ -734,7 +734,7 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 	if s.clientRegistry != nil {
 		clients := s.clientRegistry.ListClients()
 		for _, c := range clients {
-			if c.Status == "online" {
+			if c.Status == "online" || c.Status == "backing_up" {
 				onlineClients[c.ClientID] = true
 			}
 		}
@@ -1084,7 +1084,7 @@ func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 		clients := s.clientRegistry.ListClients()
 		count := 0
 		for _, ci := range clients {
-			if ci.Status == "online" {
+			if ci.Status == "online" || ci.Status == "backing_up" {
 				count++
 			}
 		}
