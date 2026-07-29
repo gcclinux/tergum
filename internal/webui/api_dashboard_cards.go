@@ -288,7 +288,17 @@ func (s *Server) handleAPIDashboardActivity(w http.ResponseWriter, r *http.Reque
 					if len(backupIDTrunc) > 12 {
 						backupIDTrunc = backupIDTrunc[:12]
 					}
-					htmlContent := fmt.Sprintf(`<p class="text-sm text-gray-700 dark:text-gray-300 truncate">Remote Backup <span class="font-medium">%s</span> - <span class="font-medium">%s</span></p><p class="text-xs text-gray-400 dark:text-gray-500">%s</p>`, client.ClientID, backupIDTrunc, started)
+
+					var htmlContent string
+					if j.Status == model.JobDeleted {
+						detail := j.ErrorMessage
+						if detail == "" {
+							detail = "all backups deleted"
+						}
+						htmlContent = fmt.Sprintf(`<p class="text-sm text-gray-700 dark:text-gray-300 truncate">Delete <span class="font-medium">%s</span> - <span class="font-medium">%s</span></p><p class="text-xs text-gray-400 dark:text-gray-500">%s</p>`, client.ClientID, detail, started)
+					} else {
+						htmlContent = fmt.Sprintf(`<p class="text-sm text-gray-700 dark:text-gray-300 truncate">Remote Backup <span class="font-medium">%s</span> - <span class="font-medium">%s</span></p><p class="text-xs text-gray-400 dark:text-gray-500">%s</p>`, client.ClientID, backupIDTrunc, started)
+					}
 
 					items = append(items, activityItem{
 						Timestamp:   j.StartedAt,
@@ -406,6 +416,8 @@ func getStatusIcon(status string) string {
 		return "❌"
 	case "stopped":
 		return "⏹️"
+	case "deleted":
+		return "🗑️"
 	default:
 		return "🔵"
 	}
@@ -422,6 +434,8 @@ func getStatusColor(status string) string {
 		return "bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400"
 	case "stopped":
 		return "bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-400"
+	case "deleted":
+		return "bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400"
 	default:
 		return "bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400"
 	}

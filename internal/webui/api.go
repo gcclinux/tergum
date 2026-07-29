@@ -640,6 +640,8 @@ func (s *Server) handleAPIRestoreBackups(w http.ResponseWriter, r *http.Request)
 			statusClass = "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300"
 		case model.JobRunning:
 			statusClass = "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300"
+		case model.JobDeleted:
+			statusClass = "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300"
 		}
 
 		if i > 0 {
@@ -1782,10 +1784,14 @@ func (s *Server) handleAPIClientsList(w http.ResponseWriter, r *http.Request) {
 					} else {
 						clientStatusDetail = " (starting...)"
 					}
+				} else if ci.BackupActive {
+					// Client service reports idle but registry knows a backup is active
+					// (e.g., CLI-initiated backup running in a separate process).
+					clientStatus = "Backing Up"
+					clientStatusColor = "text-blue-600 dark:text-blue-400 font-semibold"
 				}
 			} else if ci.BackupActive {
-				// Client status query failed but registry reports backup is active
-				// (e.g., CLI-initiated backup without a client command server).
+				// Client status query failed but registry reports backup is active.
 				clientStatus = "Backing Up"
 				clientStatusColor = "text-blue-600 dark:text-blue-400 font-semibold"
 			}

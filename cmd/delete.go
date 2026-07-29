@@ -3,9 +3,12 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
+	"time"
 
 	"github.com/gcclinux/tergum/internal/config"
+	"github.com/gcclinux/tergum/internal/connection"
 	"github.com/gcclinux/tergum/internal/db"
 	"github.com/gcclinux/tergum/internal/deletion"
 	"github.com/gcclinux/tergum/internal/model"
@@ -55,6 +58,13 @@ func runDelete(cmd *cobra.Command, args []string) error {
 	cfg, err := config.Load(cfgFile)
 	if err != nil {
 		return fmt.Errorf("loading config: %w", err)
+	}
+
+	// Require passphrase verification when encryption is enabled.
+	if cfg.Encryption.Enabled {
+		if _, err := loadMasterKey(cfg); err != nil {
+			return fmt.Errorf("encryption verification failed: %w", err)
+		}
 	}
 
 	repo, err := db.NewRepository(cfg.Database.Path, cfg.Database.WALMode)
@@ -127,6 +137,59 @@ func runDelete(cmd *cobra.Command, args []string) error {
 			prefix, result.EntriesDeleted, result.BytesFreed, result.FilesRemoved, result.JobsRemoved),
 	)
 
+	// Record the deletion as an activity event and sync DB to server.
+	if !dryRun && result.EntriesDeleted > 0 {
+		// Determine client ID for the activity record.
+		var deleteClientID string
+		if cfg.Node.Role == "client" {
+			_, id, err := connection.LoadClientTLS(cfg)
+			if err == nil && id != "" {
+				deleteClientID = id
+			}
+		}
+		if deleteClientID == "" {
+			if cfg.Node.Hostname != "" {
+				deleteClientID = cfg.Node.Hostname
+			} else {
+				deleteClientID, _ = os.Hostname()
+			}
+		}
+
+		// Insert a "deleted" job record so the server dashboard shows the event.
+		now := time.Now().UTC()
+		errMsg := fmt.Sprintf("%d entries, %d bytes freed, %d files removed",
+			result.EntriesDeleted, result.BytesFreed, result.FilesRemoved)
+		deleteJob := model.BackupJob{
+			BackupID:    fmt.Sprintf("delete-%s", now.Format("20060102-150405")),
+			Level:       "DELETE",
+			ClientID:    deleteClientID,
+			InitiatedBy: "cli",
+			StartedAt:   now,
+			Status:      model.JobDeleted,
+		}
+		if err := repo.CreateJob(ctx, deleteJob); err == nil {
+			finishedAt := now
+			status := model.JobDeleted
+			filesDeleted := result.EntriesDeleted
+			_ = repo.UpdateJob(ctx, deleteJob.BackupID, db.JobUpdate{
+				Status:       &status,
+				FinishedAt:   &finishedAt,
+				FileCount:    &filesDeleted,
+				ErrorMessage: &errMsg,
+			})
+		}
+
+		// Sync the updated database to the server so it reflects the deletion.
+		if cfg.Node.Role == "client" && cfg.Server.Address != "" {
+			serverConn, err := connection.NewServerConnection(cfg)
+			if err == nil {
+				if syncErr := serverConn.SyncDatabase(ctx, cfg.Database.Path); syncErr != nil {
+					fmt.Fprintf(os.Stderr, "Warning: failed to sync database to server: %v\n", syncErr)
+				}
+			}
+		}
+	}
+
 	return nil
 }
 
@@ -134,6 +197,13 @@ func runDeleteActivity(cmd *cobra.Command) error {
 	cfg, err := config.Load(cfgFile)
 	if err != nil {
 		return fmt.Errorf("loading config: %w", err)
+	}
+
+	// Require passphrase verification when encryption is enabled.
+	if cfg.Encryption.Enabled {
+		if _, err := loadMasterKey(cfg); err != nil {
+			return fmt.Errorf("encryption verification failed: %w", err)
+		}
 	}
 
 	repo, err := db.NewRepository(cfg.Database.Path, cfg.Database.WALMode)
