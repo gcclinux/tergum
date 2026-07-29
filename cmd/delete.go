@@ -161,9 +161,9 @@ func runDelete(cmd *cobra.Command, args []string) error {
 			result.EntriesDeleted, result.BytesFreed, result.FilesRemoved)
 		deleteJob := model.BackupJob{
 			BackupID:    fmt.Sprintf("delete-%s", now.Format("20060102-150405")),
-			Level:       "DELETE",
+			Level:       "FULL",
 			ClientID:    deleteClientID,
-			InitiatedBy: "cli",
+			InitiatedBy: "cli-delete",
 			StartedAt:   now,
 			Status:      model.JobDeleted,
 		}
