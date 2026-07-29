@@ -177,12 +177,19 @@ func runDelete(cmd *cobra.Command, args []string) error {
 				FileCount:    &filesDeleted,
 				ErrorMessage: &errMsg,
 			})
+		} else {
+			fmt.Fprintf(os.Stderr, "Warning: failed to record delete activity: %v\n", err)
 		}
+
+		// Checkpoint WAL before sync to ensure all changes are flushed.
+		_ = repo.Checkpoint(ctx)
 
 		// Sync the updated database to the server so it reflects the deletion.
 		if cfg.Node.Role == "client" && cfg.Server.Address != "" {
 			serverConn, err := connection.NewServerConnection(cfg)
-			if err == nil {
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Warning: could not connect to server for sync: %v\n", err)
+			} else {
 				if syncErr := serverConn.SyncDatabase(ctx, cfg.Database.Path); syncErr != nil {
 					fmt.Fprintf(os.Stderr, "Warning: failed to sync database to server: %v\n", syncErr)
 				}
