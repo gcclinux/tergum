@@ -394,10 +394,26 @@ func (s *ClientCommandServer) LastBackupTime() string {
 }
 
 // BackupRunning implements HeartbeatStateProvider — reports whether a backup is currently active.
+// This checks both the in-process engine AND a signal file left by CLI-initiated backups
+// running in a separate process.
 func (s *ClientCommandServer) BackupRunning() bool {
 	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.engine != nil
+	engineRunning := s.engine != nil
+	s.mu.Unlock()
+
+	if engineRunning {
+		return true
+	}
+
+	// Check for CLI backup signal file.
+	if s.cfg != nil {
+		configDir := filepath.Dir(s.cfg.Database.Path)
+		if _, err := os.Stat(filepath.Join(configDir, "backing_up")); err == nil {
+			return true
+		}
+	}
+
+	return false
 }
 
 // persistWatcherEnabled saves the watcher.enabled state to the config file

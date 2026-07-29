@@ -189,18 +189,25 @@ func runBackup(cmd *cobra.Command, args []string) error {
 	fmt.Println()
 
 	// Start heartbeat loop for client-mode so the server knows we're online and backing up.
+	// Signal backup activity via a file so the service (if running) can report it.
 	var heartbeatCancel context.CancelFunc
+	var hbClient *grpcpkg.TergumClient
+	var hbState *cliBackupState
+	backingUpFile := filepath.Join(configDir, "backing_up")
+	os.WriteFile(backingUpFile, []byte(clientID), 0644)
+
 	if cfg.Node.Role == "client" && cfg.Server.Address != "" {
 		tlsCfg, hbClientID, err := connection.LoadClientTLS(cfg)
 		if err == nil {
-			hbClient, err := grpcpkg.Connect(ctx, cfg.Server.Address, cfg.Server.CommandPort, cfg.Server.DataPort, tlsCfg)
+			client, err := grpcpkg.Connect(ctx, cfg.Server.Address, cfg.Server.CommandPort, cfg.Server.DataPort, tlsCfg)
 			if err == nil {
-				hbClient.SetClientID(hbClientID)
+				client.SetClientID(hbClientID)
+				hbClient = client
 				hbCtx, cancel := context.WithCancel(ctx)
 				heartbeatCancel = cancel
 
 				// Build a state provider that reports backup as active.
-				state := &cliBackupState{
+				hbState = &cliBackupState{
 					backupActive: true,
 					repo:         repo,
 				}
@@ -209,7 +216,7 @@ func runBackup(cmd *cobra.Command, args []string) error {
 					h, _ := os.Hostname()
 					address = fmt.Sprintf("%s:%d", h, cfg.Server.CommandPort)
 				}
-				go grpcpkg.StartHeartbeat(hbCtx, hbClient, hbClientID, address, 30*time.Second, state)
+				go grpcpkg.StartHeartbeat(hbCtx, hbClient, hbClientID, address, 30*time.Second, hbState)
 			}
 		}
 	}
@@ -220,6 +227,14 @@ func runBackup(cmd *cobra.Command, args []string) error {
 		ClientID:    clientID,
 		InitiatedBy: "cli",
 	})
+
+	// Remove the backing_up signal file.
+	os.Remove(backingUpFile)
+
+	// Signal backup complete to the server before stopping heartbeat.
+	if hbClient != nil && hbState != nil {
+		hbState.backupActive = false
+	}
 
 	// Stop heartbeat after backup completes.
 	if heartbeatCancel != nil {

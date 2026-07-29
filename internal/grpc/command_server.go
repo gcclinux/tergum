@@ -208,6 +208,8 @@ func (s *CommandServer) Ping(ctx context.Context, req *proto.PingRequest) (*prot
 			_ = s.registry.SetWatcherActive(clientID, req.WatcherActive)
 
 			// Sync backup active state from client's heartbeat payload.
+			// The client service checks both its own engine and a signal file
+			// left by CLI-initiated backups, so this is authoritative.
 			_ = s.registry.SetBackupActive(clientID, req.BackupActive)
 
 			// Sync last backup time if reported.

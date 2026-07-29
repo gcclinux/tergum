@@ -229,7 +229,7 @@ func (s *Server) handleAPIDashboardActivity(w http.ResponseWriter, r *http.Reque
 		for _, j := range jobs {
 			icon := getStatusIcon(string(j.Status))
 			statusColor := getStatusColor(string(j.Status))
-			started := j.StartedAt.Format("Jan 02, 15:04")
+			started := j.StartedAt.Local().Format("Jan 02, 15:04")
 			backupIDTrunc := j.BackupID
 			if len(backupIDTrunc) > 12 {
 				backupIDTrunc = backupIDTrunc[:12]
@@ -283,7 +283,7 @@ func (s *Server) handleAPIDashboardActivity(w http.ResponseWriter, r *http.Reque
 				for _, j := range cJobs {
 					icon := getStatusIcon(string(j.Status))
 					statusColor := getStatusColor(string(j.Status))
-					started := j.StartedAt.Format("Jan 02, 15:04")
+					started := j.StartedAt.Local().Format("Jan 02, 15:04")
 					backupIDTrunc := j.BackupID
 					if len(backupIDTrunc) > 12 {
 						backupIDTrunc = backupIDTrunc[:12]

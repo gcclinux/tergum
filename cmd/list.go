@@ -130,13 +130,13 @@ func runList(cmd *cobra.Command, args []string) error {
 				Level:        j.Level,
 				ClientID:     j.ClientID,
 				Status:       string(j.Status),
-				StartedAt:    j.StartedAt.Format("2006-01-02 15:04:05"),
+				StartedAt:    j.StartedAt.Local().Format("2006-01-02 15:04:05"),
 				FileCount:    j.FileCount,
 				BytesNew:     j.BytesNew,
 				FilesDeduped: j.FilesDeduped,
 			}
 			if j.FinishedAt != nil {
-				jj.FinishedAt = j.FinishedAt.Format("2006-01-02 15:04:05")
+				jj.FinishedAt = j.FinishedAt.Local().Format("2006-01-02 15:04:05")
 			}
 			if j.Status == model.JobCompleted && j.FinishedAt != nil && j.BytesNew > 0 {
 				elapsed := j.FinishedAt.Sub(j.StartedAt).Seconds()
@@ -160,7 +160,7 @@ func runList(cmd *cobra.Command, args []string) error {
 			"BACKUP ID", "LEVEL", "CLIENT", "STATUS", "FILES", "NEW BYTES", "SPEED", "STARTED")
 		fmt.Printf("  %s\n", strings.Repeat("-", 125))
 		for _, j := range jobs {
-			started := j.StartedAt.Format("2006-01-02 15:04")
+			started := j.StartedAt.Local().Format("2006-01-02 15:04")
 			speed := ""
 			if j.Status == model.JobRunning && j.BytesNew > 0 {
 				elapsed := time.Since(j.StartedAt).Seconds()

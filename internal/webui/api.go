@@ -227,7 +227,7 @@ func (s *Server) handleAPIBackupsHistory(w http.ResponseWriter, r *http.Request)
 		rows: [`)
 
 	for i, j := range jobs {
-		started := j.StartedAt.Format("2006-01-02 15:04:05")
+		started := j.StartedAt.Local().Format("2006-01-02 15:04:05")
 		duration := "-"
 		if j.FinishedAt != nil {
 			duration = j.FinishedAt.Sub(j.StartedAt).Round(time.Second).String()

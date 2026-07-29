@@ -375,7 +375,8 @@ func (r *Registry) Register(clientID, address string) (*ClientInfo, error) {
 	return ci, nil
 }
 
-// Heartbeat updates the last-seen timestamp for a client and marks it online.
+// Heartbeat updates the last-seen timestamp for a client and marks it online
+// (unless it's currently in "backing_up" state, which is preserved).
 func (r *Registry) Heartbeat(clientID string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -387,7 +388,10 @@ func (r *Registry) Heartbeat(clientID string) error {
 
 	wasOffline := ci.Status == "offline"
 	ci.LastSeen = time.Now()
-	ci.Status = "online"
+	// Don't overwrite "backing_up" — that state is managed by SetBackupActive.
+	if ci.Status != "backing_up" {
+		ci.Status = "online"
+	}
 
 	if wasOffline {
 		r.logger.Info("registry: client reconnected",

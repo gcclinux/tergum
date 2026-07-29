@@ -41,44 +41,53 @@ func StartHeartbeat(ctx context.Context, client *TergumClient, clientID string, 
 		slog.Duration("interval", interval),
 	)
 
+	// Send an immediate first ping so the server gets the state right away
+	// (don't wait for the first ticker tick).
+	sendPing := func() {
+		// Build ping request with current client state.
+		req := proto.PingRequest{}
+		if stateProvider != nil {
+			req.WatcherActive = stateProvider.WatcherRunning()
+			req.LastBackupAt = stateProvider.LastBackupTime()
+			req.BackupActive = stateProvider.BackupRunning()
+		}
+
+		_, err := client.PingWithState(ctx, req)
+		if err != nil {
+			log.Warn("heartbeat ping failed",
+				slog.String("client_id", clientID),
+				slog.String("error", err.Error()),
+			)
+			return
+		}
+
+		if !registered {
+			_, regErr := client.RegisterClient(ctx, clientID, address)
+			if regErr != nil {
+				log.Warn("client registration failed",
+					slog.String("client_id", clientID),
+					slog.String("error", regErr.Error()),
+				)
+			} else {
+				registered = true
+				log.Info("client registered with server",
+					slog.String("client_id", clientID),
+					slog.String("address", address),
+				)
+			}
+		}
+	}
+
+	// Immediate first ping.
+	sendPing()
+
 	for {
 		select {
 		case <-ctx.Done():
 			log.Info("heartbeat loop stopped", slog.String("client_id", clientID))
 			return
 		case <-ticker.C:
-			// Build ping request with current client state.
-			req := proto.PingRequest{}
-			if stateProvider != nil {
-				req.WatcherActive = stateProvider.WatcherRunning()
-				req.LastBackupAt = stateProvider.LastBackupTime()
-				req.BackupActive = stateProvider.BackupRunning()
-			}
-
-			_, err := client.PingWithState(ctx, req)
-			if err != nil {
-				log.Warn("heartbeat ping failed",
-					slog.String("client_id", clientID),
-					slog.String("error", err.Error()),
-				)
-				continue
-			}
-
-			if !registered {
-				_, regErr := client.RegisterClient(ctx, clientID, address)
-				if regErr != nil {
-					log.Warn("client registration failed",
-						slog.String("client_id", clientID),
-						slog.String("error", regErr.Error()),
-					)
-				} else {
-					registered = true
-					log.Info("client registered with server",
-						slog.String("client_id", clientID),
-						slog.String("address", address),
-					)
-				}
-			}
+			sendPing()
 		}
 	}
 }
