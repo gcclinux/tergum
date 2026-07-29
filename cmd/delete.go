@@ -138,7 +138,7 @@ func runDelete(cmd *cobra.Command, args []string) error {
 	)
 
 	// Record the deletion as an activity event and sync DB to server.
-	if !dryRun && result.EntriesDeleted > 0 {
+	if !dryRun && (result.EntriesDeleted > 0 || result.JobsRemoved > 0) {
 		// Determine client ID for the activity record.
 		var deleteClientID string
 		if cfg.Node.Role == "client" {
