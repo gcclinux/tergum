@@ -32,7 +32,7 @@ TERGUM_PASSPHRASE=mypassphrase tergum backup
 tergum status
 ```
 
-For full command reference, see [MANUAL.md](MANUAL.md).
+For full command reference, see [MANUAL.md](docs/MANUAL.md).
 
 ## Building
 
@@ -152,7 +152,7 @@ The setup wizard offers a default set of exclude patterns that skip build artifa
 
 ## Documentation
 
-- [MANUAL.md](MANUAL.md) — Full command reference, configuration, and usage guide
+- [MANUAL.md](docs/MANUAL.md) — Full command reference, configuration, and usage guide
 
 ## License
 
