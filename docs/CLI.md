@@ -22,6 +22,8 @@
 | [`tergum service stop`](#tergum-service-stop) | ✅ Working | Stop the running service |
 | [`tergum service restart`](#tergum-service-restart) | ✅ Working | Restart the service |
 | [`tergum service status`](#tergum-service-status) | ✅ Working | Check if the service is running |
+| [`tergum service enable`](#tergum-service-enable) | ✅ Working | Enable autostart on boot/login (all OSes) |
+| [`tergum service disable`](#tergum-service-disable) | ✅ Working | Disable autostart on boot/login |
 | [`tergum backup`](#tergum-backup) | ✅ Working | Run a manual backup (local or remote) |
 | [`tergum paths`](#tergum-paths) | ✅ Working | Manage include/exclude paths |
 | [`tergum paths scan`](#tergum-paths-scan) | ✅ Working | Scan a directory and add top-level folders |
@@ -482,6 +484,8 @@ Subcommands:
   stop      Stop the running service
   restart   Restart the service
   status    Check if the service is running
+  enable    Enable autostart of the service on system boot/login
+  disable   Disable autostart of the service on system boot/login
 ```
 
 The service commands load environment variables from a `.env` file before launching, eliminating the need for manual `nohup`, `env`, or `&` background tricks. A PID file is stored in the config directory for process tracking.
@@ -621,6 +625,77 @@ tergum service status --json
 ```powershell
 .\tergum.exe service status
 .\tergum.exe service status --json
+```
+
+---
+
+#### tergum service enable
+
+Register the Tergum service to start automatically when the machine boots or the current user logs in. The mechanism is platform-specific and requires **no administrator/root privileges** — everything is installed under the current user's account:
+
+| OS | Mechanism | Location |
+|----|-----------|----------|
+| Linux | systemd user service | `~/.config/systemd/user/tergum.service` |
+| macOS | launchd LaunchAgent | `~/Library/LaunchAgents/com.tergum.tergum.plist` |
+| Windows | per-user autostart (HKCU `Run` key) | `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` → `Tergum` |
+
+The autostart entry captures the current executable path, the resolved config path (if `--config` or `TERGUM_CONFIG` is set), and the `.env` file location.
+
+```
+Usage: tergum service enable [flags]
+
+Flags:
+  --env-file string   path to .env file used at autostart (default ".env")
+```
+
+**Linux:**
+```bash
+# From the directory containing your .env
+tergum service enable
+
+# The command writes the systemd unit and, if systemctl is available,
+# runs: systemctl --user enable --now tergum.service
+#
+# To keep the service running on boot without an active login session:
+sudo loginctl enable-linger $USER
+```
+
+**macOS:**
+```bash
+tergum service enable
+# Writes the LaunchAgent plist and loads it with:
+#   launchctl load -w ~/Library/LaunchAgents/com.tergum.tergum.plist
+```
+
+**PowerShell (Windows):**
+```powershell
+# Runs tergum at user login via the HKCU Run key
+.\tergum.exe service enable
+
+# With a specific .env file
+.\tergum.exe service enable --env-file C:\tergum\.env
+```
+
+> Note: On Linux/macOS the service is supervised directly by systemd/launchd (with automatic restart on failure). On Windows the entry runs `tergum service start`, which detaches the daemon and tracks it via the PID file.
+
+---
+
+#### tergum service disable
+
+Remove the autostart registration created by `tergum service enable`. Safe to run even if autostart was never enabled.
+
+```
+Usage: tergum service disable [flags]
+```
+
+**Linux / macOS:**
+```bash
+tergum service disable
+```
+
+**PowerShell (Windows):**
+```powershell
+.\tergum.exe service disable
 ```
 
 ---

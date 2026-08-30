@@ -6,6 +6,9 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"runtime"
+	"strings"
 	"syscall"
 	"time"
 )
@@ -58,4 +61,290 @@ func isProcessRunning(pid int) bool {
 	// On Unix, FindProcess always succeeds. Send signal 0 to check existence.
 	err = process.Signal(syscall.Signal(0))
 	return err == nil
+}
+
+// --- Autostart (Linux systemd user unit / macOS launchd LaunchAgent) ---
+
+// runServiceEnable registers Tergum to start automatically on login/boot.
+func runServiceEnable(envPath string) error {
+	p, err := resolveAutostartParams(envPath)
+	if err != nil {
+		return err
+	}
+
+	if runtime.GOOS == "darwin" {
+		return enableLaunchd(p)
+	}
+	return enableSystemd(p)
+}
+
+// runServiceDisable removes the autostart registration.
+func runServiceDisable() error {
+	if runtime.GOOS == "darwin" {
+		return disableLaunchd()
+	}
+	return disableSystemd()
+}
+
+// --- Linux: systemd user service ---
+
+func systemdUnitPath() (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(home, ".config", "systemd", "user", "tergum.service"), nil
+}
+
+func enableSystemd(p autostartParams) error {
+	unitPath, err := systemdUnitPath()
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(unitPath), 0755); err != nil {
+		return fmt.Errorf("creating systemd user dir: %w", err)
+	}
+
+	// Build ExecStart. We use the "service start" path via the server subcommand
+	// directly so systemd owns the process lifecycle (no double-forking).
+	execArgs := []string{p.Binary, "server"}
+	if p.ConfigTo != "" {
+		execArgs = append(execArgs, "--config", p.ConfigTo)
+	}
+
+	var b strings.Builder
+	b.WriteString("[Unit]\n")
+	b.WriteString("Description=Tergum encrypted backup service\n")
+	b.WriteString("After=network-online.target\n")
+	b.WriteString("Wants=network-online.target\n\n")
+	b.WriteString("[Service]\n")
+	b.WriteString("Type=simple\n")
+	if p.WorkDir != "" {
+		fmt.Fprintf(&b, "WorkingDirectory=%s\n", p.WorkDir)
+	}
+	if p.EnvFile != "" {
+		fmt.Fprintf(&b, "EnvironmentFile=%s\n", p.EnvFile)
+	}
+	fmt.Fprintf(&b, "ExecStart=%s\n", quoteExecArgs(execArgs))
+	b.WriteString("Restart=on-failure\n")
+	b.WriteString("RestartSec=5\n\n")
+	b.WriteString("[Install]\n")
+	b.WriteString("WantedBy=default.target\n")
+
+	if err := os.WriteFile(unitPath, []byte(b.String()), 0644); err != nil {
+		return fmt.Errorf("writing systemd unit: %w", err)
+	}
+
+	// Try to enable via systemctl --user. Non-fatal if unavailable.
+	systemctlAvailable := false
+	if _, lookErr := exec.LookPath("systemctl"); lookErr == nil {
+		systemctlAvailable = true
+		_ = runQuiet("systemctl", "--user", "daemon-reload")
+		if out, enErr := exec.Command("systemctl", "--user", "enable", "--now", "tergum.service").CombinedOutput(); enErr != nil {
+			fmt.Fprintf(os.Stderr, "Warning: 'systemctl --user enable' failed: %v\n%s\n", enErr, strings.TrimSpace(string(out)))
+			systemctlAvailable = false
+		}
+	}
+
+	msg := fmt.Sprintf("Tergum autostart enabled (systemd user unit).\nUnit: %s", unitPath)
+	if !systemctlAvailable {
+		msg += "\nNote: systemctl was not available or failed. To finish enabling manually, run:\n" +
+			"  systemctl --user daemon-reload\n" +
+			"  systemctl --user enable --now tergum.service\n" +
+			"To start on boot without an active login session, run: sudo loginctl enable-linger $USER"
+	} else {
+		msg += "\nThe service will start on login. For boot without login, run: sudo loginctl enable-linger $USER"
+	}
+
+	printOutput(
+		map[string]interface{}{
+			"status":    "enabled",
+			"mechanism": "systemd-user",
+			"unit":      unitPath,
+		},
+		msg,
+	)
+	return nil
+}
+
+func disableSystemd() error {
+	unitPath, err := systemdUnitPath()
+	if err != nil {
+		return err
+	}
+
+	if _, lookErr := exec.LookPath("systemctl"); lookErr == nil {
+		_ = runQuiet("systemctl", "--user", "disable", "--now", "tergum.service")
+	}
+
+	removed := false
+	if err := os.Remove(unitPath); err == nil {
+		removed = true
+	} else if !os.IsNotExist(err) {
+		return fmt.Errorf("removing systemd unit: %w", err)
+	}
+
+	if _, lookErr := exec.LookPath("systemctl"); lookErr == nil {
+		_ = runQuiet("systemctl", "--user", "daemon-reload")
+	}
+
+	msg := "Tergum autostart disabled (systemd user unit removed)."
+	if !removed {
+		msg = "Tergum autostart was not enabled (no systemd user unit found)."
+	}
+	printOutput(
+		map[string]interface{}{
+			"status":    "disabled",
+			"mechanism": "systemd-user",
+			"unit":      unitPath,
+			"removed":   removed,
+		},
+		msg,
+	)
+	return nil
+}
+
+// --- macOS: launchd LaunchAgent ---
+
+const launchdLabel = "com.tergum.tergum"
+
+func launchdPlistPath() (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(home, "Library", "LaunchAgents", launchdLabel+".plist"), nil
+}
+
+func enableLaunchd(p autostartParams) error {
+	plistPath, err := launchdPlistPath()
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(plistPath), 0755); err != nil {
+		return fmt.Errorf("creating LaunchAgents dir: %w", err)
+	}
+
+	logPath := filepath.Join(p.WorkDir, "tergum-autostart.log")
+
+	var b strings.Builder
+	b.WriteString(`<?xml version="1.0" encoding="UTF-8"?>` + "\n")
+	b.WriteString(`<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">` + "\n")
+	b.WriteString(`<plist version="1.0">` + "\n<dict>\n")
+	fmt.Fprintf(&b, "  <key>Label</key>\n  <string>%s</string>\n", launchdLabel)
+	b.WriteString("  <key>ProgramArguments</key>\n  <array>\n")
+	fmt.Fprintf(&b, "    <string>%s</string>\n", plistEscape(p.Binary))
+	b.WriteString("    <string>server</string>\n")
+	if p.ConfigTo != "" {
+		b.WriteString("    <string>--config</string>\n")
+		fmt.Fprintf(&b, "    <string>%s</string>\n", plistEscape(p.ConfigTo))
+	}
+	b.WriteString("  </array>\n")
+	if p.WorkDir != "" {
+		fmt.Fprintf(&b, "  <key>WorkingDirectory</key>\n  <string>%s</string>\n", plistEscape(p.WorkDir))
+	}
+	if p.EnvFile != "" {
+		// launchd cannot read an env file directly; document the location.
+		// We rely on the process loading .env from WorkingDirectory at startup.
+		_ = p.EnvFile
+	}
+	b.WriteString("  <key>RunAtLoad</key>\n  <true/>\n")
+	b.WriteString("  <key>KeepAlive</key>\n  <true/>\n")
+	fmt.Fprintf(&b, "  <key>StandardOutPath</key>\n  <string>%s</string>\n", plistEscape(logPath))
+	fmt.Fprintf(&b, "  <key>StandardErrorPath</key>\n  <string>%s</string>\n", plistEscape(logPath))
+	b.WriteString("</dict>\n</plist>\n")
+
+	if err := os.WriteFile(plistPath, []byte(b.String()), 0644); err != nil {
+		return fmt.Errorf("writing LaunchAgent plist: %w", err)
+	}
+
+	loaded := false
+	if _, lookErr := exec.LookPath("launchctl"); lookErr == nil {
+		// Unload any prior version, then load.
+		_ = runQuiet("launchctl", "unload", plistPath)
+		if out, ldErr := exec.Command("launchctl", "load", "-w", plistPath).CombinedOutput(); ldErr != nil {
+			fmt.Fprintf(os.Stderr, "Warning: 'launchctl load' failed: %v\n%s\n", ldErr, strings.TrimSpace(string(out)))
+		} else {
+			loaded = true
+		}
+	}
+
+	msg := fmt.Sprintf("Tergum autostart enabled (launchd LaunchAgent).\nPlist: %s", plistPath)
+	if !loaded {
+		msg += "\nNote: launchctl was not available or failed. To finish enabling manually, run:\n" +
+			"  launchctl load -w " + plistPath
+	}
+	printOutput(
+		map[string]interface{}{
+			"status":    "enabled",
+			"mechanism": "launchd",
+			"plist":     plistPath,
+		},
+		msg,
+	)
+	return nil
+}
+
+func disableLaunchd() error {
+	plistPath, err := launchdPlistPath()
+	if err != nil {
+		return err
+	}
+
+	if _, lookErr := exec.LookPath("launchctl"); lookErr == nil {
+		_ = runQuiet("launchctl", "unload", "-w", plistPath)
+	}
+
+	removed := false
+	if err := os.Remove(plistPath); err == nil {
+		removed = true
+	} else if !os.IsNotExist(err) {
+		return fmt.Errorf("removing LaunchAgent plist: %w", err)
+	}
+
+	msg := "Tergum autostart disabled (LaunchAgent removed)."
+	if !removed {
+		msg = "Tergum autostart was not enabled (no LaunchAgent found)."
+	}
+	printOutput(
+		map[string]interface{}{
+			"status":    "disabled",
+			"mechanism": "launchd",
+			"plist":     plistPath,
+			"removed":   removed,
+		},
+		msg,
+	)
+	return nil
+}
+
+// --- helpers ---
+
+// runQuiet runs a command discarding output, returning any error.
+func runQuiet(name string, args ...string) error {
+	return exec.Command(name, args...).Run()
+}
+
+// quoteExecArgs joins exec args for a systemd ExecStart line, quoting any
+// argument that contains whitespace.
+func quoteExecArgs(args []string) string {
+	quoted := make([]string, len(args))
+	for i, a := range args {
+		if strings.ContainsAny(a, " \t") {
+			quoted[i] = "\"" + a + "\""
+		} else {
+			quoted[i] = a
+		}
+	}
+	return strings.Join(quoted, " ")
+}
+
+// plistEscape escapes XML special characters for use inside a plist <string>.
+func plistEscape(s string) string {
+	r := strings.NewReplacer(
+		"&", "&amp;",
+		"<", "&lt;",
+		">", "&gt;",
+	)
+	return r.Replace(s)
 }

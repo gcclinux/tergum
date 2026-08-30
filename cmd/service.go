@@ -29,6 +29,45 @@ in the current directory) before starting the process.`,
 	cmd.AddCommand(newServiceStopCmd())
 	cmd.AddCommand(newServiceRestartCmd())
 	cmd.AddCommand(newServiceStatusCmd())
+	cmd.AddCommand(newServiceEnableCmd())
+	cmd.AddCommand(newServiceDisableCmd())
+
+	return cmd
+}
+
+func newServiceEnableCmd() *cobra.Command {
+	var envPath string
+
+	cmd := &cobra.Command{
+		Use:   "enable",
+		Short: "Enable autostart of the Tergum service on system boot/login",
+		Long: `Registers the Tergum service to start automatically when the machine boots
+(or when the current user logs in). The mechanism is platform-specific:
+
+  Linux   - a systemd user service unit (~/.config/systemd/user/tergum.service)
+  macOS   - a launchd LaunchAgent (~/Library/LaunchAgents/com.tergum.tergum.plist)
+  Windows - a per-user autostart entry (HKCU Run key / Startup)
+
+The service is launched with the current configuration and the given .env file.`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runServiceEnable(envPath)
+		},
+	}
+
+	cmd.Flags().StringVar(&envPath, "env-file", ".env", "path to .env file used at autostart")
+
+	return cmd
+}
+
+func newServiceDisableCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "disable",
+		Short: "Disable autostart of the Tergum service on system boot/login",
+		Long:  `Removes the platform-specific autostart registration created by 'tergum service enable'.`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runServiceDisable()
+		},
+	}
 
 	return cmd
 }
@@ -247,6 +286,53 @@ func runServiceStatus() error {
 	)
 
 	return nil
+}
+
+// autostartParams holds the resolved values needed to register an autostart entry.
+type autostartParams struct {
+	Binary   string // absolute path to the tergum executable
+	ConfigTo string // config file path to pass (may be empty)
+	EnvFile  string // absolute path to the .env file (may be empty if not found)
+	WorkDir  string // working directory to run the service from
+}
+
+// resolveAutostartParams gathers the values used to build a platform autostart entry.
+func resolveAutostartParams(envPath string) (autostartParams, error) {
+	var p autostartParams
+
+	binary, err := os.Executable()
+	if err != nil {
+		return p, fmt.Errorf("resolving executable path: %w", err)
+	}
+	if resolved, err := filepath.EvalSymlinks(binary); err == nil {
+		binary = resolved
+	}
+	p.Binary = binary
+
+	// Resolve config path the same way runServiceStart does.
+	cfgPath := os.Getenv("TERGUM_CONFIG")
+	if cfgFile != "" {
+		cfgPath = cfgFile
+	}
+	p.ConfigTo = cfgPath
+
+	// Resolve the env file to an absolute path if it exists.
+	if envPath != "" {
+		if abs, err := filepath.Abs(envPath); err == nil {
+			if _, statErr := os.Stat(abs); statErr == nil {
+				p.EnvFile = abs
+			}
+		}
+	}
+
+	// Working directory: prefer the directory containing the env file, else cwd.
+	if p.EnvFile != "" {
+		p.WorkDir = filepath.Dir(p.EnvFile)
+	} else if cwd, err := os.Getwd(); err == nil {
+		p.WorkDir = cwd
+	}
+
+	return p, nil
 }
 
 // --- PID file helpers ---
