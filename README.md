@@ -96,6 +96,12 @@ Platform-specific build scripts are provided that handle cross-compilation and v
 
 All scripts output binaries to the `dist/` directory and embed version, commit hash, and build timestamp via ldflags.
 
+> **macOS users (compiled binary):** macOS Gatekeeper quarantines downloaded binaries, which prevents `tergum service enable` from launching the service via launchd. From the directory where the binary lives, clear the quarantine flag first:
+>
+> ```bash
+> xattr -d com.apple.quarantine tergum-arm64-macos
+> ```
+
 ## Architecture
 
 ```

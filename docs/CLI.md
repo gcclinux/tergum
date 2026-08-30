@@ -668,10 +668,17 @@ sudo loginctl enable-linger $USER
 
 **macOS:**
 ```bash
+# First run only: if you downloaded a compiled binary, macOS Gatekeeper
+# flags it as quarantined, which prevents the LaunchAgent from starting it.
+# Remove the quarantine attribute from the binary in its directory:
+xattr -d com.apple.quarantine tergum-arm64-macos
+
 tergum service enable
 # Writes the LaunchAgent plist and loads it with:
 #   launchctl load -w ~/Library/LaunchAgents/com.tergum.tergum.plist
 ```
+
+> **macOS note:** If you skip the `xattr -d com.apple.quarantine` step, the quarantine flag will block launchd from starting the service and `service enable` will not work.
 
 **PowerShell (Windows):**
 ```powershell
