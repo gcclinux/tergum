@@ -72,6 +72,9 @@ func runServiceEnable(envPath string) error {
 		return err
 	}
 
+	// Make the 'tergum' command available on PATH (non-fatal on failure).
+	maybeLinkOnEnable()
+
 	if runtime.GOOS == "darwin" {
 		return enableLaunchd(p)
 	}
@@ -316,6 +319,177 @@ func disableLaunchd() error {
 		msg,
 	)
 	return nil
+}
+
+// --- PATH linking (Unix: symlink in ~/.local/bin) ---
+
+// linkTargetDir returns the directory where the 'tergum' symlink is installed.
+func linkTargetDir() (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(home, ".local", "bin"), nil
+}
+
+// linkPath returns the full path to the installed 'tergum' symlink.
+func linkPath() (string, error) {
+	dir, err := linkTargetDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, "tergum"), nil
+}
+
+// resolveBinary returns the absolute, symlink-resolved path to the running executable.
+func resolveBinary() (string, error) {
+	binary, err := os.Executable()
+	if err != nil {
+		return "", fmt.Errorf("resolving executable path: %w", err)
+	}
+	if resolved, err := filepath.EvalSymlinks(binary); err == nil {
+		binary = resolved
+	}
+	return binary, nil
+}
+
+// dirOnPath reports whether dir is present in the PATH environment variable.
+func dirOnPath(dir string) bool {
+	clean := filepath.Clean(dir)
+	for _, p := range filepath.SplitList(os.Getenv("PATH")) {
+		if filepath.Clean(p) == clean {
+			return true
+		}
+	}
+	return false
+}
+
+// installLink creates (or refreshes) the 'tergum' symlink pointing at the current
+// binary. It returns the symlink path, its target directory, and whether that
+// directory is currently on PATH.
+func installLink() (link string, dir string, onPath bool, err error) {
+	binary, err := resolveBinary()
+	if err != nil {
+		return "", "", false, err
+	}
+
+	dir, err = linkTargetDir()
+	if err != nil {
+		return "", "", false, err
+	}
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return "", "", false, fmt.Errorf("creating %s: %w", dir, err)
+	}
+
+	link, err = linkPath()
+	if err != nil {
+		return "", "", false, err
+	}
+
+	// If the link already points at this binary, leave it alone.
+	if existing, lerr := os.Readlink(link); lerr == nil && existing == binary {
+		return link, dir, dirOnPath(dir), nil
+	}
+
+	// Don't clobber a real file that isn't our symlink.
+	if info, serr := os.Lstat(link); serr == nil {
+		if info.Mode()&os.ModeSymlink == 0 {
+			return "", "", false, fmt.Errorf("%s already exists and is not a symlink; remove it first", link)
+		}
+		if rerr := os.Remove(link); rerr != nil {
+			return "", "", false, fmt.Errorf("replacing existing symlink %s: %w", link, rerr)
+		}
+	}
+
+	if err := os.Symlink(binary, link); err != nil {
+		return "", "", false, fmt.Errorf("creating symlink %s -> %s: %w", link, binary, err)
+	}
+
+	return link, dir, dirOnPath(dir), nil
+}
+
+// pathHint returns a shell instruction for adding dir to PATH, or "" if already present.
+func pathHint(dir string, onPath bool) string {
+	if onPath {
+		return ""
+	}
+	return fmt.Sprintf("Note: %s is not on your PATH. Add it by appending this line to your shell profile\n"+
+		"(~/.bashrc, ~/.zshrc, or ~/.profile) and restarting your shell:\n"+
+		"  export PATH=\"%s:$PATH\"", dir, dir)
+}
+
+// runServiceLink installs the 'tergum' symlink so the command is available anywhere.
+func runServiceLink() error {
+	link, dir, onPath, err := installLink()
+	if err != nil {
+		return err
+	}
+
+	msg := fmt.Sprintf("Linked 'tergum' command.\nSymlink: %s", link)
+	if hint := pathHint(dir, onPath); hint != "" {
+		msg += "\n" + hint
+	} else {
+		msg += "\nYou can now run 'tergum' from anywhere."
+	}
+
+	printOutput(
+		map[string]interface{}{
+			"status":  "linked",
+			"symlink": link,
+			"dir":     dir,
+			"on_path": onPath,
+		},
+		msg,
+	)
+	return nil
+}
+
+// runServiceUnlink removes the 'tergum' symlink created by runServiceLink.
+func runServiceUnlink() error {
+	link, err := linkPath()
+	if err != nil {
+		return err
+	}
+
+	removed := false
+	// Only remove it if it's a symlink we manage.
+	if info, serr := os.Lstat(link); serr == nil {
+		if info.Mode()&os.ModeSymlink == 0 {
+			return fmt.Errorf("%s is not a symlink managed by tergum; leaving it untouched", link)
+		}
+		if rerr := os.Remove(link); rerr != nil {
+			return fmt.Errorf("removing symlink %s: %w", link, rerr)
+		}
+		removed = true
+	}
+
+	msg := "Removed 'tergum' command symlink."
+	if !removed {
+		msg = "No 'tergum' symlink found (nothing to remove)."
+	}
+	printOutput(
+		map[string]interface{}{
+			"status":  "unlinked",
+			"symlink": link,
+			"removed": removed,
+		},
+		msg,
+	)
+	return nil
+}
+
+// maybeLinkOnEnable attempts to install the PATH link during 'service enable',
+// printing a short summary. Failures are non-fatal and only warned about.
+func maybeLinkOnEnable() {
+	link, dir, onPath, err := installLink()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: could not link 'tergum' onto PATH: %v\n", err)
+		return
+	}
+	fmt.Printf("Linked 'tergum' command: %s\n", link)
+	if hint := pathHint(dir, onPath); hint != "" {
+		fmt.Println(hint)
+	}
 }
 
 // --- helpers ---

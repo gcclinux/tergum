@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"syscall"
 
@@ -57,6 +58,9 @@ func runServiceEnable(envPath string) error {
 	if err != nil {
 		return err
 	}
+
+	// Make the 'tergum' command available on PATH (non-fatal on failure).
+	maybeLinkOnEnable()
 
 	// Build the command line. The service is launched via the same "service start"
 	// pathway used for manual starts so it detaches and writes a PID file.
@@ -141,4 +145,170 @@ func quoteWin(s string) string {
 		return "\"" + s + "\""
 	}
 	return s
+}
+
+// --- PATH linking (Windows: add binary dir to per-user PATH in HKCU\Environment) ---
+
+const userEnvKey = `Environment`
+
+// binaryDir returns the directory containing the running executable.
+func binaryDir() (string, error) {
+	binary, err := os.Executable()
+	if err != nil {
+		return "", fmt.Errorf("resolving executable path: %w", err)
+	}
+	return filepath.Dir(binary), nil
+}
+
+// readUserPath reads the current per-user PATH value from HKCU\Environment.
+// It returns the value and whether it was stored as an expandable string.
+func readUserPath() (string, bool, error) {
+	key, err := registry.OpenKey(registry.CURRENT_USER, userEnvKey, registry.QUERY_VALUE)
+	if err != nil {
+		return "", false, err
+	}
+	defer key.Close()
+
+	val, valType, err := key.GetStringValue("Path")
+	if err != nil {
+		if err == registry.ErrNotExist {
+			return "", false, nil
+		}
+		return "", false, err
+	}
+	return val, valType == registry.EXPAND_SZ, nil
+}
+
+// pathContainsDir reports whether the semicolon-separated PATH contains dir.
+func pathContainsDir(pathVal, dir string) bool {
+	clean := strings.ToLower(strings.TrimRight(filepath.Clean(dir), `\`))
+	for _, p := range strings.Split(pathVal, ";") {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			continue
+		}
+		if strings.ToLower(strings.TrimRight(filepath.Clean(p), `\`)) == clean {
+			return true
+		}
+	}
+	return false
+}
+
+// writeUserPath writes the per-user PATH value to HKCU\Environment.
+func writeUserPath(value string, expandable bool) error {
+	key, _, err := registry.CreateKey(registry.CURRENT_USER, userEnvKey, registry.SET_VALUE)
+	if err != nil {
+		return err
+	}
+	defer key.Close()
+
+	if expandable {
+		return key.SetExpandStringValue("Path", value)
+	}
+	return key.SetStringValue("Path", value)
+}
+
+// runServiceLink adds the Tergum binary's directory to the per-user PATH.
+func runServiceLink() error {
+	dir, err := binaryDir()
+	if err != nil {
+		return err
+	}
+
+	current, expandable, err := readUserPath()
+	if err != nil {
+		return fmt.Errorf("reading user PATH: %w", err)
+	}
+
+	if pathContainsDir(current, dir) {
+		printOutput(
+			map[string]interface{}{"status": "linked", "dir": dir, "already": true},
+			fmt.Sprintf("'tergum' is already on your PATH (%s).", dir),
+		)
+		return nil
+	}
+
+	newVal := dir
+	if current != "" {
+		newVal = strings.TrimRight(current, ";") + ";" + dir
+	}
+	if err := writeUserPath(newVal, expandable); err != nil {
+		return fmt.Errorf("updating user PATH: %w", err)
+	}
+
+	printOutput(
+		map[string]interface{}{"status": "linked", "dir": dir, "already": false},
+		fmt.Sprintf("Added %s to your user PATH.\nOpen a new terminal (or log out and back in) to run 'tergum' from anywhere.", dir),
+	)
+	return nil
+}
+
+// runServiceUnlink removes the Tergum binary's directory from the per-user PATH.
+func runServiceUnlink() error {
+	dir, err := binaryDir()
+	if err != nil {
+		return err
+	}
+
+	current, expandable, err := readUserPath()
+	if err != nil {
+		return fmt.Errorf("reading user PATH: %w", err)
+	}
+
+	if current == "" || !pathContainsDir(current, dir) {
+		printOutput(
+			map[string]interface{}{"status": "unlinked", "dir": dir, "removed": false},
+			"Tergum's directory was not on your PATH (nothing to remove).",
+		)
+		return nil
+	}
+
+	clean := strings.ToLower(strings.TrimRight(filepath.Clean(dir), `\`))
+	kept := make([]string, 0)
+	for _, p := range strings.Split(current, ";") {
+		trimmed := strings.TrimSpace(p)
+		if trimmed == "" {
+			continue
+		}
+		if strings.ToLower(strings.TrimRight(filepath.Clean(trimmed), `\`)) == clean {
+			continue
+		}
+		kept = append(kept, trimmed)
+	}
+	if err := writeUserPath(strings.Join(kept, ";"), expandable); err != nil {
+		return fmt.Errorf("updating user PATH: %w", err)
+	}
+
+	printOutput(
+		map[string]interface{}{"status": "unlinked", "dir": dir, "removed": true},
+		fmt.Sprintf("Removed %s from your user PATH.\nOpen a new terminal for the change to take effect.", dir),
+	)
+	return nil
+}
+
+// maybeLinkOnEnable attempts to add the binary dir to PATH during 'service enable'.
+// Failures are non-fatal and only warned about.
+func maybeLinkOnEnable() {
+	dir, err := binaryDir()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: could not resolve binary directory for PATH: %v\n", err)
+		return
+	}
+	current, expandable, err := readUserPath()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: could not read user PATH: %v\n", err)
+		return
+	}
+	if pathContainsDir(current, dir) {
+		return
+	}
+	newVal := dir
+	if current != "" {
+		newVal = strings.TrimRight(current, ";") + ";" + dir
+	}
+	if err := writeUserPath(newVal, expandable); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: could not add %s to user PATH: %v\n", dir, err)
+		return
+	}
+	fmt.Printf("Added %s to your user PATH. Open a new terminal to run 'tergum' from anywhere.\n", dir)
 }

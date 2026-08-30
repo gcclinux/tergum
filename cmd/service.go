@@ -31,6 +31,42 @@ in the current directory) before starting the process.`,
 	cmd.AddCommand(newServiceStatusCmd())
 	cmd.AddCommand(newServiceEnableCmd())
 	cmd.AddCommand(newServiceDisableCmd())
+	cmd.AddCommand(newServiceLinkCmd())
+	cmd.AddCommand(newServiceUnlinkCmd())
+
+	return cmd
+}
+
+func newServiceLinkCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "link",
+		Short: "Make the 'tergum' command available on your PATH",
+		Long: `Installs the Tergum binary so the 'tergum' command can be run from anywhere,
+without needing to type the full path to the executable. The mechanism is
+platform-specific and requires no administrator/root privileges:
+
+  Linux/macOS - a symlink named 'tergum' in ~/.local/bin
+  Windows     - the binary's directory is added to the per-user PATH (HKCU)
+
+If the target directory is not already on your PATH, the command prints
+instructions for adding it.`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runServiceLink()
+		},
+	}
+
+	return cmd
+}
+
+func newServiceUnlinkCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "unlink",
+		Short: "Remove the 'tergum' command from your PATH",
+		Long:  `Removes the PATH entry created by 'tergum service link'. Safe to run even if link was never used.`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runServiceUnlink()
+		},
+	}
 
 	return cmd
 }

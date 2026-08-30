@@ -24,6 +24,8 @@
 | [`tergum service status`](#tergum-service-status) | ✅ Working | Check if the service is running |
 | [`tergum service enable`](#tergum-service-enable) | ✅ Working | Enable autostart on boot/login (all OSes) |
 | [`tergum service disable`](#tergum-service-disable) | ✅ Working | Disable autostart on boot/login |
+| [`tergum service link`](#tergum-service-link) | ✅ Working | Make the `tergum` command available on PATH |
+| [`tergum service unlink`](#tergum-service-unlink) | ✅ Working | Remove the `tergum` command from PATH |
 | [`tergum backup`](#tergum-backup) | ✅ Working | Run a manual backup (local or remote) |
 | [`tergum paths`](#tergum-paths) | ✅ Working | Manage include/exclude paths |
 | [`tergum paths scan`](#tergum-paths-scan) | ✅ Working | Scan a directory and add top-level folders |
@@ -486,6 +488,8 @@ Subcommands:
   status    Check if the service is running
   enable    Enable autostart of the service on system boot/login
   disable   Disable autostart of the service on system boot/login
+  link      Make the 'tergum' command available on your PATH
+  unlink    Remove the 'tergum' command from your PATH
 ```
 
 The service commands load environment variables from a `.env` file before launching, eliminating the need for manual `nohup`, `env`, or `&` background tricks. A PID file is stored in the config directory for process tracking.
@@ -615,6 +619,8 @@ Flags:
   --json   Output as JSON
 ```
 
+> Note: This command only checks the PID file written by `tergum service start`. If you enabled autostart with `tergum service enable` on Linux/macOS, the daemon runs under systemd/launchd and **will not** show up here — it will report "not running" even when the daemon is active. Use `systemctl --user status tergum.service` (Linux) or `launchctl list | grep com.tergum.tergum` (macOS) instead. See [Two supervision mechanisms](#two-supervision-mechanisms-important).
+
 **Linux / macOS:**
 ```bash
 tergum service status
@@ -678,6 +684,45 @@ tergum service enable
 
 > Note: On Linux/macOS the service is supervised directly by systemd/launchd (with automatic restart on failure). On Windows the entry runs `tergum service start`, which detaches the daemon and tracks it via the PID file.
 
+> Tip: `service enable` also makes the `tergum` command available on your PATH automatically (same as running [`tergum service link`](#tergum-service-link)), so you can call `tergum` from anywhere afterwards. If the target location isn't already on your PATH, the command prints instructions for adding it. This step is best-effort — if it fails, autostart is still enabled and a warning is printed.
+
+##### Two supervision mechanisms (important)
+
+Tergum has **two independent ways** of running the daemon, and they do not share state:
+
+1. **`service enable`** installs a supervisor (systemd on Linux, launchd on macOS) that runs `tergum server` directly. The supervisor owns the process and restarts it on failure or boot.
+2. **`service start` / `stop` / `status` / `restart`** use a separate PID file (`~/.config/tergum/tergum.pid`) to track a process they spawn themselves.
+
+Because these mechanisms are disconnected, mixing them causes confusion:
+
+- After `service enable`, the daemon runs under systemd/launchd. It **will not appear** in `tergum service status`, which only checks the PID file — so `status` reports "not running" even though the daemon is active.
+- Running `tergum service start` while the enabled service is already active makes the new process fail to bind its port (e.g. `bind: address already in use` on port 7400). It exits immediately, leaving a stale "started" message followed by `status` reporting "not running".
+
+**On Linux/macOS, once you have run `service enable`, manage the daemon through the supervisor — not through `service start/stop/status`:**
+
+Linux (systemd user service):
+```bash
+systemctl --user status tergum.service     # check if running
+systemctl --user restart tergum.service     # restart
+systemctl --user stop tergum.service         # stop
+systemctl --user start tergum.service        # start
+journalctl --user -u tergum.service -f       # follow logs
+
+# Verify it starts on boot without an active login session:
+sudo loginctl enable-linger $USER
+```
+
+macOS (launchd LaunchAgent):
+```bash
+launchctl list | grep com.tergum.tergum                                  # check if loaded
+launchctl unload ~/Library/LaunchAgents/com.tergum.tergum.plist          # stop
+launchctl load -w ~/Library/LaunchAgents/com.tergum.tergum.plist         # start
+```
+
+To go back to using `service start/stop/status`, first run `tergum service disable` so the supervisor releases the port.
+
+On **Windows**, both mechanisms use the same PID-file path (`service enable` runs `service start` at login), so `service status` works as expected there.
+
 ---
 
 #### tergum service disable
@@ -696,6 +741,62 @@ tergum service disable
 **PowerShell (Windows):**
 ```powershell
 .\tergum.exe service disable
+```
+
+---
+
+#### tergum service link
+
+Make the `tergum` command runnable from anywhere, without typing the full path to the binary. Requires **no administrator/root privileges** — everything is installed under the current user's account. This runs automatically as part of [`tergum service enable`](#tergum-service-enable), but you can also run it on its own.
+
+| OS | Mechanism | Location |
+|----|-----------|----------|
+| Linux / macOS | symlink named `tergum` | `~/.local/bin/tergum` → the binary |
+| Windows | binary's directory added to the per-user PATH (HKCU) | `HKCU\Environment` → `Path` |
+
+```
+Usage: tergum service link
+```
+
+If the target location is not already on your PATH, the command prints instructions for adding it.
+
+**Linux / macOS:**
+```bash
+# Run from the binary you want linked
+./dist/tergum-amd64-linux service link
+# Symlink: ~/.local/bin/tergum
+
+# If ~/.local/bin is not on your PATH, add it to your shell profile:
+export PATH="$HOME/.local/bin:$PATH"
+```
+
+**PowerShell (Windows):**
+```powershell
+.\tergum.exe service link
+# Adds the binary's folder to your user PATH.
+# Open a new terminal (or log out/in) for the change to take effect.
+```
+
+> Note: On Linux/macOS the symlink points at the exact binary you ran `link` from. If you move or replace that binary, re-run `service link`. On Windows the whole folder containing the binary is added to PATH, so keep the executable in that folder.
+
+---
+
+#### tergum service unlink
+
+Remove the PATH entry created by `tergum service link`. Safe to run even if `link` was never used. It only removes entries Tergum manages (the `~/.local/bin/tergum` symlink on Unix, or the binary's directory from the user PATH on Windows) and leaves anything else untouched.
+
+```
+Usage: tergum service unlink
+```
+
+**Linux / macOS:**
+```bash
+tergum service unlink
+```
+
+**PowerShell (Windows):**
+```powershell
+.\tergum.exe service unlink
 ```
 
 ---

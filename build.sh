@@ -58,14 +58,14 @@ build_linux() {
 
 build_darwin() {
     echo "Building for macOS (arm64)..."
-    CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -ldflags="$LDFLAGS" -o "$OUTPUT_DIR/tergum-macos" ./
-    echo "  -> $OUTPUT_DIR/tergum-macos"
+    CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -ldflags="$LDFLAGS" -o "$OUTPUT_DIR/tergum-arm64-macos" ./
+    echo "  -> $OUTPUT_DIR/tergum-arm64-macos"
 }
 
 build_windows() {
     echo "Building for Windows (amd64)..."
-    CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -ldflags="$LDFLAGS" -o "$OUTPUT_DIR/tergum.exe" ./
-    echo "  -> $OUTPUT_DIR/tergum.exe"
+    CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -ldflags="$LDFLAGS" -o "$OUTPUT_DIR/tergum-amd64.exe" ./
+    echo "  -> $OUTPUT_DIR/tergum-amd64.exe"
 }
 
 build_all() {

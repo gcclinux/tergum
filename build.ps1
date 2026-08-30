@@ -43,12 +43,15 @@ if (-not (Test-Path $OutputDir)) {
 }
 
 function Build-Linux {
-    Write-Host "Building for Linux (amd64)..."
+    Write-Host "Building for Linux (amd64 & aarch64)..."
     $env:CGO_ENABLED = "0"
     $env:GOOS = "linux"
     $env:GOARCH = "amd64"
-    go build -ldflags="$LdFlags" -o "$OutputDir\tergum-linux" ./
-    Write-Host "  -> $OutputDir\tergum-linux"
+    go build -ldflags="$LdFlags" -o "$OutputDir\tergum-amd64-linux" ./
+    Write-Host "  -> $OutputDir\tergum-amd64-linux"
+    $env:GOARCH = "arm64"
+    go build -ldflags="$LdFlags" -o "$OutputDir\tergum-aarch64-linux" ./
+    Write-Host "  -> $OutputDir\tergum-aarch64-linux"
 }
 
 function Build-Darwin {
@@ -56,8 +59,8 @@ function Build-Darwin {
     $env:CGO_ENABLED = "0"
     $env:GOOS = "darwin"
     $env:GOARCH = "arm64"
-    go build -ldflags="$LdFlags" -o "$OutputDir\tergum-macos" ./
-    Write-Host "  -> $OutputDir\tergum-macos"
+    go build -ldflags="$LdFlags" -o "$OutputDir\tergum-arm64-macos" ./
+    Write-Host "  -> $OutputDir\tergum-arm64-macos"
 }
 
 function Build-Windows {
@@ -65,8 +68,8 @@ function Build-Windows {
     $env:CGO_ENABLED = "0"
     $env:GOOS = "windows"
     $env:GOARCH = "amd64"
-    go build -ldflags="$LdFlags" -o "$OutputDir\tergum.exe" ./
-    Write-Host "  -> $OutputDir\tergum.exe"
+    go build -ldflags="$LdFlags" -o "$OutputDir\tergum-amd64.exe" ./
+    Write-Host "  -> $OutputDir\tergum-amd64.exe"
 }
 
 switch ($Target.ToLower()) {
