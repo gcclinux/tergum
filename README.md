@@ -4,6 +4,8 @@ Encrypted, deduplicated backup system with gRPC streaming, mutual TLS, policy-ba
 
 A single statically-linked binary acts as client, server, or both.
 
+> **Note:** While Tergum ships a hybrid web interface for both server and client, its primary focus is a command-line experience built around ease of use and simplicity. The web UI complements the CLI rather than replacing it.
+
 ## Key Features
 
 - **Encryption**: AES-256-GCM with per-file DEK, Argon2id master key derivation
@@ -33,6 +35,20 @@ tergum status
 ```
 
 For full command reference, see [MANUAL.md](docs/MANUAL.md).
+
+## Screenshots
+
+### Deduplication Ratio (Metrics)
+
+![Metrics dashboard showing deduplication ratio](images/metrics.png)
+
+### Dashboard — Manage & Remove Backups
+
+![Dashboard showing backup removal](images/dashboard.png)
+
+### Clients — Online & Offline Status
+
+![Clients view showing online and offline clients](images/001-clients.png)
 
 ## Building
 
