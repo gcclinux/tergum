@@ -6,6 +6,8 @@ A single statically-linked binary acts as client, server, or both.
 
 > **Note:** While Tergum ships a hybrid web interface for both server and client, its primary focus is a command-line experience built around ease of use and simplicity. The web UI complements the CLI rather than replacing it.
 
+> 📖 **Start here:** [**CLI Reference (docs/CLI.md)**](docs/CLI.md) — the complete command guide and the best way to get the most out of Tergum. Since Tergum is CLI-first, this is essential reading.
+
 ## Key Features
 
 - **Encryption**: AES-256-GCM with per-file DEK, Argon2id master key derivation
