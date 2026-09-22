@@ -33,7 +33,7 @@ func TestExecuteReturnsZeroForVersion(t *testing.T) {
 
 func TestRootCommandHasAllSubcommands(t *testing.T) {
 	expected := []string{
-		"setup", "server", "backup", "restore", "delete",
+		"setup", "recover", "server", "backup", "restore", "delete",
 		"list", "stop", "watch", "retention", "status",
 		"migrate", "version",
 	}

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -102,3 +103,74 @@ func isEMFILEError(err error) bool {
 	msg := err.Error()
 	return strings.Contains(msg, "too many open files")
 }
+
+// DownloadDatabaseFromServer streams the client's backup database file from the server
+// and saves it locally at destDBPath. It writes to a temporary file first and atomically
+// moves it into place on completion.
+func DownloadDatabaseFromServer(ctx context.Context, client proto.DataServiceClient, clientID string, destDBPath string) error {
+	if clientID == "" {
+		return fmt.Errorf("clientID is required for database download")
+	}
+
+	stream, err := client.DownloadDatabase(ctx, &proto.DownloadDatabaseRequest{
+		ClientId: clientID,
+	})
+	if err != nil {
+		return fmt.Errorf("initiating DownloadDatabase stream: %w", err)
+	}
+
+	// Ensure destination directory exists.
+	destDir := filepath.Dir(destDBPath)
+	if err := os.MkdirAll(destDir, 0700); err != nil {
+		return fmt.Errorf("creating database directory: %w", err)
+	}
+
+	tmp, err := os.CreateTemp(destDir, ".restore-db-tmp-*")
+	if err != nil {
+		return fmt.Errorf("creating temp file for database download: %w", err)
+	}
+	tmpName := tmp.Name()
+
+	success := false
+	defer func() {
+		if !success {
+			tmp.Close()
+			os.Remove(tmpName)
+		}
+	}()
+
+	var bytesReceived int64
+	for {
+		chunk, err := stream.Recv()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return fmt.Errorf("receiving database chunk: %w", err)
+		}
+
+		if len(chunk.Data) > 0 {
+			n, err := tmp.Write(chunk.Data)
+			if err != nil {
+				return fmt.Errorf("writing database chunk: %w", err)
+			}
+			bytesReceived += int64(n)
+		}
+	}
+
+	if bytesReceived == 0 {
+		return fmt.Errorf("empty database received from server for client %q", clientID)
+	}
+
+	if err := tmp.Close(); err != nil {
+		return fmt.Errorf("closing temp database file: %w", err)
+	}
+
+	if err := os.Rename(tmpName, destDBPath); err != nil {
+		return fmt.Errorf("installing downloaded database: %w", err)
+	}
+
+	success = true
+	return nil
+}
+

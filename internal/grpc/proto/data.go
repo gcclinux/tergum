@@ -172,3 +172,8 @@ type SyncResponse struct {
 	Success bool   `json:"success"`
 	Message string `json:"message"`
 }
+
+// DownloadDatabaseRequest is sent to request the client's backup database file from the server.
+type DownloadDatabaseRequest struct {
+	ClientId string `json:"client_id"`
+}

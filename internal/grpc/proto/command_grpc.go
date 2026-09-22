@@ -18,6 +18,8 @@ type CommandServiceClient interface {
 	StartWatcher(ctx context.Context, in *WatcherRequest, opts ...grpc.CallOption) (*WatcherResponse, error)
 	StopWatcher(ctx context.Context, in *WatcherRequest, opts ...grpc.CallOption) (*WatcherResponse, error)
 	RegisterClient(ctx context.Context, in *RegisterRequest, opts ...grpc.CallOption) (*RegisterResponse, error)
+	ListRecoverableClients(ctx context.Context, in *ListRecoverableClientsRequest, opts ...grpc.CallOption) (*ListRecoverableClientsResponse, error)
+	RebindClient(ctx context.Context, in *RebindClientRequest, opts ...grpc.CallOption) (*RebindClientResponse, error)
 	PushRestore(ctx context.Context, opts ...grpc.CallOption) (CommandService_PushRestoreClient, error)
 	CommandTunnel(ctx context.Context, opts ...grpc.CallOption) (CommandService_CommandTunnelClient, error)
 }
@@ -32,17 +34,19 @@ func NewCommandServiceClient(cc grpc.ClientConnInterface) CommandServiceClient {
 }
 
 const (
-	CommandService_TriggerBackup_FullMethodName    = "/tergum.v3.CommandService/TriggerBackup"
-	CommandService_StopBackup_FullMethodName       = "/tergum.v3.CommandService/StopBackup"
-	CommandService_GetStatus_FullMethodName        = "/tergum.v3.CommandService/GetStatus"
-	CommandService_Ping_FullMethodName             = "/tergum.v3.CommandService/Ping"
-	CommandService_ListBackups_FullMethodName      = "/tergum.v3.CommandService/ListBackups"
-	CommandService_DeleteFromBackup_FullMethodName = "/tergum.v3.CommandService/DeleteFromBackup"
-	CommandService_GetRetention_FullMethodName     = "/tergum.v3.CommandService/GetRetention"
-	CommandService_StartWatcher_FullMethodName     = "/tergum.v3.CommandService/StartWatcher"
-	CommandService_StopWatcher_FullMethodName      = "/tergum.v3.CommandService/StopWatcher"
-	CommandService_RegisterClient_FullMethodName   = "/tergum.v3.CommandService/RegisterClient"
-	CommandService_PushRestore_FullMethodName      = "/tergum.v3.CommandService/PushRestore"
+	CommandService_TriggerBackup_FullMethodName          = "/tergum.v3.CommandService/TriggerBackup"
+	CommandService_StopBackup_FullMethodName             = "/tergum.v3.CommandService/StopBackup"
+	CommandService_GetStatus_FullMethodName              = "/tergum.v3.CommandService/GetStatus"
+	CommandService_Ping_FullMethodName                   = "/tergum.v3.CommandService/Ping"
+	CommandService_ListBackups_FullMethodName            = "/tergum.v3.CommandService/ListBackups"
+	CommandService_DeleteFromBackup_FullMethodName       = "/tergum.v3.CommandService/DeleteFromBackup"
+	CommandService_GetRetention_FullMethodName           = "/tergum.v3.CommandService/GetRetention"
+	CommandService_StartWatcher_FullMethodName           = "/tergum.v3.CommandService/StartWatcher"
+	CommandService_StopWatcher_FullMethodName            = "/tergum.v3.CommandService/StopWatcher"
+	CommandService_RegisterClient_FullMethodName         = "/tergum.v3.CommandService/RegisterClient"
+	CommandService_ListRecoverableClients_FullMethodName = "/tergum.v3.CommandService/ListRecoverableClients"
+	CommandService_RebindClient_FullMethodName           = "/tergum.v3.CommandService/RebindClient"
+	CommandService_PushRestore_FullMethodName            = "/tergum.v3.CommandService/PushRestore"
 	CommandService_CommandTunnel_FullMethodName    = "/tergum.v3.CommandService/CommandTunnel"
 )
 
@@ -136,6 +140,24 @@ func (c *commandServiceClient) RegisterClient(ctx context.Context, in *RegisterR
 	return out, nil
 }
 
+func (c *commandServiceClient) ListRecoverableClients(ctx context.Context, in *ListRecoverableClientsRequest, opts ...grpc.CallOption) (*ListRecoverableClientsResponse, error) {
+	out := new(ListRecoverableClientsResponse)
+	err := c.cc.Invoke(ctx, CommandService_ListRecoverableClients_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *commandServiceClient) RebindClient(ctx context.Context, in *RebindClientRequest, opts ...grpc.CallOption) (*RebindClientResponse, error) {
+	out := new(RebindClientResponse)
+	err := c.cc.Invoke(ctx, CommandService_RebindClient_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // CommandService_PushRestoreClient is the client streaming interface for PushRestore.
 type CommandService_PushRestoreClient interface {
 	Send(*FileChunk) error
@@ -213,6 +235,8 @@ type CommandServiceServer interface {
 	StartWatcher(context.Context, *WatcherRequest) (*WatcherResponse, error)
 	StopWatcher(context.Context, *WatcherRequest) (*WatcherResponse, error)
 	RegisterClient(context.Context, *RegisterRequest) (*RegisterResponse, error)
+	ListRecoverableClients(context.Context, *ListRecoverableClientsRequest) (*ListRecoverableClientsResponse, error)
+	RebindClient(context.Context, *RebindClientRequest) (*RebindClientResponse, error)
 	PushRestore(CommandService_PushRestoreServer) error
 	CommandTunnel(CommandService_CommandTunnelServer) error
 	mustEmbedUnimplementedCommandServiceServer()
@@ -250,6 +274,12 @@ func (UnimplementedCommandServiceServer) StopWatcher(context.Context, *WatcherRe
 }
 func (UnimplementedCommandServiceServer) RegisterClient(context.Context, *RegisterRequest) (*RegisterResponse, error) {
 	return nil, grpc.Errorf(12, "method RegisterClient not implemented") //nolint:staticcheck
+}
+func (UnimplementedCommandServiceServer) ListRecoverableClients(context.Context, *ListRecoverableClientsRequest) (*ListRecoverableClientsResponse, error) {
+	return nil, grpc.Errorf(12, "method ListRecoverableClients not implemented") //nolint:staticcheck
+}
+func (UnimplementedCommandServiceServer) RebindClient(context.Context, *RebindClientRequest) (*RebindClientResponse, error) {
+	return nil, grpc.Errorf(12, "method RebindClient not implemented") //nolint:staticcheck
 }
 func (UnimplementedCommandServiceServer) PushRestore(CommandService_PushRestoreServer) error {
 	return grpc.Errorf(12, "method PushRestore not implemented") //nolint:staticcheck
@@ -359,6 +389,14 @@ var CommandService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "RegisterClient",
 			Handler:    _CommandService_RegisterClient_Handler,
+		},
+		{
+			MethodName: "ListRecoverableClients",
+			Handler:    _CommandService_ListRecoverableClients_Handler,
+		},
+		{
+			MethodName: "RebindClient",
+			Handler:    _CommandService_RebindClient_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{
@@ -553,6 +591,42 @@ func _CommandService_RegisterClient_Handler(srv interface{}, ctx context.Context
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(CommandServiceServer).RegisterClient(ctx, req.(*RegisterRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _CommandService_ListRecoverableClients_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListRecoverableClientsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(CommandServiceServer).ListRecoverableClients(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: CommandService_ListRecoverableClients_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(CommandServiceServer).ListRecoverableClients(ctx, req.(*ListRecoverableClientsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _CommandService_RebindClient_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RebindClientRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(CommandServiceServer).RebindClient(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: CommandService_RebindClient_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(CommandServiceServer).RebindClient(ctx, req.(*RebindClientRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }

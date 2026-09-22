@@ -5,6 +5,7 @@
 | Command | Status | Description |
 |---------|--------|-------------|
 | [`tergum setup`](#tergum-setup) | ✅ Working | Interactive configuration wizard |
+| [`tergum recover`](#tergum-recover) | ✅ Working | Recover client DB, paths, and settings on a rebuilt machine |
 | [`tergum server`](#tergum-server) | ✅ Working | Start the Tergum daemon (role-aware: server, client, or hybrid) |
 | [`tergum client`](#tergum-client) | ✅ Working | Manage and view remote clients (server-side) |
 | [`tergum client list`](#tergum-client-list) | ✅ Working | List all registered clients and their status |
@@ -80,21 +81,27 @@ Available on every command:
 
 ### tergum setup
 
-Interactive configuration wizard for first-time setup or reconfiguration.
+Interactive configuration wizard for first-time setup, client recovery, or reconfiguration.
 
 ```
 Usage: tergum setup [flags]
 
 Flags:
   --generate-certs   Generate TLS certificates without interactive prompts
+  --recover          Recover an existing rebuilt client instead of starting fresh
 ```
 
-The wizard walks you through: node role, server address, storage path, TLS certificates, encryption passphrase, include paths, exclude patterns, file watcher, and backup schedule.
+The wizard walks you through: node role (`client`, `server`, `hybrid`, or `recover`), server address, storage path, TLS certificates, encryption passphrase, include paths, exclude patterns, file watcher, and backup schedule.
+
+Choosing `recover` during role selection or passing `--recover` directly invokes the client recovery wizard.
 
 **Linux / macOS:**
 ```bash
 # Full interactive setup
 tergum setup
+
+# Recover a rebuilt client directly
+tergum setup --recover
 
 # Regenerate TLS certificates only
 tergum setup --generate-certs
@@ -105,8 +112,82 @@ tergum setup --generate-certs
 # Full interactive setup
 .\tergum.exe setup
 
+# Recover a rebuilt client directly
+.\tergum.exe setup --recover
+
 # Regenerate TLS certificates only
 .\tergum.exe setup --generate-certs
+```
+
+---
+
+### tergum recover
+
+Recover client backup database (`tergum.db`), include/exclude paths, encryption configuration (`salt` and `key_verify`), and node configuration for a rebuilt machine.
+
+When a client laptop or workstation is rebuilt (such as after a clean OS install, disk replacement, or Linux distribution switch like Ubuntu to Fedora), `tergum recover` restores the client's complete backup catalog, file paths, encryption keys, and schedule directly from the server, rebinding the client identity so it can seamlessly resume backups and file restores without losing history or re-uploading duplicates.
+
+```
+Usage: tergum recover [flags]
+
+Flags:
+      --client-id string   Client ID to recover
+      --force              Force rebind even if the client is currently marked active on the server
+      --server string      Server address (hostname or IP)
+```
+
+#### What Gets Recovered
+
+1. **Client SQLite Database (`tergum.db`)**:
+   - The authoritative backup catalog and deduplication index stored in `clients/{clientID}.db` on the server is streamed to the client and atomically installed.
+   - Restores all past backup entries, backup jobs, and file versions.
+2. **Include & Exclude Paths**:
+   - Reconstructs all configured backup directories (`include_paths`) and exclusion patterns (`exclude_patterns`) from the restored database into `tergum.toml`.
+3. **Encryption Verification (`salt` and `key_verify`)**:
+   - Extracts the original PBKDF2 encryption salt from the restored database.
+   - Prompts for the client encryption passphrase and verifies it against the PBKDF2/AES-GCM verification token (`key_verify`) stored in the database.
+   - Recreates the local `salt` and `key_verify` files in the config directory.
+4. **Automatic TLS Certificate Bootstrap**:
+   - If TLS certificates (`ca.crt`, `client.crt`, `client.key`) are missing on the rebuilt client, the wizard automatically connects to the server's bootstrap service (port 7402), displays the server's CA fingerprint for verification, and installs client certificates.
+5. **Server Registry Rebind**:
+   - Updates the client record in the server registry with the new machine identity (machine ID, hostname, OS family, address) and unregisters any stale command tunnels.
+
+#### Safety & Integrity Guards
+
+- **OS Family Compatibility Guard**:
+  Prevents restoring an incompatible client database across differing operating system families (e.g., attempting to restore a Windows client database onto a Linux rebuild, or vice versa). Windows drive paths (`C:\...`) and Windows ACLs cannot be mapped to POSIX roots (`/...`) and permissions.
+  - **Permitted**: Linux-to-Linux (including distro switches like Ubuntu → Fedora, or kernel upgrades), Windows-to-Windows (including version upgrades), macOS-to-macOS.
+  - **Blocked**: Windows ↔ Linux, Windows ↔ macOS, Linux ↔ macOS.
+- **Single Active Machine Protection**:
+  Prevents multiple physical machines from concurrently operating with the same client identity and database. If the client is currently marked `online` on the server, `tergum recover` prompts for explicit confirmation or requires `--force` to disconnect the existing session and rebind to the new machine.
+
+#### Examples
+
+**Interactive Wizard:**
+```bash
+# Start recovery; prompts for server address, client selection, and passphrase
+tergum recover
+```
+
+**Non-Interactive / Scripted:**
+```bash
+# Recover specific client from known server
+tergum recover --server 192.168.1.50 --client-id laptop-ricardo
+
+# Force rebind if client was marked active
+tergum recover --server 192.168.1.50 --client-id laptop-ricardo --force
+
+# Output JSON summary
+tergum recover --server 192.168.1.50 --client-id laptop-ricardo --json
+```
+
+**PowerShell (Windows):**
+```powershell
+# Interactive recovery
+.\tergum.exe recover
+
+# Specify server and client ID
+.\tergum.exe recover --server 192.168.1.50 --client-id win-laptop-01
 ```
 
 ---
@@ -195,18 +276,18 @@ tergum client list --json
 
 **Example output:**
 ```
-CLIENT          ADDRESS           STATUS    LAST SEEN
-------          -------           ------    ---------
-fedora-laptop   192.168.1.100     online    2 minutes ago
-ubuntu-server   192.168.1.214     offline   3 hours ago
-win-desktop     192.168.1.50      online    just now
+CLIENT          ADDRESS           OS       STATUS    LAST SEEN        LAST BACKUP
+------          -------           --       ------    ---------        -----------
+fedora-laptop   192.168.1.100     linux    online    2 minutes ago    11 hours ago
+ubuntu-server   192.168.1.214     linux    offline   3 hours ago      yesterday
+win-desktop     192.168.1.50      windows  online    just now         1 hour ago
 ```
 
 ---
 
 #### tergum client status
 
-Show detailed status for a specific client, including last backup time, watcher state, schedule configuration, and any missed backups.
+Show detailed status for a specific client, including system identity (OS family, hostname, machine ID), last backup time, watcher state, schedule configuration, and any missed backups.
 
 ```
 Usage: tergum client status <client-name> [flags]
@@ -231,11 +312,13 @@ tergum client status fedora-laptop --json
 ```
 Client:         fedora-laptop
 Address:        192.168.1.100
+OS Family:      linux
+Hostname:       fedora-laptop
+Machine ID:     a1b2c3d4e5f60718293a4b5c6d7e8f90
 Status:         online
 Last Seen:      2026-06-29 14:32:10 (2 minutes ago)
 Last Backup:    2026-06-29 03:00:05 (11 hours ago)
 Watcher Active: true
-Registered:     2026-06-15 09:20:00
 Schedule:
   Full Backup:  0 3 * * 0
   Auto Backup:  0 */6 * * *

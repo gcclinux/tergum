@@ -30,6 +30,7 @@ import (
 	"github.com/gcclinux/tergum/internal/db"
 	grpcpkg "github.com/gcclinux/tergum/internal/grpc"
 	"github.com/gcclinux/tergum/internal/grpc/proto"
+	"github.com/gcclinux/tergum/internal/identity"
 	"github.com/gcclinux/tergum/internal/model"
 	"github.com/gcclinux/tergum/internal/observe"
 	"github.com/gcclinux/tergum/internal/registry"
@@ -176,6 +177,8 @@ func (s *Server) Start(ctx context.Context) error {
 	backupEng := &noopBackupEngine{}
 
 	// Build gRPC command server.
+	// Build gRPC servers.
+	clientsDir := clientsDirFromDB(s.cfg.Database.Path)
 	tunnelHub := grpcpkg.NewTunnelHub(observe.Logger("tunnel-hub"))
 	cmdServer := grpcpkg.NewCommandServer(grpcpkg.CommandServerConfig{
 		BackupEngine:    backupEng,
@@ -186,9 +189,10 @@ func (s *Server) Start(ctx context.Context) error {
 		TunnelHub:       tunnelHub,
 		MaxBackups:      s.cfg.Backup.MaxConcurrentUploads,
 		Version:         version.Version,
+		ClientsDir:      clientsDir,
 		OnClientConnect: func(clientID string) {
 			// Refresh last backup time from the server's copy of the client DB.
-			dbPath := filepath.Join(clientsDirFromDB(s.cfg.Database.Path), clientID+".db")
+			dbPath := filepath.Join(clientsDir, clientID+".db")
 			lastBackup := queryClientLastBackup(dbPath)
 			if !lastBackup.IsZero() {
 				_ = reg.SetLastBackup(clientID, lastBackup)
@@ -197,7 +201,6 @@ func (s *Server) Start(ctx context.Context) error {
 	})
 
 	// Build gRPC data server.
-	clientsDir := clientsDirFromDB(s.cfg.Database.Path)
 	dataServer := grpcpkg.NewDataServer(grpcpkg.DataServerConfig{
 		Store:       cas,
 		Repo:        repo,
@@ -686,8 +689,9 @@ func (s *Server) startClient(ctx context.Context) error {
 		clientAddress = "tunnel://" + clientID
 	}
 
-	// 5. Send RegisterClient RPC.
-	_, regErr := serverClient.RegisterClient(ctx, clientID, clientAddress)
+	// 5. Send RegisterClient RPC with system identity.
+	sysID := identity.GetSystemIdentity()
+	_, regErr := serverClient.RegisterClientWithIdentity(ctx, clientID, clientAddress, sysID.OSFamily, sysID.MachineID, sysID.Hostname)
 	if regErr != nil {
 		// Log but don't fail — the heartbeat loop will retry registration.
 		s.logger.Warn("initial client registration failed (will retry via heartbeat)",
@@ -697,6 +701,8 @@ func (s *Server) startClient(ctx context.Context) error {
 		s.logger.Info("registered with server",
 			"client_id", clientID,
 			"address", clientAddress,
+			"os_family", sysID.OSFamily,
+			"machine_id", sysID.MachineID,
 		)
 	}
 

@@ -11,6 +11,7 @@ type DataServiceClient interface {
 	Upload(ctx context.Context, opts ...grpc.CallOption) (DataService_UploadClient, error)
 	Download(ctx context.Context, in *RestoreRequest, opts ...grpc.CallOption) (DataService_DownloadClient, error)
 	SyncDatabase(ctx context.Context, opts ...grpc.CallOption) (DataService_SyncDatabaseClient, error)
+	DownloadDatabase(ctx context.Context, in *DownloadDatabaseRequest, opts ...grpc.CallOption) (DataService_DownloadDatabaseClient, error)
 	ExchangeManifest(ctx context.Context, in *Manifest, opts ...grpc.CallOption) (*ManifestDiff, error)
 }
 
@@ -27,6 +28,7 @@ const (
 	DataService_Upload_FullMethodName           = "/tergum.v3.DataService/Upload"
 	DataService_Download_FullMethodName         = "/tergum.v3.DataService/Download"
 	DataService_SyncDatabase_FullMethodName     = "/tergum.v3.DataService/SyncDatabase"
+	DataService_DownloadDatabase_FullMethodName = "/tergum.v3.DataService/DownloadDatabase"
 	DataService_ExchangeManifest_FullMethodName = "/tergum.v3.DataService/ExchangeManifest"
 )
 
@@ -133,6 +135,39 @@ func (c *dataServiceClient) SyncDatabase(ctx context.Context, opts ...grpc.CallO
 	return x, nil
 }
 
+// DataService_DownloadDatabaseClient is the server streaming interface for DownloadDatabase.
+type DataService_DownloadDatabaseClient interface {
+	Recv() (*DatabaseChunk, error)
+	grpc.ClientStream
+}
+
+type dataServiceDownloadDatabaseClient struct {
+	grpc.ClientStream
+}
+
+func (x *dataServiceDownloadDatabaseClient) Recv() (*DatabaseChunk, error) {
+	m := new(DatabaseChunk)
+	if err := x.ClientStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
+func (c *dataServiceClient) DownloadDatabase(ctx context.Context, in *DownloadDatabaseRequest, opts ...grpc.CallOption) (DataService_DownloadDatabaseClient, error) {
+	stream, err := c.cc.NewStream(ctx, &DataService_ServiceDesc.Streams[3], DataService_DownloadDatabase_FullMethodName, opts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &dataServiceDownloadDatabaseClient{stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
 func (c *dataServiceClient) ExchangeManifest(ctx context.Context, in *Manifest, opts ...grpc.CallOption) (*ManifestDiff, error) {
 	out := new(ManifestDiff)
 	err := c.cc.Invoke(ctx, DataService_ExchangeManifest_FullMethodName, in, out, opts...)
@@ -147,6 +182,7 @@ type DataServiceServer interface {
 	Upload(DataService_UploadServer) error
 	Download(*RestoreRequest, DataService_DownloadServer) error
 	SyncDatabase(DataService_SyncDatabaseServer) error
+	DownloadDatabase(*DownloadDatabaseRequest, DataService_DownloadDatabaseServer) error
 	ExchangeManifest(context.Context, *Manifest) (*ManifestDiff, error)
 	mustEmbedUnimplementedDataServiceServer()
 }
@@ -162,6 +198,9 @@ func (UnimplementedDataServiceServer) Download(*RestoreRequest, DataService_Down
 }
 func (UnimplementedDataServiceServer) SyncDatabase(DataService_SyncDatabaseServer) error {
 	return grpc.Errorf(12, "method SyncDatabase not implemented") //nolint:staticcheck
+}
+func (UnimplementedDataServiceServer) DownloadDatabase(*DownloadDatabaseRequest, DataService_DownloadDatabaseServer) error {
+	return grpc.Errorf(12, "method DownloadDatabase not implemented") //nolint:staticcheck
 }
 func (UnimplementedDataServiceServer) ExchangeManifest(context.Context, *Manifest) (*ManifestDiff, error) {
 	return nil, grpc.Errorf(12, "method ExchangeManifest not implemented") //nolint:staticcheck
@@ -233,6 +272,20 @@ func (x *dataServiceSyncDatabaseServer) Recv() (*DatabaseChunk, error) {
 	return m, nil
 }
 
+// DataService_DownloadDatabaseServer is the server streaming interface for DownloadDatabase.
+type DataService_DownloadDatabaseServer interface {
+	Send(*DatabaseChunk) error
+	grpc.ServerStream
+}
+
+type dataServiceDownloadDatabaseServer struct {
+	grpc.ServerStream
+}
+
+func (x *dataServiceDownloadDatabaseServer) Send(m *DatabaseChunk) error {
+	return x.ServerStream.SendMsg(m)
+}
+
 // RegisterDataServiceServer registers the DataService server implementation.
 func RegisterDataServiceServer(s grpc.ServiceRegistrar, srv DataServiceServer) {
 	s.RegisterService(&DataService_ServiceDesc, srv)
@@ -264,6 +317,11 @@ var DataService_ServiceDesc = grpc.ServiceDesc{
 			Handler:       _DataService_SyncDatabase_Handler,
 			ClientStreams: true,
 		},
+		{
+			StreamName:    "DownloadDatabase",
+			Handler:       _DataService_DownloadDatabase_Handler,
+			ServerStreams: true,
+		},
 	},
 	Metadata: "proto/v3/data.proto",
 }
@@ -284,6 +342,14 @@ func _DataService_SyncDatabase_Handler(srv interface{}, stream grpc.ServerStream
 	return srv.(DataServiceServer).SyncDatabase(&dataServiceSyncDatabaseServer{stream})
 }
 
+func _DataService_DownloadDatabase_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(DownloadDatabaseRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(DataServiceServer).DownloadDatabase(m, &dataServiceDownloadDatabaseServer{stream})
+}
+
 func _DataService_ExchangeManifest_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(Manifest)
 	if err := dec(in); err != nil {
@@ -301,3 +367,4 @@ func _DataService_ExchangeManifest_Handler(srv interface{}, ctx context.Context,
 	}
 	return interceptor(ctx, in, info, handler)
 }
+

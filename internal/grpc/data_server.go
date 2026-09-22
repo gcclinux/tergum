@@ -463,5 +463,64 @@ func (s *DataServer) ExchangeManifest(ctx context.Context, manifest *proto.Manif
 	}, nil
 }
 
+// DownloadDatabase streams the client's backup database file from the clients/ directory back to the client.
+func (s *DataServer) DownloadDatabase(req *proto.DownloadDatabaseRequest, stream proto.DataService_DownloadDatabaseServer) error {
+	if s.clientsDir == "" {
+		return MapError(&model.ConfigError{Message: "clients directory not configured"})
+	}
+
+	clientID := req.ClientId
+	if clientID == "" {
+		// Try extracting from context
+		if cn, err := clientIDFromContext(stream.Context()); err == nil && cn != "" {
+			clientID = cn
+		}
+	}
+
+	if clientID == "" {
+		return MapError(&model.ConfigError{Message: "client_id is required"})
+	}
+
+	// Reject download if client is disabled
+	if s.registry != nil {
+		if ci := s.registry.GetClient(clientID); ci != nil && ci.Disabled {
+			return MapError(&model.ConfigError{Message: fmt.Sprintf("client %q is disabled", clientID)})
+		}
+	}
+
+	dbPath := filepath.Join(s.clientsDir, clientID+".db")
+	f, err := os.Open(dbPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return MapError(&model.StorageError{Message: fmt.Sprintf("database for client %q not found on server", clientID)})
+		}
+		return MapError(&model.StorageError{Message: fmt.Sprintf("opening client database: %v", err)})
+	}
+	defer f.Close()
+
+	buf := make([]byte, defaultChunkSize)
+	for {
+		n, err := f.Read(buf)
+		if n > 0 {
+			chunk := &proto.DatabaseChunk{
+				Data:     append([]byte(nil), buf[:n]...),
+				ClientId: clientID,
+			}
+			if sendErr := stream.Send(chunk); sendErr != nil {
+				return MapError(sendErr)
+			}
+		}
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return MapError(&model.StorageError{Message: fmt.Sprintf("reading client database: %v", err)})
+		}
+	}
+
+	return nil
+}
+
 // Ensure DataServer satisfies the interface at compile time.
 var _ proto.DataServiceServer = (*DataServer)(nil)
+

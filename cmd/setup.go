@@ -41,6 +41,7 @@ in the default certs directory.`,
 	}
 
 	cmd.Flags().Bool("generate-certs", false, "generate TLS certificates without interactive prompts")
+	cmd.Flags().Bool("recover", false, "recover database and configuration for a rebuilt client")
 
 	return cmd
 }
@@ -115,6 +116,7 @@ func (w *setupWizard) promptYesNo(question string, defaultYes bool) bool {
 
 func runSetup(cmd *cobra.Command, args []string) error {
 	generateCerts, _ := cmd.Flags().GetBool("generate-certs")
+	recoverFlag, _ := cmd.Flags().GetBool("recover")
 
 	// Non-interactive mode: just generate certificates
 	if generateCerts {
@@ -123,6 +125,9 @@ func runSetup(cmd *cobra.Command, args []string) error {
 
 	// Interactive wizard
 	wiz := newSetupWizard(os.Stdin, os.Stdout)
+	if recoverFlag {
+		return runRecoverInteractive(wiz, "", "", false)
+	}
 	return runInteractiveSetup(wiz)
 }
 
@@ -163,7 +168,10 @@ func runInteractiveSetup(wiz *setupWizard) error {
 	fmt.Fprintln(wiz.writer)
 
 	// 1. Role selection
-	role := wiz.promptChoice("Node role", []string{"client", "server", "hybrid"}, "client")
+	role := wiz.promptChoice("Node role", []string{"client", "server", "hybrid", "recover"}, "client")
+	if role == "recover" {
+		return runRecoverInteractive(wiz, "", "", false)
+	}
 
 	// 2. Client IP/Hostname (if role is client)
 	var clientHostname string
@@ -292,6 +300,7 @@ func runInteractiveSetup(wiz *setupWizard) error {
 
 	var salt []byte
 	var masterKey []byte
+	var finalVerifyData string
 	var err error
 	enc := crypto.NewEncryptor()
 
@@ -316,6 +325,7 @@ func runInteractiveSetup(wiz *setupWizard) error {
 			if err != nil {
 				return fmt.Errorf("cannot read existing verification file: %w", err)
 			}
+			finalVerifyData = string(verifyData)
 
 			// Prompt for existing passphrase to verify
 			for {
@@ -385,6 +395,7 @@ func runInteractiveSetup(wiz *setupWizard) error {
 			hex.EncodeToString(wrappedDEK),
 			hex.EncodeToString(nonce),
 		)
+		finalVerifyData = verifyData
 		if err := os.WriteFile(verifyPath, []byte(verifyData), 0600); err != nil {
 			return fmt.Errorf("cannot write verification file: %w", err)
 		}
@@ -540,6 +551,9 @@ func runInteractiveSetup(wiz *setupWizard) error {
 		}
 		if len(salt) > 0 {
 			_ = repo.SetConfig(ctx, "encryption_salt", hex.EncodeToString(salt))
+		}
+		if finalVerifyData != "" {
+			_ = repo.SetConfig(ctx, "key_verify", finalVerifyData)
 		}
 	}
 

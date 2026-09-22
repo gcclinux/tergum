@@ -129,6 +129,9 @@ func runClientList() error {
 		type clientEntry struct {
 			ClientID     string `json:"client_id"`
 			Address      string `json:"address"`
+			OSFamily     string `json:"os_family,omitempty"`
+			Hostname     string `json:"hostname,omitempty"`
+			MachineID    string `json:"machine_id,omitempty"`
 			Status       string `json:"status"`
 			LastSeen     string `json:"last_seen,omitempty"`
 			LastBackup   string `json:"last_backup,omitempty"`
@@ -138,9 +141,12 @@ func runClientList() error {
 		entries := make([]clientEntry, 0, len(clients))
 		for _, c := range clients {
 			entry := clientEntry{
-				ClientID: c.ClientID,
-				Address:  c.Address,
-				Status:   c.Status,
+				ClientID:  c.ClientID,
+				Address:   c.Address,
+				OSFamily:  c.OSFamily,
+				Hostname:  c.Hostname,
+				MachineID: c.MachineID,
+				Status:    c.Status,
 			}
 			if !c.LastSeen.IsZero() {
 				entry.LastSeen = c.LastSeen.Local().Format(time.DateTime)
@@ -165,8 +171,8 @@ func runClientList() error {
 	}
 
 	w := tabwriter.NewWriter(os.Stdout, 0, 4, 2, ' ', 0)
-	fmt.Fprintf(w, "CLIENT\tADDRESS\tSTATUS\tLAST SEEN\tLAST BACKUP\n")
-	fmt.Fprintf(w, "------\t-------\t------\t---------\t-----------\n")
+	fmt.Fprintf(w, "CLIENT\tADDRESS\tOS\tSTATUS\tLAST SEEN\tLAST BACKUP\n")
+	fmt.Fprintf(w, "------\t-------\t--\t------\t---------\t-----------\n")
 	for _, c := range clients {
 		lastSeen := "never"
 		if !c.LastSeen.IsZero() {
@@ -177,7 +183,11 @@ func runClientList() error {
 		if !lastBackup.IsZero() {
 			lastBackupStr = formatTimeAgo(lastBackup)
 		}
-		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n", c.ClientID, c.Address, c.Status, lastSeen, lastBackupStr)
+		osFamily := c.OSFamily
+		if osFamily == "" {
+			osFamily = "-"
+		}
+		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n", c.ClientID, c.Address, osFamily, c.Status, lastSeen, lastBackupStr)
 	}
 	w.Flush()
 
@@ -207,6 +217,9 @@ func runClientStatus(clientID string) error {
 			LastSeen      string `json:"last_seen,omitempty"`
 			LastBackup    string `json:"last_backup,omitempty"`
 			WatcherActive bool   `json:"watcher_active"`
+			OSFamily      string `json:"os_family,omitempty"`
+			Hostname      string `json:"hostname,omitempty"`
+			MachineID     string `json:"machine_id,omitempty"`
 			RegisteredAt  string `json:"registered_at,omitempty"`
 			MissedBackups int    `json:"missed_backups"`
 			Schedule      *struct {
@@ -218,6 +231,9 @@ func runClientStatus(clientID string) error {
 		status := clientStatus{
 			ClientID:      ci.ClientID,
 			Address:       ci.Address,
+			OSFamily:      ci.OSFamily,
+			Hostname:      ci.Hostname,
+			MachineID:     ci.MachineID,
 			Status:        ci.Status,
 			Disabled:      ci.Disabled,
 			WatcherActive: ci.WatcherActive,
@@ -249,6 +265,15 @@ func runClientStatus(clientID string) error {
 	// Human-friendly output.
 	fmt.Printf("Client:         %s\n", ci.ClientID)
 	fmt.Printf("Address:        %s\n", ci.Address)
+	if ci.OSFamily != "" {
+		fmt.Printf("OS Family:      %s\n", ci.OSFamily)
+	}
+	if ci.Hostname != "" {
+		fmt.Printf("Hostname:       %s\n", ci.Hostname)
+	}
+	if ci.MachineID != "" {
+		fmt.Printf("Machine ID:     %s\n", ci.MachineID)
+	}
 	fmt.Printf("Status:         %s\n", ci.Status)
 	if ci.Disabled {
 		fmt.Printf("Disabled:       true\n")

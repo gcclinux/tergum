@@ -310,7 +310,8 @@ func (m *mockSyncDatabaseServer) Context() context.Context {
 
 // mockDataServiceClient implements proto.DataServiceClient for testing SyncDatabaseToServer.
 type mockDataServiceClient struct {
-	syncStream *mockSyncDatabaseClientStream
+	syncStream     *mockSyncDatabaseClientStream
+	downloadStream *mockDownloadDatabaseClientStream
 }
 
 func (m *mockDataServiceClient) Upload(ctx context.Context, opts ...grpc.CallOption) (proto.DataService_UploadClient, error) {
@@ -326,6 +327,13 @@ func (m *mockDataServiceClient) SyncDatabase(ctx context.Context, opts ...grpc.C
 		m.syncStream = &mockSyncDatabaseClientStream{}
 	}
 	return m.syncStream, nil
+}
+
+func (m *mockDataServiceClient) DownloadDatabase(ctx context.Context, in *proto.DownloadDatabaseRequest, opts ...grpc.CallOption) (proto.DataService_DownloadDatabaseClient, error) {
+	if m.downloadStream == nil {
+		m.downloadStream = &mockDownloadDatabaseClientStream{}
+	}
+	return m.downloadStream, nil
 }
 
 func (m *mockDataServiceClient) ExchangeManifest(ctx context.Context, in *proto.Manifest, opts ...grpc.CallOption) (*proto.ManifestDiff, error) {
@@ -346,3 +354,133 @@ func (m *mockSyncDatabaseClientStream) Send(chunk *proto.DatabaseChunk) error {
 func (m *mockSyncDatabaseClientStream) CloseAndRecv() (*proto.SyncResponse, error) {
 	return &proto.SyncResponse{Success: true, Message: "ok"}, nil
 }
+
+// mockDownloadDatabaseClientStream simulates the server-streaming client for DownloadDatabase.
+type mockDownloadDatabaseClientStream struct {
+	grpc.ClientStream
+	chunks []*proto.DatabaseChunk
+	idx    int
+}
+
+func (m *mockDownloadDatabaseClientStream) Recv() (*proto.DatabaseChunk, error) {
+	if m.idx >= len(m.chunks) {
+		return nil, io.EOF
+	}
+	c := m.chunks[m.idx]
+	m.idx++
+	return c, nil
+}
+
+// mockDownloadDatabaseServer simulates the server-side stream for DownloadDatabase.
+type mockDownloadDatabaseServer struct {
+	grpc.ServerStream
+	chunks []*proto.DatabaseChunk
+}
+
+func (m *mockDownloadDatabaseServer) Send(chunk *proto.DatabaseChunk) error {
+	m.chunks = append(m.chunks, chunk)
+	return nil
+}
+
+func (m *mockDownloadDatabaseServer) Context() context.Context {
+	return context.Background()
+}
+
+func TestDataServer_DownloadDatabase_Success(t *testing.T) {
+	clientsDir := t.TempDir()
+	dbPath := filepath.Join(clientsDir, "workstation1.db")
+	dbContent := []byte("SQLite format 3 database content here")
+	if err := os.WriteFile(dbPath, dbContent, 0600); err != nil {
+		t.Fatalf("writing client db: %v", err)
+	}
+
+	srv := NewDataServer(DataServerConfig{
+		Store:      &mockStore{existing: map[string]bool{}},
+		Repo:       &mockRepo{},
+		ClientsDir: clientsDir,
+	})
+
+	stream := &mockDownloadDatabaseServer{}
+	err := srv.DownloadDatabase(&proto.DownloadDatabaseRequest{ClientId: "workstation1"}, stream)
+	if err != nil {
+		t.Fatalf("DownloadDatabase failed: %v", err)
+	}
+
+	if len(stream.chunks) == 0 {
+		t.Fatal("expected chunks to be sent")
+	}
+
+	var assembled []byte
+	for _, c := range stream.chunks {
+		if c.ClientId != "workstation1" {
+			t.Errorf("expected client_id workstation1, got %q", c.ClientId)
+		}
+		assembled = append(assembled, c.Data...)
+	}
+
+	if string(assembled) != string(dbContent) {
+		t.Errorf("downloaded content mismatch: got %q, want %q", assembled, dbContent)
+	}
+}
+
+func TestDataServer_DownloadDatabase_NotFound(t *testing.T) {
+	clientsDir := t.TempDir()
+
+	srv := NewDataServer(DataServerConfig{
+		Store:      &mockStore{existing: map[string]bool{}},
+		Repo:       &mockRepo{},
+		ClientsDir: clientsDir,
+	})
+
+	stream := &mockDownloadDatabaseServer{}
+	err := srv.DownloadDatabase(&proto.DownloadDatabaseRequest{ClientId: "nonexistent"}, stream)
+	if err == nil {
+		t.Fatal("expected error for nonexistent client db")
+	}
+}
+
+func TestDataServer_DownloadDatabase_EmptyClientID(t *testing.T) {
+	clientsDir := t.TempDir()
+
+	srv := NewDataServer(DataServerConfig{
+		Store:      &mockStore{existing: map[string]bool{}},
+		Repo:       &mockRepo{},
+		ClientsDir: clientsDir,
+	})
+
+	stream := &mockDownloadDatabaseServer{}
+	err := srv.DownloadDatabase(&proto.DownloadDatabaseRequest{ClientId: ""}, stream)
+	if err == nil {
+		t.Fatal("expected error for empty client_id")
+	}
+}
+
+func TestDownloadDatabaseFromServer(t *testing.T) {
+	destDir := t.TempDir()
+	destPath := filepath.Join(destDir, "tergum.db")
+
+	mockClient := &mockDataServiceClient{
+		downloadStream: &mockDownloadDatabaseClientStream{
+			chunks: []*proto.DatabaseChunk{
+				{Data: []byte("chunk 1 - "), ClientId: "client1"},
+				{Data: []byte("chunk 2"), ClientId: "client1"},
+			},
+		},
+	}
+
+	err := DownloadDatabaseFromServer(context.Background(), mockClient, "client1", destPath)
+	if err != nil {
+		t.Fatalf("DownloadDatabaseFromServer failed: %v", err)
+	}
+
+	content, err := os.ReadFile(destPath)
+	if err != nil {
+		t.Fatalf("reading restored db: %v", err)
+	}
+	expected := "chunk 1 - chunk 2"
+	if string(content) != expected {
+		t.Errorf("got %q, want %q", string(content), expected)
+	}
+}
+
+

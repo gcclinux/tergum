@@ -279,14 +279,46 @@ func (c *TergumClient) StopWatcher(ctx context.Context, clientID string) (*proto
 
 // RegisterClient registers this client with the server.
 func (c *TergumClient) RegisterClient(ctx context.Context, clientID, address string) (*proto.RegisterResponse, error) {
+	return c.RegisterClientWithIdentity(ctx, clientID, address, "", "", "")
+}
+
+// RegisterClientWithIdentity registers this client with system and machine identity.
+func (c *TergumClient) RegisterClientWithIdentity(ctx context.Context, clientID, address, osFamily, machineID, hostname string) (*proto.RegisterResponse, error) {
 	ctx = c.contextWithMetadata(ctx)
 	var resp *proto.RegisterResponse
 	err := c.withRetry(ctx, func() error {
 		var e error
 		resp, e = c.command.RegisterClient(ctx, &proto.RegisterRequest{
-			ClientId: clientID,
-			Address:  address,
+			ClientId:  clientID,
+			Address:   address,
+			OsFamily:  osFamily,
+			MachineId: machineID,
+			Hostname:  hostname,
 		})
+		return e
+	})
+	return resp, err
+}
+
+// ListRecoverableClients lists clients with backups available for recovery.
+func (c *TergumClient) ListRecoverableClients(ctx context.Context) (*proto.ListRecoverableClientsResponse, error) {
+	ctx = c.contextWithMetadata(ctx)
+	var resp *proto.ListRecoverableClientsResponse
+	err := c.withRetry(ctx, func() error {
+		var e error
+		resp, e = c.command.ListRecoverableClients(ctx, &proto.ListRecoverableClientsRequest{})
+		return e
+	})
+	return resp, err
+}
+
+// RebindClient requests transferring/re-binding client ownership to a rebuilt machine.
+func (c *TergumClient) RebindClient(ctx context.Context, req *proto.RebindClientRequest) (*proto.RebindClientResponse, error) {
+	ctx = c.contextWithMetadata(ctx)
+	var resp *proto.RebindClientResponse
+	err := c.withRetry(ctx, func() error {
+		var e error
+		resp, e = c.command.RebindClient(ctx, req)
 		return e
 	})
 	return resp, err
@@ -323,6 +355,15 @@ func (c *TergumClient) Download(ctx context.Context, hash, clientID string) (pro
 	return c.data.Download(ctx, &proto.RestoreRequest{
 		Blake3Hash: hash,
 		ClientId:   clientID,
+	})
+}
+
+// DownloadDatabase returns a streaming client for downloading a client database.
+// Streaming RPCs are not retried — the caller manages the stream lifecycle.
+func (c *TergumClient) DownloadDatabase(ctx context.Context, clientID string) (proto.DataService_DownloadDatabaseClient, error) {
+	ctx = c.contextWithMetadata(ctx)
+	return c.data.DownloadDatabase(ctx, &proto.DownloadDatabaseRequest{
+		ClientId: clientID,
 	})
 }
 

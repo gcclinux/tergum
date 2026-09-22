@@ -328,3 +328,84 @@ func TestHeartbeat_ReconnectsOfflineClient(t *testing.T) {
 		t.Errorf("got status %q, want %q after heartbeat", ci.Status, "online")
 	}
 }
+
+func TestRegister_WithIdentity(t *testing.T) {
+	reg := newTestRegistry(t)
+
+	ci, err := reg.RegisterWithIdentity("laptop1", "192.168.1.50:7400", "linux", "mach-uuid-1", "my-laptop")
+	if err != nil {
+		t.Fatalf("RegisterWithIdentity failed: %v", err)
+	}
+
+	if ci.OSFamily != "linux" {
+		t.Errorf("got OSFamily %q, want %q", ci.OSFamily, "linux")
+	}
+	if ci.MachineID != "mach-uuid-1" {
+		t.Errorf("got MachineID %q, want %q", ci.MachineID, "mach-uuid-1")
+	}
+	if ci.Hostname != "my-laptop" {
+		t.Errorf("got Hostname %q, want %q", ci.Hostname, "my-laptop")
+	}
+
+	// Reconnecting from same machine should succeed
+	ci2, err := reg.RegisterWithIdentity("laptop1", "192.168.1.55:7400", "linux", "mach-uuid-1", "my-laptop")
+	if err != nil {
+		t.Fatalf("RegisterWithIdentity same machine failed: %v", err)
+	}
+	if ci2.Address != "192.168.1.55:7400" {
+		t.Errorf("got address %q, want %q", ci2.Address, "192.168.1.55:7400")
+	}
+}
+
+func TestRegister_MachineConflict(t *testing.T) {
+	reg := newTestRegistry(t)
+
+	_, err := reg.RegisterWithIdentity("laptop1", "192.168.1.50:7400", "linux", "mach-uuid-1", "my-laptop")
+	if err != nil {
+		t.Fatalf("initial register failed: %v", err)
+	}
+
+	// A different physical machine trying to register while online should be rejected
+	_, err = reg.RegisterWithIdentity("laptop1", "192.168.1.99:7400", "linux", "mach-uuid-2", "other-laptop")
+	if err == nil {
+		t.Fatal("expected conflict error when registering different machine while online, got nil")
+	}
+}
+
+func TestRebindClient(t *testing.T) {
+	reg := newTestRegistry(t)
+
+	_, err := reg.RegisterWithIdentity("laptop1", "192.168.1.50:7400", "linux", "mach-uuid-1", "old-ubuntu")
+	if err != nil {
+		t.Fatalf("initial register failed: %v", err)
+	}
+
+	// Rebind with force=false while online should fail
+	_, err = reg.RebindClient("laptop1", "192.168.1.60:7400", "linux", "mach-uuid-rebuilt", "new-fedora", false)
+	if err == nil {
+		t.Fatal("expected error without force while online, got nil")
+	}
+
+	// Incompatible OS (e.g. windows to linux) should fail even with force
+	_, err = reg.RebindClient("laptop1", "192.168.1.60:7400", "windows", "mach-uuid-rebuilt", "new-windows", true)
+	if err == nil {
+		t.Fatal("expected error on incompatible OS family rebind, got nil")
+	}
+
+	// Compatible OS family (linux -> linux, e.g. Ubuntu -> Fedora) with force should succeed
+	rebound, err := reg.RebindClient("laptop1", "192.168.1.60:7400", "linux", "mach-uuid-rebuilt", "new-fedora", true)
+	if err != nil {
+		t.Fatalf("RebindClient failed: %v", err)
+	}
+
+	if rebound.Hostname != "new-fedora" {
+		t.Errorf("got Hostname %q, want %q", rebound.Hostname, "new-fedora")
+	}
+	if rebound.MachineID != "mach-uuid-rebuilt" {
+		t.Errorf("got MachineID %q, want %q", rebound.MachineID, "mach-uuid-rebuilt")
+	}
+	if rebound.Address != "192.168.1.60:7400" {
+		t.Errorf("got Address %q, want %q", rebound.Address, "192.168.1.60:7400")
+	}
+}
+

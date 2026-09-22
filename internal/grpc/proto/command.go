@@ -153,8 +153,11 @@ type WatcherResponse struct {
 
 // RegisterRequest is sent by a client to register itself with the server.
 type RegisterRequest struct {
-	ClientId string `json:"client_id"`
-	Address  string `json:"address"`
+	ClientId  string `json:"client_id"`
+	Address   string `json:"address"`
+	OsFamily  string `json:"os_family,omitempty"`
+	MachineId string `json:"machine_id,omitempty"`
+	Hostname  string `json:"hostname,omitempty"`
 }
 
 // RegisterResponse is returned after a client registration attempt.
@@ -162,6 +165,46 @@ type RegisterResponse struct {
 	Success       bool   `json:"success"`
 	ServerVersion string `json:"server_version"`
 }
+
+// RecoverableClientInfo describes a registered client whose backup can be recovered.
+type RecoverableClientInfo struct {
+	ClientId     string `json:"client_id"`
+	Hostname     string `json:"hostname"`
+	OsFamily     string `json:"os_family"`
+	MachineId    string `json:"machine_id"`
+	Status       string `json:"status"`
+	LastBackup   string `json:"last_backup"`
+	LastSeen     string `json:"last_seen"`
+	FileCount    int64  `json:"file_count"`
+	BytesTotal   int64  `json:"bytes_total"`
+	RegisteredAt string `json:"registered_at"`
+	HasDatabase  bool   `json:"has_database"`
+}
+
+// ListRecoverableClientsRequest queries clients available for recovery.
+type ListRecoverableClientsRequest struct{}
+
+// ListRecoverableClientsResponse returns clients available for recovery.
+type ListRecoverableClientsResponse struct {
+	Clients []RecoverableClientInfo `json:"clients"`
+}
+
+// RebindClientRequest transfers/re-binds client ownership to a rebuilt machine.
+type RebindClientRequest struct {
+	ClientId  string `json:"client_id"`
+	Address   string `json:"address"`
+	OsFamily  string `json:"os_family"`
+	MachineId string `json:"machine_id"`
+	Hostname  string `json:"hostname"`
+	Force     bool   `json:"force"`
+}
+
+// RebindClientResponse is the response to a client rebind attempt.
+type RebindClientResponse struct {
+	Success bool   `json:"success"`
+	Message string `json:"message"`
+}
+
 
 // PushRestoreRequest is sent as the first message in a PushRestore stream
 // to configure the restore destination on the target client.

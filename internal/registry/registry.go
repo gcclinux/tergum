@@ -8,7 +8,10 @@ import (
 	"database/sql"
 	"fmt"
 	"log/slog"
+	"os"
+	"path/filepath"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -44,6 +47,9 @@ type ClientInfo struct {
 	Schedule      *ScheduleConfig
 	MissedBackups []MissedBackup
 	RegisteredAt  time.Time
+	OSFamily      string // "linux", "windows", "darwin"
+	MachineID     string // stable machine hardware/system identifier
+	Hostname      string // client hostname
 }
 
 // Registry tracks connected clients with thread-safe in-memory state
@@ -132,8 +138,11 @@ func (r *Registry) createTables() error {
 		}
 	}
 
-	// Migration: add 'disabled' column if it doesn't exist yet.
+	// Migration: add 'disabled', 'os_family', 'machine_id', 'hostname' columns if they don't exist yet.
 	_, _ = r.db.Exec(`ALTER TABLE client_registry ADD COLUMN disabled INTEGER DEFAULT 0`)
+	_, _ = r.db.Exec(`ALTER TABLE client_registry ADD COLUMN os_family TEXT DEFAULT ''`)
+	_, _ = r.db.Exec(`ALTER TABLE client_registry ADD COLUMN machine_id TEXT DEFAULT ''`)
+	_, _ = r.db.Exec(`ALTER TABLE client_registry ADD COLUMN hostname TEXT DEFAULT ''`)
 
 	return nil
 }
@@ -143,7 +152,10 @@ func (r *Registry) loadClients() error {
 	rows, err := r.db.Query(
 		`SELECT client_id, address, status, last_seen, last_backup,
 		        watcher_active, full_backup_cron, auto_backup_cron, registered_at,
-		        COALESCE(disabled, 0)
+		        COALESCE(disabled, 0),
+		        COALESCE(os_family, ''),
+		        COALESCE(machine_id, ''),
+		        COALESCE(hostname, '')
 		 FROM client_registry`)
 	if err != nil {
 		return err
@@ -156,12 +168,14 @@ func (r *Registry) loadClients() error {
 		var lastSeen, lastBackup, registeredAt *string
 		var watcherActive, disabled int
 		var fullCron, autoCron string
+		var osFamily, machineID, hostname string
 
 		if err := rows.Scan(
 			&ci.ClientID, &ci.Address, &ci.Status,
 			&lastSeen, &lastBackup,
 			&watcherActive, &fullCron, &autoCron, &registeredAt,
 			&disabled,
+			&osFamily, &machineID, &hostname,
 		); err != nil {
 			rows.Close()
 			return err
@@ -169,6 +183,9 @@ func (r *Registry) loadClients() error {
 
 		ci.WatcherActive = watcherActive == 1
 		ci.Disabled = disabled == 1
+		ci.OSFamily = osFamily
+		ci.MachineID = machineID
+		ci.Hostname = hostname
 		// Parse timestamps, handling both legacy local-time and current UTC storage.
 		if lastSeen != nil {
 			ci.LastSeen = parseDBTime(*lastSeen)
@@ -343,15 +360,40 @@ func (r *Registry) refreshDisabledFlags() {
 // Register adds or updates a client in the registry. If the client already
 // exists, its address and status are updated. Returns the client info.
 func (r *Registry) Register(clientID, address string) (*ClientInfo, error) {
+	return r.RegisterWithIdentity(clientID, address, "", "", "")
+}
+
+// RegisterWithIdentity adds or updates a client in the registry with machine identity tracking.
+// If another system is already online with this clientID, registration is rejected to prevent
+// multiple systems linking to the same client database.
+func (r *Registry) RegisterWithIdentity(clientID, address, osFamily, machineID, hostname string) (*ClientInfo, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
 	now := time.Now()
 	ci, exists := r.clients[clientID]
 	if exists {
+		// Single active system guard:
+		// If the client is currently online and active, check if a different physical machine
+		// is attempting to register as this client without rebind.
+		if (ci.Status == "online" || ci.Status == "backing_up") && !ci.LastSeen.IsZero() && time.Since(ci.LastSeen) <= r.offlineThreshold {
+			if ci.MachineID != "" && machineID != "" && ci.MachineID != machineID {
+				return nil, fmt.Errorf("client %q is already active on another machine (machine ID %s); multiple systems cannot link to the same client database", clientID, ci.MachineID)
+			}
+		}
+
 		ci.Address = address
 		ci.Status = "online"
 		ci.LastSeen = now
+		if osFamily != "" {
+			ci.OSFamily = osFamily
+		}
+		if machineID != "" {
+			ci.MachineID = machineID
+		}
+		if hostname != "" {
+			ci.Hostname = hostname
+		}
 	} else {
 		ci = &ClientInfo{
 			ClientID:     clientID,
@@ -359,6 +401,9 @@ func (r *Registry) Register(clientID, address string) (*ClientInfo, error) {
 			Status:       "online",
 			LastSeen:     now,
 			RegisteredAt: now,
+			OSFamily:     osFamily,
+			MachineID:    machineID,
+			Hostname:     hostname,
 		}
 		r.clients[clientID] = ci
 	}
@@ -370,7 +415,57 @@ func (r *Registry) Register(clientID, address string) (*ClientInfo, error) {
 	r.logger.Info("registry: client registered",
 		"client_id", clientID,
 		"address", address,
-		"status", ci.Status)
+		"status", ci.Status,
+		"os_family", ci.OSFamily,
+		"machine_id", ci.MachineID)
+
+	return ci, nil
+}
+
+// RebindClient forcefully or gracefully transfers client ownership to a rebuilt machine.
+// It verifies OS family compatibility (e.g. windows vs linux) and rebinds machine identity.
+func (r *Registry) RebindClient(clientID, address, osFamily, machineID, hostname string, force bool) (*ClientInfo, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	ci, exists := r.clients[clientID]
+	if !exists {
+		return nil, fmt.Errorf("registry: client %q not found for rebind", clientID)
+	}
+
+	// Check if client is currently online
+	if !force && (ci.Status == "online" || ci.Status == "backing_up") && !ci.LastSeen.IsZero() && time.Since(ci.LastSeen) <= r.offlineThreshold {
+		return nil, fmt.Errorf("client %q is currently online (last seen %s ago); use force to transfer ownership to rebuilt machine", clientID, time.Since(ci.LastSeen).Truncate(time.Second))
+	}
+
+	// OS family check if both are known
+	if ci.OSFamily != "" && osFamily != "" && strings.ToLower(ci.OSFamily) != strings.ToLower(osFamily) {
+		return nil, fmt.Errorf("incompatible OS family: cannot rebind client %q (backed up on %s) to %s machine", clientID, ci.OSFamily, osFamily)
+	}
+
+	now := time.Now()
+	ci.Address = address
+	ci.Status = "online"
+	ci.LastSeen = now
+	if osFamily != "" {
+		ci.OSFamily = osFamily
+	}
+	if machineID != "" {
+		ci.MachineID = machineID
+	}
+	if hostname != "" {
+		ci.Hostname = hostname
+	}
+
+	if err := r.persistClientLocked(ci); err != nil {
+		return nil, fmt.Errorf("registry: persist rebind for client %s: %w", clientID, err)
+	}
+
+	r.logger.Info("registry: client rebound to rebuilt machine",
+		"client_id", clientID,
+		"address", address,
+		"os_family", ci.OSFamily,
+		"machine_id", ci.MachineID)
 
 	return ci, nil
 }
@@ -655,8 +750,9 @@ func (r *Registry) persistClientLocked(ci *ClientInfo) error {
 
 	_, err := r.db.Exec(
 		`INSERT INTO client_registry (client_id, address, status, last_seen, last_backup,
-		                              watcher_active, full_backup_cron, auto_backup_cron, registered_at, disabled)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		                              watcher_active, full_backup_cron, auto_backup_cron, registered_at, disabled,
+		                              os_family, machine_id, hostname)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT(client_id) DO UPDATE SET
 		   address = excluded.address,
 		   status = excluded.status,
@@ -665,9 +761,74 @@ func (r *Registry) persistClientLocked(ci *ClientInfo) error {
 		   watcher_active = excluded.watcher_active,
 		   full_backup_cron = excluded.full_backup_cron,
 		   auto_backup_cron = excluded.auto_backup_cron,
-		   disabled = excluded.disabled`,
+		   disabled = excluded.disabled,
+		   os_family = CASE WHEN excluded.os_family != '' THEN excluded.os_family ELSE client_registry.os_family END,
+		   machine_id = CASE WHEN excluded.machine_id != '' THEN excluded.machine_id ELSE client_registry.machine_id END,
+		   hostname = CASE WHEN excluded.hostname != '' THEN excluded.hostname ELSE client_registry.hostname END`,
 		ci.ClientID, ci.Address, ci.Status, lastSeen, lastBackup,
 		watcherActive, fullCron, autoCron, registeredAt, disabled,
+		ci.OSFamily, ci.MachineID, ci.Hostname,
 	)
 	return err
 }
+
+// ListAllClients returns a slice of all registered clients.
+func (r *Registry) ListAllClients() []*ClientInfo {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	out := make([]*ClientInfo, 0, len(r.clients))
+	for _, ci := range r.clients {
+		cp := *ci
+		out = append(out, &cp)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		return out[i].ClientID < out[j].ClientID
+	})
+	return out
+}
+
+// GetClientOS returns the client's OS family, falling back to inspecting the
+// client's synced database if not recorded in the registry table.
+func (r *Registry) GetClientOS(clientID string, clientsDir string) string {
+	r.mu.RLock()
+	ci, exists := r.clients[clientID]
+	r.mu.RUnlock()
+
+	if exists && ci.OSFamily != "" {
+		return ci.OSFamily
+	}
+
+	if clientsDir == "" {
+		return ""
+	}
+
+	// Try reading from the synced client DB backups table
+	dbFile := clientID + ".db"
+	dbPath := filepath.Join(clientsDir, dbFile)
+	if _, err := os.Stat(dbPath); err != nil {
+		return ""
+	}
+
+	clientDB, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		return ""
+	}
+	defer clientDB.Close()
+
+	var detectedOS string
+	err = clientDB.QueryRow(`SELECT os FROM backups WHERE os IS NOT NULL AND os != '' LIMIT 1`).Scan(&detectedOS)
+	if err == nil && detectedOS != "" {
+		// Cache in registry if client exists
+		r.mu.Lock()
+		if ci, exists := r.clients[clientID]; exists && ci.OSFamily == "" {
+			ci.OSFamily = detectedOS
+			_ = r.persistClientLocked(ci)
+		}
+		r.mu.Unlock()
+		return detectedOS
+	}
+
+	return ""
+}
+

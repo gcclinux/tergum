@@ -53,6 +53,7 @@ func init() {
 	rootCmd.PersistentFlags().BoolVar(&verbose, "verbose", false, "enable verbose logging output")
 
 	rootCmd.AddCommand(newSetupCmd())
+	rootCmd.AddCommand(newRecoverCmd())
 	rootCmd.AddCommand(newServerCmd())
 	rootCmd.AddCommand(newClientCmd())
 	rootCmd.AddCommand(newAdminCmd())

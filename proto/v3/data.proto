@@ -9,7 +9,13 @@ service DataService {
   rpc Upload(stream FileChunk) returns (UploadSummary);
   rpc Download(RestoreRequest) returns (stream FileChunk);
   rpc SyncDatabase(stream DatabaseChunk) returns (SyncResponse);
+  rpc DownloadDatabase(DownloadDatabaseRequest) returns (stream DatabaseChunk);
   rpc ExchangeManifest(Manifest) returns (ManifestDiff);
+}
+
+// DownloadDatabaseRequest is sent to request the client's backup database file from the server.
+message DownloadDatabaseRequest {
+  string client_id = 1;
 }
 
 // FileChunk represents a chunk of file data in the upload/download stream.

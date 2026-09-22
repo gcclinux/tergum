@@ -2,7 +2,10 @@ package grpc
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
+	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/gcclinux/tergum/internal/backup"
@@ -41,6 +44,7 @@ type CommandServer struct {
 	version         string
 	startedAt       time.Time
 	onClientConnect func(clientID string) // called after a tunnel client reconnects
+	clientsDir      string
 }
 
 // CommandServerConfig holds configuration for the CommandServer.
@@ -54,6 +58,7 @@ type CommandServerConfig struct {
 	MaxBackups      int                // max concurrent backups, default 4
 	Version         string
 	OnClientConnect func(clientID string) // called after a tunnel client reconnects
+	ClientsDir      string
 }
 
 // NewCommandServer creates a new CommandServer with the given configuration.
@@ -79,6 +84,7 @@ func NewCommandServer(cfg CommandServerConfig) *CommandServer {
 		version:         version,
 		startedAt:       time.Now(),
 		onClientConnect: cfg.OnClientConnect,
+		clientsDir:      cfg.ClientsDir,
 	}
 }
 
@@ -337,7 +343,7 @@ func (s *CommandServer) GetRetention(ctx context.Context, req *proto.RetentionRe
 }
 
 // RegisterClient handles a client registration request. It records the client
-// in the registry with its ID and callback address.
+// in the registry with its ID, callback address, and system identity.
 func (s *CommandServer) RegisterClient(ctx context.Context, req *proto.RegisterRequest) (*proto.RegisterResponse, error) {
 	clientID := req.ClientId
 	// Prefer the certificate CN as the authoritative client identity when available.
@@ -359,7 +365,7 @@ func (s *CommandServer) RegisterClient(ctx context.Context, req *proto.RegisterR
 		}, nil
 	}
 
-	_, err := s.registry.Register(clientID, req.Address)
+	_, err := s.registry.RegisterWithIdentity(clientID, req.Address, req.OsFamily, req.MachineId, req.Hostname)
 	if err != nil {
 		return nil, MapError(err)
 	}
@@ -367,6 +373,156 @@ func (s *CommandServer) RegisterClient(ctx context.Context, req *proto.RegisterR
 	return &proto.RegisterResponse{
 		Success:       true,
 		ServerVersion: s.version,
+	}, nil
+}
+
+// ListRecoverableClients returns a list of clients whose backup databases and configuration
+// can be recovered onto a rebuilt machine.
+func (s *CommandServer) ListRecoverableClients(ctx context.Context, req *proto.ListRecoverableClientsRequest) (*proto.ListRecoverableClientsResponse, error) {
+	var results []proto.RecoverableClientInfo
+
+	seen := make(map[string]bool)
+
+	if s.registry != nil {
+		for _, ci := range s.registry.ListAllClients() {
+			seen[ci.ClientID] = true
+			info := proto.RecoverableClientInfo{
+				ClientId:  ci.ClientID,
+				Hostname:  ci.Hostname,
+				OsFamily:  ci.OSFamily,
+				MachineId: ci.MachineID,
+				Status:    ci.Status,
+			}
+			if !ci.LastSeen.IsZero() {
+				info.LastSeen = ci.LastSeen.UTC().Format(time.RFC3339)
+			}
+			if !ci.LastBackup.IsZero() {
+				info.LastBackup = ci.LastBackup.UTC().Format(time.RFC3339)
+			}
+			if !ci.RegisteredAt.IsZero() {
+				info.RegisteredAt = ci.RegisteredAt.UTC().Format(time.RFC3339)
+			}
+
+			// Inspect database copy if available
+			if s.clientsDir != "" {
+				dbPath := filepath.Join(s.clientsDir, ci.ClientID+".db")
+				if fi, err := os.Stat(dbPath); err == nil {
+					info.HasDatabase = true
+					info.BytesTotal = fi.Size()
+
+					if info.OsFamily == "" {
+						info.OsFamily = s.registry.GetClientOS(ci.ClientID, s.clientsDir)
+					}
+
+					// Query file count and latest backup if not set
+					if clientDB, err := sql.Open("sqlite", dbPath); err == nil {
+						var count int64
+						_ = clientDB.QueryRow(`SELECT COUNT(*) FROM backups`).Scan(&count)
+						info.FileCount = count
+
+						if info.LastBackup == "" {
+							var finishedAt *string
+							_ = clientDB.QueryRow(`SELECT finished_at FROM backup_jobs WHERE status = 'completed' AND finished_at IS NOT NULL ORDER BY finished_at DESC LIMIT 1`).Scan(&finishedAt)
+							if finishedAt != nil {
+								info.LastBackup = *finishedAt
+							}
+						}
+						clientDB.Close()
+					}
+				}
+			}
+
+			results = append(results, info)
+		}
+	}
+
+	// Also check clientsDir for any clients that have a database copy but might not be in the registry
+	if s.clientsDir != "" {
+		if entries, err := os.ReadDir(s.clientsDir); err == nil {
+			for _, entry := range entries {
+				if !entry.IsDir() && filepath.Ext(entry.Name()) == ".db" {
+					cid := entry.Name()[:len(entry.Name())-3]
+					if seen[cid] {
+						continue
+					}
+					seen[cid] = true
+
+					fi, _ := entry.Info()
+					var size int64
+					if fi != nil {
+						size = fi.Size()
+					}
+
+					info := proto.RecoverableClientInfo{
+						ClientId:    cid,
+						HasDatabase: true,
+						BytesTotal:  size,
+						Status:      "offline",
+					}
+
+					dbPath := filepath.Join(s.clientsDir, entry.Name())
+					if clientDB, err := sql.Open("sqlite", dbPath); err == nil {
+						var count int64
+						_ = clientDB.QueryRow(`SELECT COUNT(*) FROM backups`).Scan(&count)
+						info.FileCount = count
+
+						var osFamily string
+						_ = clientDB.QueryRow(`SELECT os FROM backups WHERE os IS NOT NULL AND os != '' LIMIT 1`).Scan(&osFamily)
+						info.OsFamily = osFamily
+
+						var finishedAt *string
+						_ = clientDB.QueryRow(`SELECT finished_at FROM backup_jobs WHERE status = 'completed' AND finished_at IS NOT NULL ORDER BY finished_at DESC LIMIT 1`).Scan(&finishedAt)
+						if finishedAt != nil {
+							info.LastBackup = *finishedAt
+						}
+
+						clientDB.Close()
+					}
+
+					results = append(results, info)
+				}
+			}
+		}
+	}
+
+	return &proto.ListRecoverableClientsResponse{
+		Clients: results,
+	}, nil
+}
+
+// RebindClient rebinds client ownership to a rebuilt machine, updating its identity and address.
+func (s *CommandServer) RebindClient(ctx context.Context, req *proto.RebindClientRequest) (*proto.RebindClientResponse, error) {
+	clientID := req.ClientId
+	if cn, err := clientIDFromContext(ctx); err == nil && cn != "" {
+		if cn != "Tergum Client" {
+			clientID = cn
+		}
+	}
+
+	if clientID == "" {
+		return nil, MapError(&model.ConfigError{Message: "client_id is required"})
+	}
+
+	if s.registry == nil {
+		return &proto.RebindClientResponse{
+			Success: true,
+			Message: "registry not configured (local mode)",
+		}, nil
+	}
+
+	// Close old tunnel if present and forced
+	if req.Force && s.tunnelHub != nil && s.tunnelHub.HasTunnel(clientID) {
+		s.tunnelHub.Unregister(clientID)
+	}
+
+	_, err := s.registry.RebindClient(clientID, req.Address, req.OsFamily, req.MachineId, req.Hostname, req.Force)
+	if err != nil {
+		return nil, MapError(err)
+	}
+
+	return &proto.RebindClientResponse{
+		Success: true,
+		Message: fmt.Sprintf("client %q successfully rebound to rebuilt machine", clientID),
 	}, nil
 }
 
