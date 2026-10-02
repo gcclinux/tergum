@@ -242,7 +242,7 @@ Start-Process -FilePath ".\tergum.exe" -ArgumentList "server" -NoNewWindow
 
 ### tergum client
 
-Manage and view remote backup clients registered with this server. Only available on nodes with role `server` or `hybrid`.
+Manage and view remote backup clients registered with this server. On `server` and `hybrid` nodes these commands read the local registry directly. The read-only `list` and `status` subcommands are also available on a `client` node **if it is a registered admin client** — they route to the server over gRPC and the server authorizes the request by the node's TLS SPKI fingerprint (see [`tergum admin-client`](#tergum-admin-client)). The mutating `disable`/`enable` subcommands remain `server`/`hybrid`-only.
 
 ```
 Usage: tergum client <subcommand>
@@ -259,6 +259,8 @@ Subcommands:
 #### tergum client list
 
 List all registered clients with their address, online/offline status, and last seen time.
+
+On a `server`/`hybrid` node this reads the local registry. On a `client` node that is a registered admin client, it routes the read to the server over gRPC (authorized by the node's TLS SPKI fingerprint) and renders the server's reply through the same formatter, so the output is identical. If the node is not an authorized admin client the server denies the request and the CLI reports: `this client is not authorized as an admin client on the server (ask the server operator to run 'tergum admin-client add')`.
 
 ```
 Usage: tergum client list [flags]
@@ -293,6 +295,8 @@ win-desktop     192.168.1.50      windows  online    just now         1 hour ago
 #### tergum client status
 
 Show detailed status for a specific client, including system identity (OS family, hostname, machine ID), last backup time, watcher state, schedule configuration, and any missed backups.
+
+Like `tergum client list`, this is a read-only command: on a `client` node that is a registered admin client it routes to the server over gRPC (authorized by the node's TLS SPKI fingerprint) and renders the identical output. A non-admin client receives the same `not authorized as an admin client` message described above.
 
 ```
 Usage: tergum client status <client-name> [flags]

@@ -1289,6 +1289,8 @@ Revoke with `tergum admin-client remove <name>` (or `--fingerprint <fp>`), or th
 
 **Using it.** From the admin client node: `tergum restore --client A --target B --path "..." --dest ...` sends the request to the server, which authorizes it against the admin list and performs the decrypt-and-push. A non-admin caller gets a permission-denied error. See [CLI.md](CLI.md#tergum-admin-client) for full command details.
 
+**Discovering client IDs remotely.** To run a cross-client restore you need the source and target client IDs. An admin client can read them from the server without logging into it: `tergum client list` shows every registered client, and `tergum client status <client-id>` shows one client's detail. On a `client` node these two read-only commands route to the server over gRPC and are authorized by the node's TLS SPKI fingerprint — the same identity used for the restore. A client that is not a registered admin client is denied with a message pointing to `tergum admin-client add`. The mutating `tergum client disable`/`enable` commands stay on the server/hybrid node only.
+
 ### Security
 
 - All communication uses mutual TLS (mTLS) — both sides verify certificates
