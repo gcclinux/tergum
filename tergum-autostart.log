@@ -3290,3 +3290,389 @@ time=2026-10-02T20:30:45.297+01:00 level=INFO msg="raised file descriptor limit"
 Error: derive master key: TERGUM_PASSPHRASE not set
 time=2026-10-02T20:30:55.359+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
 Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T20:54:03.082+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T20:54:13.151+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T20:54:23.203+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T20:54:33.244+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T20:54:43.290+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T20:54:53.338+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T20:55:03.391+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T20:55:13.445+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T20:55:23.494+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T20:55:33.547+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T20:55:43.597+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T20:55:53.651+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T20:56:03.703+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T20:56:13.751+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T20:56:23.800+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T20:56:33.852+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T20:56:43.901+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T20:56:53.947+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T20:57:04.003+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T20:57:14.055+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T20:57:24.110+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T20:57:34.160+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T20:57:44.215+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T20:57:54.268+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T20:58:04.319+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T20:58:14.370+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T20:58:24.422+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T20:58:34.474+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T20:58:44.528+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T20:58:54.577+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T20:59:04.636+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T20:59:14.696+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T20:59:24.745+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T20:59:34.805+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T20:59:44.865+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T20:59:54.926+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:00:04.985+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:00:15.038+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:00:25.101+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:00:35.163+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:00:45.226+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:00:55.282+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:01:05.333+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:01:15.388+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:01:25.439+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:01:35.493+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:01:45.544+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:01:55.586+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:02:05.653+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:02:15.706+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:02:25.756+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:02:35.806+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:02:45.856+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:02:55.904+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:03:05.952+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:03:16.001+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:03:26.049+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:03:36.098+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:03:46.150+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:03:56.201+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:04:06.246+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:04:16.299+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:04:26.352+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:04:36.404+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:04:46.449+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:04:56.499+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:05:06.546+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:05:16.595+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:05:26.632+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:05:36.691+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:05:46.749+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:05:56.797+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:06:06.850+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:06:16.901+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:06:26.947+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:06:36.987+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:06:47.038+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:06:57.092+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:07:07.142+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:07:17.192+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:07:27.242+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:07:37.291+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:07:47.398+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:07:57.442+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:08:07.486+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:08:17.532+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:08:27.582+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:08:37.633+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:08:47.681+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:08:57.728+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:09:07.778+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:09:17.829+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:09:27.877+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:09:37.927+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:09:47.978+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:09:58.022+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:10:08.073+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:10:18.126+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:10:28.177+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:10:38.228+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:10:48.278+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:10:58.328+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:11:08.382+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:11:18.434+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:11:28.493+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:11:38.547+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:11:48.605+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:11:58.662+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:12:08.720+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:12:18.766+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:12:28.818+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:12:38.874+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:12:48.930+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:12:58.983+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:13:09.037+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:13:19.093+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:13:29.152+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:13:39.212+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:13:49.271+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:13:59.328+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:14:09.383+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:14:19.436+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:14:29.489+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:14:39.536+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:14:49.583+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:14:59.627+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:15:09.669+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:15:19.717+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:15:29.773+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:15:39.815+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:15:49.867+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:15:59.907+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:16:09.954+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:16:19.998+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:16:30.045+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:16:40.100+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:16:50.150+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:17:00.201+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:17:10.249+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:17:20.294+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:17:30.343+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:17:40.390+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:17:50.443+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:18:00.490+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:18:10.530+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:18:20.577+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:18:30.623+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:18:40.675+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:18:50.726+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:19:00.775+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:19:10.821+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:19:20.871+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:19:30.923+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:19:40.977+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:19:51.029+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:20:01.072+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:20:11.119+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:20:21.165+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:20:31.215+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:20:41.263+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:20:51.313+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:21:01.357+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:21:11.436+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:21:21.483+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:21:31.534+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:21:41.585+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:21:51.637+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:22:01.685+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:22:11.735+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:22:21.784+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:22:31.827+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:22:41.885+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:22:51.943+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:23:01.996+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:23:12.058+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:23:22.108+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:23:32.167+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:23:42.230+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:23:52.293+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:24:02.352+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:24:12.411+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:24:22.477+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:24:32.539+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:24:44.310+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:24:54.371+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:25:04.435+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:25:14.492+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:25:24.551+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:25:35.168+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:25:45.232+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:25:55.297+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:26:05.342+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set
+time=2026-10-02T21:26:15.401+01:00 level=INFO msg="raised file descriptor limit" from=10240 to=65536
+Error: derive master key: TERGUM_PASSPHRASE not set

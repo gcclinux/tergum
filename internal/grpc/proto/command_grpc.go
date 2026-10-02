@@ -25,6 +25,7 @@ type CommandServiceClient interface {
 	ListClients(ctx context.Context, in *ListClientsRequest, opts ...grpc.CallOption) (*ListClientsResponse, error)
 	GetClientStatus(ctx context.Context, in *GetClientStatusRequest, opts ...grpc.CallOption) (*ClientStatusResponse, error)
 	AdminSearchFiles(ctx context.Context, in *AdminSearchFilesRequest, opts ...grpc.CallOption) (*AdminSearchFilesResponse, error)
+	AdminListBackups(ctx context.Context, in *AdminListBackupsRequest, opts ...grpc.CallOption) (*AdminListBackupsResponse, error)
 	PushRestore(ctx context.Context, opts ...grpc.CallOption) (CommandService_PushRestoreClient, error)
 	CommandTunnel(ctx context.Context, opts ...grpc.CallOption) (CommandService_CommandTunnelClient, error)
 }
@@ -56,6 +57,7 @@ const (
 	CommandService_ListClients_FullMethodName            = "/tergum.v3.CommandService/ListClients"
 	CommandService_GetClientStatus_FullMethodName        = "/tergum.v3.CommandService/GetClientStatus"
 	CommandService_AdminSearchFiles_FullMethodName       = "/tergum.v3.CommandService/AdminSearchFiles"
+	CommandService_AdminListBackups_FullMethodName       = "/tergum.v3.CommandService/AdminListBackups"
 	CommandService_PushRestore_FullMethodName            = "/tergum.v3.CommandService/PushRestore"
 	CommandService_CommandTunnel_FullMethodName    = "/tergum.v3.CommandService/CommandTunnel"
 )
@@ -213,6 +215,15 @@ func (c *commandServiceClient) AdminSearchFiles(ctx context.Context, in *AdminSe
 	return out, nil
 }
 
+func (c *commandServiceClient) AdminListBackups(ctx context.Context, in *AdminListBackupsRequest, opts ...grpc.CallOption) (*AdminListBackupsResponse, error) {
+	out := new(AdminListBackupsResponse)
+	err := c.cc.Invoke(ctx, CommandService_AdminListBackups_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // CommandService_PushRestoreClient is the client streaming interface for PushRestore.
 type CommandService_PushRestoreClient interface {
 	Send(*FileChunk) error
@@ -297,6 +308,7 @@ type CommandServiceServer interface {
 	ListClients(context.Context, *ListClientsRequest) (*ListClientsResponse, error)
 	GetClientStatus(context.Context, *GetClientStatusRequest) (*ClientStatusResponse, error)
 	AdminSearchFiles(context.Context, *AdminSearchFilesRequest) (*AdminSearchFilesResponse, error)
+	AdminListBackups(context.Context, *AdminListBackupsRequest) (*AdminListBackupsResponse, error)
 	PushRestore(CommandService_PushRestoreServer) error
 	CommandTunnel(CommandService_CommandTunnelServer) error
 	mustEmbedUnimplementedCommandServiceServer()
@@ -355,6 +367,9 @@ func (UnimplementedCommandServiceServer) GetClientStatus(context.Context, *GetCl
 }
 func (UnimplementedCommandServiceServer) AdminSearchFiles(context.Context, *AdminSearchFilesRequest) (*AdminSearchFilesResponse, error) {
 	return nil, grpc.Errorf(12, "method AdminSearchFiles not implemented") //nolint:staticcheck
+}
+func (UnimplementedCommandServiceServer) AdminListBackups(context.Context, *AdminListBackupsRequest) (*AdminListBackupsResponse, error) {
+	return nil, grpc.Errorf(12, "method AdminListBackups not implemented") //nolint:staticcheck
 }
 func (UnimplementedCommandServiceServer) PushRestore(CommandService_PushRestoreServer) error {
 	return grpc.Errorf(12, "method PushRestore not implemented") //nolint:staticcheck
@@ -492,6 +507,10 @@ var CommandService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "AdminSearchFiles",
 			Handler:    _CommandService_AdminSearchFiles_Handler,
+		},
+		{
+			MethodName: "AdminListBackups",
+			Handler:    _CommandService_AdminListBackups_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{
@@ -812,6 +831,24 @@ func _CommandService_AdminSearchFiles_Handler(srv interface{}, ctx context.Conte
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(CommandServiceServer).AdminSearchFiles(ctx, req.(*AdminSearchFilesRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _CommandService_AdminListBackups_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AdminListBackupsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(CommandServiceServer).AdminListBackups(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: CommandService_AdminListBackups_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(CommandServiceServer).AdminListBackups(ctx, req.(*AdminListBackupsRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }

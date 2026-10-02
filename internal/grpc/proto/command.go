@@ -346,3 +346,18 @@ type AdminSearchFilesResponse struct {
 	BytesTransferred int64               `json:"bytes_transferred"` // Bytes transferred (when list_only=false)
 	Message          string              `json:"message"`          // Human-readable status/error message
 }
+
+// AdminListBackupsRequest allows an admin client to list backup jobs from
+// another client's backup catalog via the server.
+type AdminListBackupsRequest struct {
+	ClientId string `json:"client_id"` // Target client whose backups to list
+	Limit    int32  `json:"limit"`     // Maximum number of jobs to return (0 = default 50)
+}
+
+// AdminListBackupsResponse returns the list of backup jobs for the requested client.
+type AdminListBackupsResponse struct {
+	Success bool             `json:"success"`
+	Backups []*BackupJobInfo `json:"backups"` // List of backup job records
+	Total   int32            `json:"total"`   // Total count of jobs returned
+	Message string           `json:"message"` // Human-readable status/error message
+}

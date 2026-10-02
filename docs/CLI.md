@@ -1280,6 +1280,7 @@ Usage: tergum list [flags]
 Flags:
       --backup-id string   List files within a specific backup
   -p, --pattern string     Filter files by glob pattern
+      --client string      Target client ID for remote queries (admin only)
       --json               Output as JSON
 ```
 
@@ -1311,6 +1312,56 @@ tergum list --pattern "*.go"
 
 # Search for files by pattern
 .\tergum.exe list --pattern "*.go"
+```
+
+#### Admin List Operations
+
+Admin clients can list backup data from other clients remotely. This is useful for inspecting another client's backup catalog without logging into that client or the server directly.
+
+**Linux / macOS:**
+```bash
+# List backup jobs from another client
+tergum list --client laptop-01
+
+# List files in a specific backup from another client
+tergum list --client laptop-01 --backup-id abc123
+
+# Search files by pattern in another client's backups
+tergum list --client laptop-01 --pattern "*.go"
+
+# Combine backup-id and pattern
+tergum list --client laptop-01 --backup-id abc123 --pattern "*.go"
+
+# JSON output
+tergum list --client laptop-01 --json
+```
+
+**PowerShell (Windows):**
+```powershell
+# List backup jobs from another client
+.\tergum.exe list --client laptop-01
+
+# List files in a specific backup from another client
+.\tergum.exe list --client laptop-01 --backup-id abc123
+
+# Search files by pattern in another client's backups
+.\tergum.exe list --client laptop-01 --pattern "*.go"
+
+# Combine backup-id and pattern
+.\tergum.exe list --client laptop-01 --backup-id abc123 --pattern "*.go"
+
+# JSON output
+.\tergum.exe list --client laptop-01 --json
+```
+
+**Requirements:**
+- Must be executed from a client node (role `client`)
+- The client must be authorized as an admin client on the server
+- Use [`tergum admin-client add`](#tergum-admin-client-add) on the server to grant admin privileges
+
+If the calling client is not authorized, the server returns an error:
+```
+this client is not authorized as an admin client on the server (ask the server operator to run 'tergum admin-client add')
 ```
 
 ---

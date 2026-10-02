@@ -392,6 +392,19 @@ func (c *TergumClient) AdminSearchFiles(ctx context.Context, req *proto.AdminSea
 	return resp, err
 }
 
+// AdminListBackups requests the list of backup jobs for a specified client
+// via the server. Requires admin-client authorization.
+func (c *TergumClient) AdminListBackups(ctx context.Context, req *proto.AdminListBackupsRequest) (*proto.AdminListBackupsResponse, error) {
+	ctx = c.contextWithMetadata(ctx)
+	var resp *proto.AdminListBackupsResponse
+	err := c.withRetry(ctx, func() error {
+		var e error
+		resp, e = c.command.AdminListBackups(ctx, req)
+		return e
+	})
+	return resp, err
+}
+
 // PushRestore opens a streaming client for pushing restored files to a target client.
 // Streaming RPCs are not retried — the caller manages the stream lifecycle.
 func (c *TergumClient) PushRestore(ctx context.Context) (proto.CommandService_PushRestoreClient, error) {

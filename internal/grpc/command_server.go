@@ -1307,5 +1307,101 @@ func containsAny(s, chars string) bool {
 	return false
 }
 
+// AdminListBackups allows an admin client to list backup jobs from another
+// client's backup catalog. Authorization is enforced via SPKI fingerprint.
+func (s *CommandServer) AdminListBackups(ctx context.Context, req *proto.AdminListBackupsRequest) (*proto.AdminListBackupsResponse, error) {
+	callerFP := clientSPKIFromContext(ctx)
+
+	// 1. Authorize: only admin clients can list other clients' backups.
+	if !s.callerIsAdmin(ctx) {
+		s.auditLog.Warn("admin-gated list denied",
+			"event", "admin_denied", "op", "admin_list_backups",
+			"caller_fp", shortFP(callerFP), "client", req.ClientId)
+		return nil, status.Error(codes.PermissionDenied,
+			"this client is not authorized as an admin client on the server")
+	}
+
+	// 2. Validate the request.
+	if req.ClientId == "" {
+		return nil, MapError(&model.ConfigError{Message: "client_id is required"})
+	}
+
+	// 3. Locate and open the client's database.
+	if s.clientsDir == "" {
+		return nil, MapError(&model.ConfigError{
+			Message: "clients directory not configured on server"})
+	}
+
+	clientDBPath := filepath.Join(s.clientsDir, req.ClientId+".db")
+	if _, err := os.Stat(clientDBPath); os.IsNotExist(err) {
+		return nil, MapError(&model.ConfigError{
+			Message: fmt.Sprintf("client %q not found", req.ClientId)})
+	}
+
+	clientDB, err := sql.Open("sqlite", clientDBPath)
+	if err != nil {
+		return nil, MapError(fmt.Errorf("failed to open client database: %w", err))
+	}
+	defer clientDB.Close()
+
+	// 4. Query backup jobs.
+	limit := req.Limit
+	if limit <= 0 {
+		limit = 50
+	}
+
+	rows, err := clientDB.QueryContext(ctx,
+		`SELECT backup_id, level, client_id, initiated_by, started_at, 
+                finished_at, status, file_count, bytes_total, bytes_new, 
+                files_deduped, error_message
+         FROM backup_jobs
+         ORDER BY started_at DESC
+         LIMIT ?`, limit)
+	if err != nil {
+		return nil, MapError(fmt.Errorf("query failed: %w", err))
+	}
+	defer rows.Close()
+
+	var backups []*proto.BackupJobInfo
+	for rows.Next() {
+		var job proto.BackupJobInfo
+		var finishedAt sql.NullString
+		var errorMsg sql.NullString
+
+		if err := rows.Scan(
+			&job.BackupId, &job.Level, &job.ClientId, &job.InitiatedBy,
+			&job.StartedAt, &finishedAt, &job.Status, &job.FileCount,
+			&job.BytesTotal, &job.BytesNew, &job.FilesDeduped, &errorMsg,
+		); err != nil {
+			return nil, MapError(fmt.Errorf("scan failed: %w", err))
+		}
+
+		if finishedAt.Valid {
+			job.FinishedAt = finishedAt.String
+		}
+		if errorMsg.Valid {
+			job.ErrorMessage = errorMsg.String
+		}
+		backups = append(backups, &job)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, MapError(fmt.Errorf("rows iteration failed: %w", err))
+	}
+
+	s.auditLog.Info("admin list backups",
+		"event", "admin_list_backups",
+		"caller_fp", shortFP(callerFP),
+		"client", req.ClientId,
+		"jobs_returned", len(backups))
+
+	return &proto.AdminListBackupsResponse{
+		Success: true,
+		Backups: backups,
+		Total:   int32(len(backups)),
+		Message: fmt.Sprintf("found %d backup jobs for client %s", len(backups), req.ClientId),
+	}, nil
+}
+
 // Ensure CommandServer satisfies the interface at compile time.
 var _ proto.CommandServiceServer = (*CommandServer)(nil)
