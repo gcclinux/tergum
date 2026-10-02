@@ -377,6 +377,21 @@ func (c *TergumClient) GetClientStatus(ctx context.Context, clientID string) (*p
 	return resp, err
 }
 
+// AdminSearchFiles allows an admin client to search or restore files from another
+// client's backup directly to itself (the calling admin client). This handles the
+// bug condition where --client is specified without --target. The server enforces
+// admin authorization (by this caller's SPKI fingerprint).
+func (c *TergumClient) AdminSearchFiles(ctx context.Context, req *proto.AdminSearchFilesRequest) (*proto.AdminSearchFilesResponse, error) {
+	ctx = c.contextWithMetadata(ctx)
+	var resp *proto.AdminSearchFilesResponse
+	err := c.withRetry(ctx, func() error {
+		var e error
+		resp, e = c.command.AdminSearchFiles(ctx, req)
+		return e
+	})
+	return resp, err
+}
+
 // PushRestore opens a streaming client for pushing restored files to a target client.
 // Streaming RPCs are not retried — the caller manages the stream lifecycle.
 func (c *TergumClient) PushRestore(ctx context.Context) (proto.CommandService_PushRestoreClient, error) {

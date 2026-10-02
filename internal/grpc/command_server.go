@@ -1088,5 +1088,224 @@ func (s *CommandServer) TunnelHub() *TunnelHub {
 	return s.tunnelHub
 }
 
+// AdminSearchFiles allows an admin client to search or restore files from
+// another client's backup. This handles the bug condition where --client is
+// specified without --target: the admin client wants to pull files locally
+// rather than push them to a different target.
+//
+// For ListOnly=true, it returns matching files without restoring.
+// For ListOnly=false (restore mode), it returns the file metadata that matches;
+// the actual file streaming is handled separately (the admin client can then
+// use the DataService to fetch file chunks).
+func (s *CommandServer) AdminSearchFiles(ctx context.Context, req *proto.AdminSearchFilesRequest) (*proto.AdminSearchFilesResponse, error) {
+	callerFP := clientSPKIFromContext(ctx)
+
+	// 1. Authorize: only admin clients can search other clients' backups.
+	if !s.callerIsAdmin(ctx) {
+		s.auditLog.Warn("admin-gated search denied",
+			"event", "admin_denied", "op", "admin_search_files",
+			"caller_fp", shortFP(callerFP), "source", req.SourceClientId)
+		return nil, status.Error(codes.PermissionDenied, "operation requires admin-client privilege")
+	}
+
+	// 2. Validate the request.
+	if req.SourceClientId == "" {
+		return nil, MapError(&model.ConfigError{Message: "source_client_id is required"})
+	}
+	if req.Query == "" && req.BackupId == "" {
+		return nil, MapError(&model.ConfigError{Message: "one of query or backup_id is required"})
+	}
+
+	// 3. Locate and open the source client's database.
+	if s.clientsDir == "" {
+		return nil, MapError(&model.ConfigError{Message: "clients directory not configured on server"})
+	}
+
+	clientDBPath := filepath.Join(s.clientsDir, req.SourceClientId+".db")
+	if _, err := os.Stat(clientDBPath); os.IsNotExist(err) {
+		return nil, MapError(&model.ConfigError{
+			Message: fmt.Sprintf("backup database for client %q not found", req.SourceClientId),
+		})
+	}
+
+	clientDB, err := sql.Open("sqlite", clientDBPath)
+	if err != nil {
+		return nil, MapError(fmt.Errorf("failed to open client database: %w", err))
+	}
+	defer clientDB.Close()
+
+	// 4. Build and execute the search query.
+	var entries []fileEntry
+	var queryErr error
+
+	if req.BackupId != "" && req.Query != "" {
+		// Search within a specific backup using both backup_id and query pattern.
+		entries, queryErr = s.searchClientDB(ctx, clientDB, req.BackupId, req.Query)
+	} else if req.BackupId != "" {
+		// List all files in a specific backup.
+		entries, queryErr = s.listBackupFiles(ctx, clientDB, req.BackupId)
+	} else {
+		// Search across all backups using query pattern.
+		entries, queryErr = s.searchClientDBByPattern(ctx, clientDB, req.Query)
+	}
+
+	if queryErr != nil {
+		return nil, MapError(fmt.Errorf("search query failed: %w", queryErr))
+	}
+
+	// 5. Convert to proto response format.
+	files := make([]*proto.FileSearchResult, 0, len(entries))
+	for _, e := range entries {
+		files = append(files, &proto.FileSearchResult{
+			FilePath:   e.FilePath,
+			FileName:   e.FileName,
+			FileSize:   e.FileSize,
+			ModifiedAt: e.ModifiedAt,
+			Blake3Hash: e.Blake3Hash,
+			BackupId:   e.BackupID,
+		})
+	}
+
+	s.auditLog.Info("admin search files",
+		"event", "admin_search_files",
+		"caller_fp", shortFP(callerFP),
+		"source", req.SourceClientId,
+		"query", req.Query,
+		"backup_id", req.BackupId,
+		"list_only", req.ListOnly,
+		"files_found", len(files),
+	)
+
+	return &proto.AdminSearchFilesResponse{
+		Success:    true,
+		Files:      files,
+		FilesFound: int64(len(files)),
+		Message:    fmt.Sprintf("found %d files matching query in client %s", len(files), req.SourceClientId),
+	}, nil
+}
+
+// fileEntry is an internal representation of a backup file entry for search results.
+type fileEntry struct {
+	BackupID   string
+	Blake3Hash string
+	FileName   string
+	FilePath   string
+	FileSize   int64
+	ModifiedAt int64
+}
+
+// searchClientDB searches a client's database for files matching a pattern within a specific backup.
+func (s *CommandServer) searchClientDB(ctx context.Context, clientDB *sql.DB, backupID, pattern string) ([]fileEntry, error) {
+	// Convert glob pattern to SQL LIKE pattern (basic conversion).
+	sqlPattern := globToSQLLike(pattern)
+
+	rows, err := clientDB.QueryContext(ctx,
+		`SELECT backup_id, blake3_hash, file_name, file_path, file_size, COALESCE(CAST(strftime('%s', modified_at) AS INTEGER), 0)
+		 FROM backups 
+		 WHERE backup_id = ? AND (file_path LIKE ? OR file_name LIKE ?)
+		 ORDER BY file_path`,
+		backupID, sqlPattern, sqlPattern,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	return scanFileEntries(rows)
+}
+
+// listBackupFiles lists all files in a specific backup.
+func (s *CommandServer) listBackupFiles(ctx context.Context, clientDB *sql.DB, backupID string) ([]fileEntry, error) {
+	rows, err := clientDB.QueryContext(ctx,
+		`SELECT backup_id, blake3_hash, file_name, file_path, file_size, COALESCE(CAST(strftime('%s', modified_at) AS INTEGER), 0)
+		 FROM backups 
+		 WHERE backup_id = ?
+		 ORDER BY file_path`,
+		backupID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	return scanFileEntries(rows)
+}
+
+// searchClientDBByPattern searches a client's database for files matching a pattern across all backups.
+func (s *CommandServer) searchClientDBByPattern(ctx context.Context, clientDB *sql.DB, pattern string) ([]fileEntry, error) {
+	// Convert glob pattern to SQL LIKE pattern (basic conversion).
+	sqlPattern := globToSQLLike(pattern)
+
+	rows, err := clientDB.QueryContext(ctx,
+		`SELECT backup_id, blake3_hash, file_name, file_path, file_size, COALESCE(CAST(strftime('%s', modified_at) AS INTEGER), 0)
+		 FROM backups 
+		 WHERE file_path LIKE ? OR file_name LIKE ?
+		 ORDER BY backup_id DESC, file_path`,
+		sqlPattern, sqlPattern,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	return scanFileEntries(rows)
+}
+
+// scanFileEntries scans rows from a backup query into fileEntry structs.
+func scanFileEntries(rows *sql.Rows) ([]fileEntry, error) {
+	var entries []fileEntry
+	for rows.Next() {
+		var e fileEntry
+		if err := rows.Scan(&e.BackupID, &e.Blake3Hash, &e.FileName, &e.FilePath, &e.FileSize, &e.ModifiedAt); err != nil {
+			return nil, err
+		}
+		entries = append(entries, e)
+	}
+	return entries, rows.Err()
+}
+
+// globToSQLLike converts a glob-style pattern to a SQL LIKE pattern.
+// Supports basic wildcards: * -> %, ? -> _
+func globToSQLLike(pattern string) string {
+	// Escape SQL LIKE special characters first
+	result := pattern
+	result = replaceAll(result, "%", "\\%")
+	result = replaceAll(result, "_", "\\_")
+	// Convert glob wildcards to SQL wildcards
+	result = replaceAll(result, "*", "%")
+	result = replaceAll(result, "?", "_")
+	// If pattern doesn't have wildcards, wrap with % for substring match
+	if !containsAny(result, "%_") {
+		result = "%" + result + "%"
+	}
+	return result
+}
+
+// replaceAll is a simple string replacement helper.
+func replaceAll(s, old, new string) string {
+	var result string
+	for i := 0; i < len(s); i++ {
+		if i+len(old) <= len(s) && s[i:i+len(old)] == old {
+			result += new
+			i += len(old) - 1
+		} else {
+			result += string(s[i])
+		}
+	}
+	return result
+}
+
+// containsAny checks if s contains any of the characters in chars.
+func containsAny(s, chars string) bool {
+	for _, c := range chars {
+		for _, sc := range s {
+			if c == sc {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // Ensure CommandServer satisfies the interface at compile time.
 var _ proto.CommandServiceServer = (*CommandServer)(nil)

@@ -39,6 +39,10 @@ service CommandService {
   // Admin/server-only, read-only.
   rpc GetClientStatus(GetClientStatusRequest) returns (ClientStatusResponse);
   rpc PushRestore(stream FileChunk) returns (PushRestoreResponse);
+  // AdminSearchFiles allows an admin client to search/restore files from
+  // another client's backup directly to itself (without specifying a target).
+  // Reserved for admin-capable clients only.
+  rpc AdminSearchFiles(AdminSearchFilesRequest) returns (AdminSearchFilesResponse);
   rpc CommandTunnel(stream TunnelResponse) returns (stream TunnelCommand);
 }
 
@@ -309,6 +313,37 @@ message PushRestoreResponse {
   int64 bytes_total = 3;
   int64 files_failed = 4;
   string message = 5;
+}
+
+// AdminSearchFilesRequest allows an admin client to search or restore files
+// from another client's backup directly to itself (the calling admin client).
+// This handles the bug condition where --client is specified without --target.
+message AdminSearchFilesRequest {
+  string source_client_id = 1;  // The client whose backup to search/restore from
+  string query = 2;              // File search query pattern (glob/path)
+  string backup_id = 3;          // Optional: restrict to specific backup
+  bool list_only = 4;            // If true, only list matching files; do not restore
+  string dest_path = 5;          // Destination path on the admin client for restore
+}
+
+// FileSearchResult represents a single file found in a backup search.
+message FileSearchResult {
+  string file_path = 1;
+  string file_name = 2;
+  int64 file_size = 3;
+  int64 modified_at = 4;
+  string blake3_hash = 5;
+  string backup_id = 6;
+}
+
+// AdminSearchFilesResponse returns the result of an admin search/restore request.
+message AdminSearchFilesResponse {
+  bool success = 1;
+  repeated FileSearchResult files = 2;  // Populated when list_only=true
+  int64 files_found = 3;                // Total count of matching files
+  int64 files_restored = 4;             // Count of files restored (when list_only=false)
+  int64 bytes_transferred = 5;          // Bytes transferred (when list_only=false)
+  string message = 6;                   // Human-readable status/error message
 }
 
 // --- CommandTunnel messages (NAT traversal) ---

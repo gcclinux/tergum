@@ -24,6 +24,7 @@ type CommandServiceClient interface {
 	ControlClientWatcher(ctx context.Context, in *ControlWatcherRequest, opts ...grpc.CallOption) (*WatcherResponse, error)
 	ListClients(ctx context.Context, in *ListClientsRequest, opts ...grpc.CallOption) (*ListClientsResponse, error)
 	GetClientStatus(ctx context.Context, in *GetClientStatusRequest, opts ...grpc.CallOption) (*ClientStatusResponse, error)
+	AdminSearchFiles(ctx context.Context, in *AdminSearchFilesRequest, opts ...grpc.CallOption) (*AdminSearchFilesResponse, error)
 	PushRestore(ctx context.Context, opts ...grpc.CallOption) (CommandService_PushRestoreClient, error)
 	CommandTunnel(ctx context.Context, opts ...grpc.CallOption) (CommandService_CommandTunnelClient, error)
 }
@@ -54,6 +55,7 @@ const (
 	CommandService_ControlClientWatcher_FullMethodName   = "/tergum.v3.CommandService/ControlClientWatcher"
 	CommandService_ListClients_FullMethodName            = "/tergum.v3.CommandService/ListClients"
 	CommandService_GetClientStatus_FullMethodName        = "/tergum.v3.CommandService/GetClientStatus"
+	CommandService_AdminSearchFiles_FullMethodName       = "/tergum.v3.CommandService/AdminSearchFiles"
 	CommandService_PushRestore_FullMethodName            = "/tergum.v3.CommandService/PushRestore"
 	CommandService_CommandTunnel_FullMethodName    = "/tergum.v3.CommandService/CommandTunnel"
 )
@@ -202,6 +204,15 @@ func (c *commandServiceClient) GetClientStatus(ctx context.Context, in *GetClien
 	return out, nil
 }
 
+func (c *commandServiceClient) AdminSearchFiles(ctx context.Context, in *AdminSearchFilesRequest, opts ...grpc.CallOption) (*AdminSearchFilesResponse, error) {
+	out := new(AdminSearchFilesResponse)
+	err := c.cc.Invoke(ctx, CommandService_AdminSearchFiles_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // CommandService_PushRestoreClient is the client streaming interface for PushRestore.
 type CommandService_PushRestoreClient interface {
 	Send(*FileChunk) error
@@ -285,6 +296,7 @@ type CommandServiceServer interface {
 	ControlClientWatcher(context.Context, *ControlWatcherRequest) (*WatcherResponse, error)
 	ListClients(context.Context, *ListClientsRequest) (*ListClientsResponse, error)
 	GetClientStatus(context.Context, *GetClientStatusRequest) (*ClientStatusResponse, error)
+	AdminSearchFiles(context.Context, *AdminSearchFilesRequest) (*AdminSearchFilesResponse, error)
 	PushRestore(CommandService_PushRestoreServer) error
 	CommandTunnel(CommandService_CommandTunnelServer) error
 	mustEmbedUnimplementedCommandServiceServer()
@@ -340,6 +352,9 @@ func (UnimplementedCommandServiceServer) ListClients(context.Context, *ListClien
 }
 func (UnimplementedCommandServiceServer) GetClientStatus(context.Context, *GetClientStatusRequest) (*ClientStatusResponse, error) {
 	return nil, grpc.Errorf(12, "method GetClientStatus not implemented") //nolint:staticcheck
+}
+func (UnimplementedCommandServiceServer) AdminSearchFiles(context.Context, *AdminSearchFilesRequest) (*AdminSearchFilesResponse, error) {
+	return nil, grpc.Errorf(12, "method AdminSearchFiles not implemented") //nolint:staticcheck
 }
 func (UnimplementedCommandServiceServer) PushRestore(CommandService_PushRestoreServer) error {
 	return grpc.Errorf(12, "method PushRestore not implemented") //nolint:staticcheck
@@ -473,6 +488,10 @@ var CommandService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetClientStatus",
 			Handler:    _CommandService_GetClientStatus_Handler,
+		},
+		{
+			MethodName: "AdminSearchFiles",
+			Handler:    _CommandService_AdminSearchFiles_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{
@@ -775,6 +794,24 @@ func _CommandService_GetClientStatus_Handler(srv interface{}, ctx context.Contex
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(CommandServiceServer).GetClientStatus(ctx, req.(*GetClientStatusRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _CommandService_AdminSearchFiles_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AdminSearchFilesRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(CommandServiceServer).AdminSearchFiles(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: CommandService_AdminSearchFiles_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(CommandServiceServer).AdminSearchFiles(ctx, req.(*AdminSearchFilesRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }

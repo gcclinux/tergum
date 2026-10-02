@@ -107,6 +107,13 @@ func runRestore(cmd *cobra.Command, args []string) error {
 		return runAdminRemoteRestore(cfg, clientID, targetClient, query, backupID, dest)
 	}
 
+	// Admin cross-client query/restore without --target: a client node (admin client)
+	// asks the server to search or restore files from another client's backup to itself.
+	// The server verifies admin privileges and performs the operation.
+	if clientID != "" && targetClient == "" && cfg.Node.Role == "client" {
+		return runAdminRemoteQuery(cfg, clientID, query, backupID, dest, listOnly)
+	}
+
 	// Pre-flight check: ask the server if this client is disabled.
 	if err := connection.CheckClientEnabled(cfg); err != nil {
 		return err
@@ -114,9 +121,7 @@ func runRestore(cmd *cobra.Command, args []string) error {
 
 	dbPath := cfg.Database.Path
 	if clientID != "" {
-		if targetClient == "" && cfg.Node.Role == "client" {
-			return fmt.Errorf("the --client flag cannot be used on a client node")
-		}
+		// Server/hybrid node: access the client database directly
 		dbPath = filepath.Join(filepath.Dir(cfg.Database.Path), "clients", clientID+".db")
 		if _, err := os.Stat(dbPath); os.IsNotExist(err) {
 			return fmt.Errorf("client %q database copy not found on server", clientID)
@@ -622,6 +627,94 @@ func runAdminRemoteRestore(cfg *config.Config, sourceA, targetB, query, backupID
 		fmt.Sprintf("Cross-client restore complete: %d files sent from %s to %s (%d received, %d failed)",
 			resp.FilesSent, sourceA, targetB, resp.FilesReceived, resp.FilesFailed),
 	)
+	return nil
+}
+
+// runAdminRemoteQuery handles admin client queries when using --client without --target.
+// This is the bug condition: an admin client wants to search/restore files from another
+// client's backup directly to itself. The server enforces admin authorization.
+//
+// For --list mode: Calls AdminSearchFiles with ListOnly=true, displays matching files.
+// For restore mode: Calls AdminSearchFiles with ListOnly=false, the server streams files
+// back via the DataService to the admin client's destination directory.
+func runAdminRemoteQuery(cfg *config.Config, sourceClientID, query, backupID, dest string, listOnly bool) error {
+	ctx := context.Background()
+
+	tlsCfg, clientID, err := connection.LoadClientTLS(cfg)
+	if err != nil {
+		return fmt.Errorf("loading TLS config: %w", err)
+	}
+
+	client, err := grpcpkg.Connect(ctx, cfg.Server.Address, cfg.Server.CommandPort, cfg.Server.DataPort, tlsCfg)
+	if err != nil {
+		return fmt.Errorf("connecting to server: %w", err)
+	}
+	client.SetClientID(clientID)
+
+	if listOnly {
+		fmt.Printf("Searching client %s backup via server %s...\n", sourceClientID, cfg.Server.Address)
+	} else {
+		fmt.Printf("Requesting restore from client %s via server %s...\n", sourceClientID, cfg.Server.Address)
+	}
+
+	resp, err := client.AdminSearchFiles(ctx, &proto.AdminSearchFilesRequest{
+		SourceClientId: sourceClientID,
+		Query:          query,
+		BackupId:       backupID,
+		ListOnly:       listOnly,
+		DestPath:       dest,
+	})
+	if err != nil {
+		return err
+	}
+
+	if !resp.Success {
+		return fmt.Errorf("admin search failed: %s", resp.Message)
+	}
+
+	if listOnly {
+		// Display file list
+		if jsonOut {
+			type fileJSON struct {
+				Hash       string `json:"hash"`
+				Path       string `json:"path"`
+				FileName   string `json:"file_name"`
+				BackupID   string `json:"backup_id"`
+				Size       int64  `json:"size"`
+				ModifiedAt int64  `json:"modified_at"`
+			}
+			var out []fileJSON
+			for _, f := range resp.Files {
+				out = append(out, fileJSON{
+					Hash:       f.Blake3Hash,
+					Path:       f.FilePath,
+					FileName:   f.FileName,
+					BackupID:   f.BackupId,
+					Size:       f.FileSize,
+					ModifiedAt: f.ModifiedAt,
+				})
+			}
+			printOutput(map[string]interface{}{"files": out, "count": len(out)}, "")
+		} else {
+			fmt.Printf("Found %d file(s) in client %s backup:\n\n", resp.FilesFound, sourceClientID)
+			for _, f := range resp.Files {
+				fmt.Printf("  %s  %8d  %s\n", f.Blake3Hash[:12], f.FileSize, f.FilePath)
+			}
+		}
+	} else {
+		// Report restore results
+		printOutput(
+			map[string]interface{}{
+				"source":            sourceClientID,
+				"files_found":       resp.FilesFound,
+				"files_restored":    resp.FilesRestored,
+				"bytes_transferred": resp.BytesTransferred,
+			},
+			fmt.Sprintf("Admin restore complete: %d files found, %d restored (%d bytes) from %s",
+				resp.FilesFound, resp.FilesRestored, resp.BytesTransferred, sourceClientID),
+		)
+	}
+
 	return nil
 }
 

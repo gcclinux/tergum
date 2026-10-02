@@ -315,3 +315,34 @@ type ClientStatusResponse struct {
 	MissedBackups       int32                 `json:"missed_backups"`
 	MissedBackupDetails []*MissedBackupDetail `json:"missed_backup_details"`
 }
+
+// AdminSearchFilesRequest allows an admin client to search or restore files
+// from another client's backup directly to itself (the calling admin client).
+// This handles the bug condition where --client is specified without --target.
+type AdminSearchFilesRequest struct {
+	SourceClientId string `json:"source_client_id"` // The client whose backup to search/restore from
+	Query          string `json:"query"`            // File search query pattern (glob/path)
+	BackupId       string `json:"backup_id"`        // Optional: restrict to specific backup
+	ListOnly       bool   `json:"list_only"`        // If true, only list matching files; do not restore
+	DestPath       string `json:"dest_path"`        // Destination path on the admin client for restore
+}
+
+// FileSearchResult represents a single file found in a backup search.
+type FileSearchResult struct {
+	FilePath   string `json:"file_path"`
+	FileName   string `json:"file_name"`
+	FileSize   int64  `json:"file_size"`
+	ModifiedAt int64  `json:"modified_at"`
+	Blake3Hash string `json:"blake3_hash"`
+	BackupId   string `json:"backup_id"`
+}
+
+// AdminSearchFilesResponse returns the result of an admin search/restore request.
+type AdminSearchFilesResponse struct {
+	Success          bool                `json:"success"`
+	Files            []*FileSearchResult `json:"files"`            // Populated when list_only=true
+	FilesFound       int64               `json:"files_found"`      // Total count of matching files
+	FilesRestored    int64               `json:"files_restored"`   // Count of files restored (when list_only=false)
+	BytesTransferred int64               `json:"bytes_transferred"` // Bytes transferred (when list_only=false)
+	Message          string              `json:"message"`          // Human-readable status/error message
+}
