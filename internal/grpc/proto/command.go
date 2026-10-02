@@ -251,3 +251,67 @@ type ControlWatcherRequest struct {
 	TargetClientId string `json:"target_client_id"`
 	Start          bool   `json:"start"`
 }
+
+// ListClientsRequest asks the server for the list of registered clients. It is
+// an admin-gated read-only request used by admin clients to view the server's
+// client registry remotely.
+type ListClientsRequest struct{}
+
+// ClientSummary is one row of the registered-client list. Timestamp fields are
+// RFC3339 strings (UTC) or empty when unset, matching the convention of the
+// other proto messages. LastBackup is resolved server-side (the admin client
+// has no access to the synced client databases).
+type ClientSummary struct {
+	ClientId     string `json:"client_id"`
+	Address      string `json:"address"`
+	OsFamily     string `json:"os_family"`
+	Hostname     string `json:"hostname"`
+	MachineId    string `json:"machine_id"`
+	Status       string `json:"status"`
+	LastSeen     string `json:"last_seen"`
+	LastBackup   string `json:"last_backup"`
+	RegisteredAt string `json:"registered_at"`
+}
+
+// ListClientsResponse returns every registered client as a summary row.
+type ListClientsResponse struct {
+	Clients []*ClientSummary `json:"clients"`
+}
+
+// GetClientStatusRequest asks the server for detailed status of a single
+// registered client. It is admin-gated and read-only.
+type GetClientStatusRequest struct {
+	ClientId string `json:"client_id"`
+}
+
+// MissedBackupDetail describes a single missed scheduled backup for a client.
+// ScheduledAt is an RFC3339 string (UTC) or empty when unset.
+type MissedBackupDetail struct {
+	Level       string `json:"level"`
+	ScheduledAt string `json:"scheduled_at"`
+}
+
+// ClientStatusResponse carries the full status of a single registered client,
+// mirroring registry.ClientInfo. Timestamp fields are RFC3339 strings (UTC) or
+// empty when unset; LastBackup is resolved server-side. Found is false when the
+// requested client is not in the registry, letting the CLI reproduce the local
+// "not found" error without conflating it with a zero-value client.
+type ClientStatusResponse struct {
+	Found               bool                  `json:"found"`
+	ClientId            string                `json:"client_id"`
+	Address             string                `json:"address"`
+	OsFamily            string                `json:"os_family"`
+	Hostname            string                `json:"hostname"`
+	MachineId           string                `json:"machine_id"`
+	Status              string                `json:"status"`
+	Disabled            bool                  `json:"disabled"`
+	WatcherActive       bool                  `json:"watcher_active"`
+	LastSeen            string                `json:"last_seen"`
+	LastBackup          string                `json:"last_backup"`
+	RegisteredAt        string                `json:"registered_at"`
+	HasSchedule         bool                  `json:"has_schedule"`
+	FullBackupCron      string                `json:"full_backup_cron"`
+	AutoBackupCron      string                `json:"auto_backup_cron"`
+	MissedBackups       int32                 `json:"missed_backups"`
+	MissedBackupDetails []*MissedBackupDetail `json:"missed_backup_details"`
+}

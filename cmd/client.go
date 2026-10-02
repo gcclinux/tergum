@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"crypto/sha256"
 	"crypto/x509"
 	"database/sql"
@@ -12,9 +13,12 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"github.com/gcclinux/tergum/internal/config"
 	"github.com/gcclinux/tergum/internal/connection"
+	grpcpkg "github.com/gcclinux/tergum/internal/grpc"
 	"github.com/gcclinux/tergum/internal/registry"
 
 	_ "modernc.org/sqlite"
@@ -169,7 +173,71 @@ func runClientSetDisabled(clientID string, disabled bool) error {
 	return nil
 }
 
+// clientListRow is a neutral, source-agnostic view of a single client row for
+// `tergum client list`. Both the local (registry) path and the remote (gRPC)
+// path build these so rendering goes through one formatter (renderClientList).
+// LastBackup is already resolved by whichever path built the row.
+type clientListRow struct {
+	ClientID     string
+	Address      string
+	OSFamily     string
+	Hostname     string
+	MachineID    string
+	Status       string
+	LastSeen     time.Time
+	LastBackup   time.Time
+	RegisteredAt time.Time
+}
+
+// clientMissedBackup is a neutral view of one missed scheduled backup.
+type clientMissedBackup struct {
+	Level       string
+	ScheduledAt time.Time
+}
+
+// clientSchedule is a neutral view of a client's backup schedule.
+type clientSchedule struct {
+	FullBackupCron string
+	AutoBackupCron string
+}
+
+// clientStatusView is a neutral, source-agnostic view of a single client's full
+// status for `tergum client status`. Both the local and remote paths build it
+// so rendering goes through one formatter (renderClientStatus). LastBackup is
+// already resolved by whichever path built the view.
+type clientStatusView struct {
+	ClientID      string
+	Address       string
+	OSFamily      string
+	Hostname      string
+	MachineID     string
+	Status        string
+	Disabled      bool
+	WatcherActive bool
+	LastSeen      time.Time
+	LastBackup    time.Time
+	RegisteredAt  time.Time
+	Schedule      *clientSchedule
+	MissedBackups []clientMissedBackup
+}
+
 func runClientList() error {
+	cfg, err := config.Load(cfgFile)
+	if err != nil {
+		return fmt.Errorf("loading config: %w", err)
+	}
+
+	// Admin client: route the read to the server over gRPC, authorized there by
+	// this node's SPKI fingerprint. Server/hybrid nodes keep the local path.
+	if cfg.Node.Role == "client" {
+		rows, err := remoteClientList(cfg)
+		if err != nil {
+			return err
+		}
+		renderClientList(rows)
+		return nil
+	}
+
 	reg, clientsDir, cleanup, err := openRegistry("client")
 	if err != nil {
 		return err
@@ -177,7 +245,30 @@ func runClientList() error {
 	defer cleanup()
 
 	clients := reg.ListClients()
+	rows := make([]clientListRow, 0, len(clients))
+	for i := range clients {
+		c := clients[i]
+		rows = append(rows, clientListRow{
+			ClientID:     c.ClientID,
+			Address:      c.Address,
+			OSFamily:     c.OSFamily,
+			Hostname:     c.Hostname,
+			MachineID:    c.MachineID,
+			Status:       c.Status,
+			LastSeen:     c.LastSeen,
+			LastBackup:   resolveLastBackup(&c, clientsDir),
+			RegisteredAt: c.RegisteredAt,
+		})
+	}
 
+	renderClientList(rows)
+	return nil
+}
+
+// renderClientList writes the client list to stdout, honoring --json. This is
+// the single formatter shared by the local and remote paths; the output is
+// identical regardless of where the rows came from.
+func renderClientList(rows []clientListRow) {
 	if jsonOut {
 		type clientEntry struct {
 			ClientID     string `json:"client_id"`
@@ -191,8 +282,8 @@ func runClientList() error {
 			RegisteredAt string `json:"registered_at,omitempty"`
 		}
 
-		entries := make([]clientEntry, 0, len(clients))
-		for _, c := range clients {
+		entries := make([]clientEntry, 0, len(rows))
+		for _, c := range rows {
 			entry := clientEntry{
 				ClientID:  c.ClientID,
 				Address:   c.Address,
@@ -204,9 +295,8 @@ func runClientList() error {
 			if !c.LastSeen.IsZero() {
 				entry.LastSeen = c.LastSeen.Local().Format(time.DateTime)
 			}
-			lastBackup := resolveLastBackup(&c, clientsDir)
-			if !lastBackup.IsZero() {
-				entry.LastBackup = lastBackup.Local().Format(time.DateTime)
+			if !c.LastBackup.IsZero() {
+				entry.LastBackup = c.LastBackup.Local().Format(time.DateTime)
 			}
 			if !c.RegisteredAt.IsZero() {
 				entry.RegisteredAt = c.RegisteredAt.Local().Format(time.DateTime)
@@ -215,26 +305,25 @@ func runClientList() error {
 		}
 
 		printOutput(entries, "")
-		return nil
+		return
 	}
 
-	if len(clients) == 0 {
+	if len(rows) == 0 {
 		fmt.Println("No clients registered.")
-		return nil
+		return
 	}
 
 	w := tabwriter.NewWriter(os.Stdout, 0, 4, 2, ' ', 0)
 	fmt.Fprintf(w, "CLIENT\tADDRESS\tOS\tSTATUS\tLAST SEEN\tLAST BACKUP\n")
 	fmt.Fprintf(w, "------\t-------\t--\t------\t---------\t-----------\n")
-	for _, c := range clients {
+	for _, c := range rows {
 		lastSeen := "never"
 		if !c.LastSeen.IsZero() {
 			lastSeen = formatTimeAgo(c.LastSeen)
 		}
-		lastBackup := resolveLastBackup(&c, clientsDir)
 		lastBackupStr := "never"
-		if !lastBackup.IsZero() {
-			lastBackupStr = formatTimeAgo(lastBackup)
+		if !c.LastBackup.IsZero() {
+			lastBackupStr = formatTimeAgo(c.LastBackup)
 		}
 		osFamily := c.OSFamily
 		if osFamily == "" {
@@ -243,11 +332,25 @@ func runClientList() error {
 		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n", c.ClientID, c.Address, osFamily, c.Status, lastSeen, lastBackupStr)
 	}
 	w.Flush()
-
-	return nil
 }
 
 func runClientStatus(clientID string) error {
+	cfg, err := config.Load(cfgFile)
+	if err != nil {
+		return fmt.Errorf("loading config: %w", err)
+	}
+
+	// Admin client: route the read to the server over gRPC. Server/hybrid nodes
+	// keep the local path.
+	if cfg.Node.Role == "client" {
+		view, err := remoteClientStatus(cfg, clientID)
+		if err != nil {
+			return err
+		}
+		renderClientStatus(view)
+		return nil
+	}
+
 	reg, clientsDir, cleanup, err := openRegistry("client")
 	if err != nil {
 		return err
@@ -259,8 +362,39 @@ func runClientStatus(clientID string) error {
 		return fmt.Errorf("client %q not found in registry", clientID)
 	}
 
-	lastBackup := resolveLastBackup(ci, clientsDir)
+	view := clientStatusView{
+		ClientID:      ci.ClientID,
+		Address:       ci.Address,
+		OSFamily:      ci.OSFamily,
+		Hostname:      ci.Hostname,
+		MachineID:     ci.MachineID,
+		Status:        ci.Status,
+		Disabled:      ci.Disabled,
+		WatcherActive: ci.WatcherActive,
+		LastSeen:      ci.LastSeen,
+		LastBackup:    resolveLastBackup(ci, clientsDir),
+		RegisteredAt:  ci.RegisteredAt,
+	}
+	if ci.Schedule != nil {
+		view.Schedule = &clientSchedule{
+			FullBackupCron: ci.Schedule.FullBackupCron,
+			AutoBackupCron: ci.Schedule.AutoBackupCron,
+		}
+	}
+	for _, mb := range ci.MissedBackups {
+		view.MissedBackups = append(view.MissedBackups, clientMissedBackup{
+			Level:       mb.Level,
+			ScheduledAt: mb.ScheduledAt,
+		})
+	}
 
+	renderClientStatus(view)
+	return nil
+}
+
+// renderClientStatus writes a single client's status to stdout, honoring
+// --json. This is the single formatter shared by the local and remote paths.
+func renderClientStatus(view clientStatusView) {
 	if jsonOut {
 		type clientStatus struct {
 			ClientID      string `json:"client_id"`
@@ -282,92 +416,204 @@ func runClientStatus(clientID string) error {
 		}
 
 		status := clientStatus{
-			ClientID:      ci.ClientID,
-			Address:       ci.Address,
-			OSFamily:      ci.OSFamily,
-			Hostname:      ci.Hostname,
-			MachineID:     ci.MachineID,
-			Status:        ci.Status,
-			Disabled:      ci.Disabled,
-			WatcherActive: ci.WatcherActive,
-			MissedBackups: len(ci.MissedBackups),
+			ClientID:      view.ClientID,
+			Address:       view.Address,
+			OSFamily:      view.OSFamily,
+			Hostname:      view.Hostname,
+			MachineID:     view.MachineID,
+			Status:        view.Status,
+			Disabled:      view.Disabled,
+			WatcherActive: view.WatcherActive,
+			MissedBackups: len(view.MissedBackups),
 		}
-		if !ci.LastSeen.IsZero() {
-			status.LastSeen = ci.LastSeen.Local().Format(time.DateTime)
+		if !view.LastSeen.IsZero() {
+			status.LastSeen = view.LastSeen.Local().Format(time.DateTime)
 		}
-		if !lastBackup.IsZero() {
-			status.LastBackup = lastBackup.Local().Format(time.DateTime)
+		if !view.LastBackup.IsZero() {
+			status.LastBackup = view.LastBackup.Local().Format(time.DateTime)
 		}
-		if !ci.RegisteredAt.IsZero() {
-			status.RegisteredAt = ci.RegisteredAt.Local().Format(time.DateTime)
+		if !view.RegisteredAt.IsZero() {
+			status.RegisteredAt = view.RegisteredAt.Local().Format(time.DateTime)
 		}
-		if ci.Schedule != nil {
+		if view.Schedule != nil {
 			status.Schedule = &struct {
 				FullBackupCron string `json:"full_backup_cron,omitempty"`
 				AutoBackupCron string `json:"auto_backup_cron,omitempty"`
 			}{
-				FullBackupCron: ci.Schedule.FullBackupCron,
-				AutoBackupCron: ci.Schedule.AutoBackupCron,
+				FullBackupCron: view.Schedule.FullBackupCron,
+				AutoBackupCron: view.Schedule.AutoBackupCron,
 			}
 		}
 
 		printOutput(status, "")
-		return nil
+		return
 	}
 
 	// Human-friendly output.
-	fmt.Printf("Client:         %s\n", ci.ClientID)
-	fmt.Printf("Address:        %s\n", ci.Address)
-	if ci.OSFamily != "" {
-		fmt.Printf("OS Family:      %s\n", ci.OSFamily)
+	fmt.Printf("Client:         %s\n", view.ClientID)
+	fmt.Printf("Address:        %s\n", view.Address)
+	if view.OSFamily != "" {
+		fmt.Printf("OS Family:      %s\n", view.OSFamily)
 	}
-	if ci.Hostname != "" {
-		fmt.Printf("Hostname:       %s\n", ci.Hostname)
+	if view.Hostname != "" {
+		fmt.Printf("Hostname:       %s\n", view.Hostname)
 	}
-	if ci.MachineID != "" {
-		fmt.Printf("Machine ID:     %s\n", ci.MachineID)
+	if view.MachineID != "" {
+		fmt.Printf("Machine ID:     %s\n", view.MachineID)
 	}
-	fmt.Printf("Status:         %s\n", ci.Status)
-	if ci.Disabled {
+	fmt.Printf("Status:         %s\n", view.Status)
+	if view.Disabled {
 		fmt.Printf("Disabled:       true\n")
 	}
 
-	if !ci.LastSeen.IsZero() {
-		fmt.Printf("Last Seen:      %s (%s)\n", ci.LastSeen.Local().Format(time.DateTime), formatTimeAgo(ci.LastSeen))
+	if !view.LastSeen.IsZero() {
+		fmt.Printf("Last Seen:      %s (%s)\n", view.LastSeen.Local().Format(time.DateTime), formatTimeAgo(view.LastSeen))
 	} else {
 		fmt.Printf("Last Seen:      never\n")
 	}
 
-	if !lastBackup.IsZero() {
-		fmt.Printf("Last Backup:    %s (%s)\n", lastBackup.Local().Format(time.DateTime), formatTimeAgo(lastBackup))
+	if !view.LastBackup.IsZero() {
+		fmt.Printf("Last Backup:    %s (%s)\n", view.LastBackup.Local().Format(time.DateTime), formatTimeAgo(view.LastBackup))
 	} else {
 		fmt.Printf("Last Backup:    never\n")
 	}
 
-	fmt.Printf("Watcher Active: %v\n", ci.WatcherActive)
+	fmt.Printf("Watcher Active: %v\n", view.WatcherActive)
 
-	if !ci.RegisteredAt.IsZero() {
-		fmt.Printf("Registered:     %s\n", ci.RegisteredAt.Local().Format(time.DateTime))
+	if !view.RegisteredAt.IsZero() {
+		fmt.Printf("Registered:     %s\n", view.RegisteredAt.Local().Format(time.DateTime))
 	}
 
-	if ci.Schedule != nil {
+	if view.Schedule != nil {
 		fmt.Printf("Schedule:\n")
-		if ci.Schedule.FullBackupCron != "" {
-			fmt.Printf("  Full Backup:  %s\n", ci.Schedule.FullBackupCron)
+		if view.Schedule.FullBackupCron != "" {
+			fmt.Printf("  Full Backup:  %s\n", view.Schedule.FullBackupCron)
 		}
-		if ci.Schedule.AutoBackupCron != "" {
-			fmt.Printf("  Auto Backup:  %s\n", ci.Schedule.AutoBackupCron)
+		if view.Schedule.AutoBackupCron != "" {
+			fmt.Printf("  Auto Backup:  %s\n", view.Schedule.AutoBackupCron)
 		}
 	}
 
-	if len(ci.MissedBackups) > 0 {
-		fmt.Printf("Missed Backups: %d\n", len(ci.MissedBackups))
-		for _, mb := range ci.MissedBackups {
+	if len(view.MissedBackups) > 0 {
+		fmt.Printf("Missed Backups: %d\n", len(view.MissedBackups))
+		for _, mb := range view.MissedBackups {
 			fmt.Printf("  - %s backup scheduled at %s\n", mb.Level, mb.ScheduledAt.Local().Format(time.DateTime))
 		}
 	}
+}
 
-	return nil
+// dialAdminServer connects to the server command channel as this (admin) client
+// node, exactly like runAdminRemoteRestore. The server authorizes read access
+// by this node's trusted mTLS SPKI fingerprint.
+func dialAdminServer(ctx context.Context, cfg *config.Config) (*grpcpkg.TergumClient, error) {
+	tlsCfg, clientID, err := connection.LoadClientTLS(cfg)
+	if err != nil {
+		return nil, fmt.Errorf("loading TLS config: %w", err)
+	}
+	client, err := grpcpkg.Connect(ctx, cfg.Server.Address, cfg.Server.CommandPort, cfg.Server.DataPort, tlsCfg)
+	if err != nil {
+		return nil, fmt.Errorf("connecting to server: %w", err)
+	}
+	client.SetClientID(clientID)
+	return client, nil
+}
+
+// adminAuthzError converts a server authorization denial into an actionable
+// message for the operator; other errors pass through unchanged.
+func adminAuthzError(err error) error {
+	if status.Code(err) == codes.PermissionDenied {
+		return fmt.Errorf("this client is not authorized as an admin client on the server (ask the server operator to run 'tergum admin-client add')")
+	}
+	return err
+}
+
+// parseProtoTime parses an RFC3339 timestamp carried in a proto message back to
+// a time.Time, returning the zero time for an empty or unparseable value.
+func parseProtoTime(s string) time.Time {
+	if s == "" {
+		return time.Time{}
+	}
+	if t, err := time.Parse(time.RFC3339, s); err == nil {
+		return t
+	}
+	return time.Time{}
+}
+
+// remoteClientList asks the server for its registered-client list and maps the
+// response into neutral rows for the shared renderer.
+func remoteClientList(cfg *config.Config) ([]clientListRow, error) {
+	ctx := context.Background()
+	client, err := dialAdminServer(ctx, cfg)
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := client.ListClients(ctx)
+	if err != nil {
+		return nil, adminAuthzError(err)
+	}
+
+	rows := make([]clientListRow, 0, len(resp.Clients))
+	for _, c := range resp.Clients {
+		rows = append(rows, clientListRow{
+			ClientID:     c.ClientId,
+			Address:      c.Address,
+			OSFamily:     c.OsFamily,
+			Hostname:     c.Hostname,
+			MachineID:    c.MachineId,
+			Status:       c.Status,
+			LastSeen:     parseProtoTime(c.LastSeen),
+			LastBackup:   parseProtoTime(c.LastBackup),
+			RegisteredAt: parseProtoTime(c.RegisteredAt),
+		})
+	}
+	return rows, nil
+}
+
+// remoteClientStatus asks the server for a single client's status and maps the
+// response into a neutral view for the shared renderer. A not-found client
+// yields the same error as the local path.
+func remoteClientStatus(cfg *config.Config, clientID string) (clientStatusView, error) {
+	ctx := context.Background()
+	client, err := dialAdminServer(ctx, cfg)
+	if err != nil {
+		return clientStatusView{}, err
+	}
+
+	resp, err := client.GetClientStatus(ctx, clientID)
+	if err != nil {
+		return clientStatusView{}, adminAuthzError(err)
+	}
+	if !resp.Found {
+		return clientStatusView{}, fmt.Errorf("client %q not found in registry", clientID)
+	}
+
+	view := clientStatusView{
+		ClientID:      resp.ClientId,
+		Address:       resp.Address,
+		OSFamily:      resp.OsFamily,
+		Hostname:      resp.Hostname,
+		MachineID:     resp.MachineId,
+		Status:        resp.Status,
+		Disabled:      resp.Disabled,
+		WatcherActive: resp.WatcherActive,
+		LastSeen:      parseProtoTime(resp.LastSeen),
+		LastBackup:    parseProtoTime(resp.LastBackup),
+		RegisteredAt:  parseProtoTime(resp.RegisteredAt),
+	}
+	if resp.HasSchedule {
+		view.Schedule = &clientSchedule{
+			FullBackupCron: resp.FullBackupCron,
+			AutoBackupCron: resp.AutoBackupCron,
+		}
+	}
+	for _, mb := range resp.MissedBackupDetails {
+		view.MissedBackups = append(view.MissedBackups, clientMissedBackup{
+			Level:       mb.Level,
+			ScheduledAt: parseProtoTime(mb.ScheduledAt),
+		})
+	}
+	return view, nil
 }
 
 // openRegistry opens a read-only connection to the registry database.

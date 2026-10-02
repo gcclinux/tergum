@@ -749,6 +749,156 @@ func (s *CommandServer) ControlClientWatcher(ctx context.Context, req *proto.Con
 	}, nil
 }
 
+// ListClients returns the server's registered-client list. It is an
+// admin-gated read-only operation: an admin client may view the registry
+// remotely, exactly like RestoreToTarget authorizes. Authorization keys off the
+// caller's trusted mTLS SPKI fingerprint, never a client-supplied identity.
+func (s *CommandServer) ListClients(ctx context.Context, req *proto.ListClientsRequest) (*proto.ListClientsResponse, error) {
+	callerFP := clientSPKIFromContext(ctx)
+
+	if !s.callerIsAdmin(ctx) {
+		s.auditLog.Warn("admin-gated list clients denied",
+			"event", "admin_denied", "op", "list_clients",
+			"caller_fp", shortFP(callerFP))
+		return nil, status.Error(codes.PermissionDenied, "operation requires admin-client privilege")
+	}
+
+	if s.registry == nil {
+		return nil, MapError(&model.ConfigError{Message: "client registry not configured"})
+	}
+
+	clients := s.registry.ListClients()
+	summaries := make([]*proto.ClientSummary, 0, len(clients))
+	for i := range clients {
+		ci := clients[i]
+		summary := &proto.ClientSummary{
+			ClientId:  ci.ClientID,
+			Address:   ci.Address,
+			OsFamily:  ci.OSFamily,
+			Hostname:  ci.Hostname,
+			MachineId: ci.MachineID,
+			Status:    ci.Status,
+		}
+		if !ci.LastSeen.IsZero() {
+			summary.LastSeen = ci.LastSeen.UTC().Format(time.RFC3339)
+		}
+		if lb := s.resolveClientLastBackup(&ci); !lb.IsZero() {
+			summary.LastBackup = lb.UTC().Format(time.RFC3339)
+		}
+		if !ci.RegisteredAt.IsZero() {
+			summary.RegisteredAt = ci.RegisteredAt.UTC().Format(time.RFC3339)
+		}
+		summaries = append(summaries, summary)
+	}
+
+	return &proto.ListClientsResponse{Clients: summaries}, nil
+}
+
+// GetClientStatus returns detailed status for a single registered client. It is
+// an admin-gated read-only operation mirroring ListClients' authorization. A
+// client that is not registered yields Found=false (not an error) so the CLI
+// can reproduce the local "not found" message. Disabled clients are returned
+// (viewing is allowed), matching the local path.
+func (s *CommandServer) GetClientStatus(ctx context.Context, req *proto.GetClientStatusRequest) (*proto.ClientStatusResponse, error) {
+	callerFP := clientSPKIFromContext(ctx)
+
+	if !s.callerIsAdmin(ctx) {
+		s.auditLog.Warn("admin-gated client status denied",
+			"event", "admin_denied", "op", "get_client_status",
+			"caller_fp", shortFP(callerFP), "target", req.ClientId)
+		return nil, status.Error(codes.PermissionDenied, "operation requires admin-client privilege")
+	}
+
+	if s.registry == nil {
+		return nil, MapError(&model.ConfigError{Message: "client registry not configured"})
+	}
+
+	ci := s.registry.GetClient(req.ClientId)
+	if ci == nil {
+		return &proto.ClientStatusResponse{Found: false}, nil
+	}
+
+	resp := &proto.ClientStatusResponse{
+		Found:         true,
+		ClientId:      ci.ClientID,
+		Address:       ci.Address,
+		OsFamily:      ci.OSFamily,
+		Hostname:      ci.Hostname,
+		MachineId:     ci.MachineID,
+		Status:        ci.Status,
+		Disabled:      ci.Disabled,
+		WatcherActive: ci.WatcherActive,
+		MissedBackups: int32(len(ci.MissedBackups)),
+	}
+	if !ci.LastSeen.IsZero() {
+		resp.LastSeen = ci.LastSeen.UTC().Format(time.RFC3339)
+	}
+	if lb := s.resolveClientLastBackup(ci); !lb.IsZero() {
+		resp.LastBackup = lb.UTC().Format(time.RFC3339)
+	}
+	if !ci.RegisteredAt.IsZero() {
+		resp.RegisteredAt = ci.RegisteredAt.UTC().Format(time.RFC3339)
+	}
+	if ci.Schedule != nil {
+		resp.HasSchedule = true
+		resp.FullBackupCron = ci.Schedule.FullBackupCron
+		resp.AutoBackupCron = ci.Schedule.AutoBackupCron
+	}
+	for _, mb := range ci.MissedBackups {
+		detail := &proto.MissedBackupDetail{Level: mb.Level}
+		if !mb.ScheduledAt.IsZero() {
+			detail.ScheduledAt = mb.ScheduledAt.UTC().Format(time.RFC3339)
+		}
+		resp.MissedBackupDetails = append(resp.MissedBackupDetails, detail)
+	}
+
+	return resp, nil
+}
+
+// resolveClientLastBackup returns the client's last backup time. It prefers the
+// registry value and falls back to querying the client's synced database under
+// clientsDir for the most recent completed backup. This is the server-side
+// equivalent of cmd.resolveLastBackup (the admin client has no access to the
+// synced databases, so the resolution happens here).
+func (s *CommandServer) resolveClientLastBackup(ci *registry.ClientInfo) time.Time {
+	if !ci.LastBackup.IsZero() {
+		return ci.LastBackup
+	}
+	if s.clientsDir == "" {
+		return time.Time{}
+	}
+
+	clientDBPath := filepath.Join(s.clientsDir, ci.ClientID+".db")
+	if _, err := os.Stat(clientDBPath); err != nil {
+		return time.Time{}
+	}
+
+	clientDB, err := sql.Open("sqlite", clientDBPath)
+	if err != nil {
+		return time.Time{}
+	}
+	defer clientDB.Close()
+
+	var finishedAt *string
+	err = clientDB.QueryRow(
+		`SELECT finished_at FROM backup_jobs
+		 WHERE status = 'completed' AND finished_at IS NOT NULL
+		 ORDER BY finished_at DESC LIMIT 1`,
+	).Scan(&finishedAt)
+	if err != nil || finishedAt == nil {
+		return time.Time{}
+	}
+
+	// Try RFC3339 first, then legacy datetime format (matches cmd.resolveLastBackup).
+	if t, err := time.Parse(time.RFC3339, *finishedAt); err == nil {
+		return t
+	}
+	if t, err := time.ParseInLocation(time.DateTime, *finishedAt, time.UTC); err == nil {
+		return t
+	}
+	return time.Time{}
+}
+
 // requireActiveClient returns an error if the client is not registered or is
 // disabled. When no registry is configured the check is skipped.
 func (s *CommandServer) requireActiveClient(clientID string) error {

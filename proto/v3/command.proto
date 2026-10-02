@@ -32,6 +32,12 @@ service CommandService {
   // ControlClientWatcher starts or stops the file watcher on a target client.
   // Reserved for the server and admin-capable clients.
   rpc ControlClientWatcher(ControlWatcherRequest) returns (WatcherResponse);
+  // ListClients returns the server's registered-client list. Admin/server-only,
+  // read-only: lets an admin client view the registry remotely.
+  rpc ListClients(ListClientsRequest) returns (ListClientsResponse);
+  // GetClientStatus returns detailed status for one registered client.
+  // Admin/server-only, read-only.
+  rpc GetClientStatus(GetClientStatusRequest) returns (ClientStatusResponse);
   rpc PushRestore(stream FileChunk) returns (PushRestoreResponse);
   rpc CommandTunnel(stream TunnelResponse) returns (stream TunnelCommand);
 }
@@ -233,6 +239,66 @@ message RestoreToTargetResponse {
 message ControlWatcherRequest {
   string target_client_id = 1;
   bool start = 2;
+}
+
+// ListClientsRequest asks for the registered-client list (admin/server only,
+// read-only).
+message ListClientsRequest {}
+
+// ClientSummary is one row of the registered-client list. Timestamp fields are
+// RFC3339 strings (UTC) or empty when unset; last_backup is resolved
+// server-side.
+message ClientSummary {
+  string client_id = 1;
+  string address = 2;
+  string os_family = 3;
+  string hostname = 4;
+  string machine_id = 5;
+  string status = 6;
+  string last_seen = 7;
+  string last_backup = 8;
+  string registered_at = 9;
+}
+
+message ListClientsResponse {
+  repeated ClientSummary clients = 1;
+}
+
+// GetClientStatusRequest asks for one client's detailed status (admin/server
+// only, read-only).
+message GetClientStatusRequest {
+  string client_id = 1;
+}
+
+// MissedBackupDetail describes a single missed scheduled backup. scheduled_at
+// is an RFC3339 string (UTC) or empty when unset.
+message MissedBackupDetail {
+  string level = 1;
+  string scheduled_at = 2;
+}
+
+// ClientStatusResponse carries one client's full status, mirroring
+// registry.ClientInfo. Timestamp fields are RFC3339 strings (UTC) or empty;
+// last_backup is resolved server-side. found is false when the client is not
+// registered.
+message ClientStatusResponse {
+  bool found = 1;
+  string client_id = 2;
+  string address = 3;
+  string os_family = 4;
+  string hostname = 5;
+  string machine_id = 6;
+  string status = 7;
+  bool disabled = 8;
+  bool watcher_active = 9;
+  string last_seen = 10;
+  string last_backup = 11;
+  string registered_at = 12;
+  bool has_schedule = 13;
+  string full_backup_cron = 14;
+  string auto_backup_cron = 15;
+  int32 missed_backups = 16;
+  repeated MissedBackupDetail missed_backup_details = 17;
 }
 
 // PushRestoreResponse is returned after a PushRestore client stream completes.

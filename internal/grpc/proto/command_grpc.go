@@ -22,6 +22,8 @@ type CommandServiceClient interface {
 	RebindClient(ctx context.Context, in *RebindClientRequest, opts ...grpc.CallOption) (*RebindClientResponse, error)
 	RestoreToTarget(ctx context.Context, in *RestoreToTargetRequest, opts ...grpc.CallOption) (*RestoreToTargetResponse, error)
 	ControlClientWatcher(ctx context.Context, in *ControlWatcherRequest, opts ...grpc.CallOption) (*WatcherResponse, error)
+	ListClients(ctx context.Context, in *ListClientsRequest, opts ...grpc.CallOption) (*ListClientsResponse, error)
+	GetClientStatus(ctx context.Context, in *GetClientStatusRequest, opts ...grpc.CallOption) (*ClientStatusResponse, error)
 	PushRestore(ctx context.Context, opts ...grpc.CallOption) (CommandService_PushRestoreClient, error)
 	CommandTunnel(ctx context.Context, opts ...grpc.CallOption) (CommandService_CommandTunnelClient, error)
 }
@@ -50,6 +52,8 @@ const (
 	CommandService_RebindClient_FullMethodName           = "/tergum.v3.CommandService/RebindClient"
 	CommandService_RestoreToTarget_FullMethodName        = "/tergum.v3.CommandService/RestoreToTarget"
 	CommandService_ControlClientWatcher_FullMethodName   = "/tergum.v3.CommandService/ControlClientWatcher"
+	CommandService_ListClients_FullMethodName            = "/tergum.v3.CommandService/ListClients"
+	CommandService_GetClientStatus_FullMethodName        = "/tergum.v3.CommandService/GetClientStatus"
 	CommandService_PushRestore_FullMethodName            = "/tergum.v3.CommandService/PushRestore"
 	CommandService_CommandTunnel_FullMethodName    = "/tergum.v3.CommandService/CommandTunnel"
 )
@@ -180,6 +184,24 @@ func (c *commandServiceClient) ControlClientWatcher(ctx context.Context, in *Con
 	return out, nil
 }
 
+func (c *commandServiceClient) ListClients(ctx context.Context, in *ListClientsRequest, opts ...grpc.CallOption) (*ListClientsResponse, error) {
+	out := new(ListClientsResponse)
+	err := c.cc.Invoke(ctx, CommandService_ListClients_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *commandServiceClient) GetClientStatus(ctx context.Context, in *GetClientStatusRequest, opts ...grpc.CallOption) (*ClientStatusResponse, error) {
+	out := new(ClientStatusResponse)
+	err := c.cc.Invoke(ctx, CommandService_GetClientStatus_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // CommandService_PushRestoreClient is the client streaming interface for PushRestore.
 type CommandService_PushRestoreClient interface {
 	Send(*FileChunk) error
@@ -261,6 +283,8 @@ type CommandServiceServer interface {
 	RebindClient(context.Context, *RebindClientRequest) (*RebindClientResponse, error)
 	RestoreToTarget(context.Context, *RestoreToTargetRequest) (*RestoreToTargetResponse, error)
 	ControlClientWatcher(context.Context, *ControlWatcherRequest) (*WatcherResponse, error)
+	ListClients(context.Context, *ListClientsRequest) (*ListClientsResponse, error)
+	GetClientStatus(context.Context, *GetClientStatusRequest) (*ClientStatusResponse, error)
 	PushRestore(CommandService_PushRestoreServer) error
 	CommandTunnel(CommandService_CommandTunnelServer) error
 	mustEmbedUnimplementedCommandServiceServer()
@@ -310,6 +334,12 @@ func (UnimplementedCommandServiceServer) RestoreToTarget(context.Context, *Resto
 }
 func (UnimplementedCommandServiceServer) ControlClientWatcher(context.Context, *ControlWatcherRequest) (*WatcherResponse, error) {
 	return nil, grpc.Errorf(12, "method ControlClientWatcher not implemented") //nolint:staticcheck
+}
+func (UnimplementedCommandServiceServer) ListClients(context.Context, *ListClientsRequest) (*ListClientsResponse, error) {
+	return nil, grpc.Errorf(12, "method ListClients not implemented") //nolint:staticcheck
+}
+func (UnimplementedCommandServiceServer) GetClientStatus(context.Context, *GetClientStatusRequest) (*ClientStatusResponse, error) {
+	return nil, grpc.Errorf(12, "method GetClientStatus not implemented") //nolint:staticcheck
 }
 func (UnimplementedCommandServiceServer) PushRestore(CommandService_PushRestoreServer) error {
 	return grpc.Errorf(12, "method PushRestore not implemented") //nolint:staticcheck
@@ -435,6 +465,14 @@ var CommandService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ControlClientWatcher",
 			Handler:    _CommandService_ControlClientWatcher_Handler,
+		},
+		{
+			MethodName: "ListClients",
+			Handler:    _CommandService_ListClients_Handler,
+		},
+		{
+			MethodName: "GetClientStatus",
+			Handler:    _CommandService_GetClientStatus_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{
@@ -701,6 +739,42 @@ func _CommandService_ControlClientWatcher_Handler(srv interface{}, ctx context.C
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(CommandServiceServer).ControlClientWatcher(ctx, req.(*ControlWatcherRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _CommandService_ListClients_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListClientsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(CommandServiceServer).ListClients(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: CommandService_ListClients_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(CommandServiceServer).ListClients(ctx, req.(*ListClientsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _CommandService_GetClientStatus_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetClientStatusRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(CommandServiceServer).GetClientStatus(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: CommandService_GetClientStatus_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(CommandServiceServer).GetClientStatus(ctx, req.(*GetClientStatusRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }

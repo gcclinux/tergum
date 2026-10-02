@@ -350,6 +350,33 @@ func (c *TergumClient) ControlClientWatcher(ctx context.Context, req *proto.Cont
 	return resp, err
 }
 
+// ListClients requests the server's registered-client list. The server
+// enforces admin authorization (by this caller's SPKI fingerprint); a
+// PermissionDenied error is non-retryable and surfaces immediately.
+func (c *TergumClient) ListClients(ctx context.Context) (*proto.ListClientsResponse, error) {
+	ctx = c.contextWithMetadata(ctx)
+	var resp *proto.ListClientsResponse
+	err := c.withRetry(ctx, func() error {
+		var e error
+		resp, e = c.command.ListClients(ctx, &proto.ListClientsRequest{})
+		return e
+	})
+	return resp, err
+}
+
+// GetClientStatus requests detailed status for a single registered client. The
+// server enforces admin authorization (by this caller's SPKI fingerprint).
+func (c *TergumClient) GetClientStatus(ctx context.Context, clientID string) (*proto.ClientStatusResponse, error) {
+	ctx = c.contextWithMetadata(ctx)
+	var resp *proto.ClientStatusResponse
+	err := c.withRetry(ctx, func() error {
+		var e error
+		resp, e = c.command.GetClientStatus(ctx, &proto.GetClientStatusRequest{ClientId: clientID})
+		return e
+	})
+	return resp, err
+}
+
 // PushRestore opens a streaming client for pushing restored files to a target client.
 // Streaming RPCs are not retried — the caller manages the stream lifecycle.
 func (c *TergumClient) PushRestore(ctx context.Context) (proto.CommandService_PushRestoreClient, error) {
