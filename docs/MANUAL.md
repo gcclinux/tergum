@@ -1267,6 +1267,28 @@ The clients page shows:
 - If 3 consecutive pings are missed (90 seconds), the server marks the client as **offline**
 - When the client reconnects, it's automatically marked **online** and any missed scheduled backups are triggered
 
+### Admin Clients (cross-client restore)
+
+By default only the server can restore files from one client to another; a client can only restore its own data back to itself. An **admin client** closes that gap: it is an ordinary client that you explicitly grant server-equivalent privileges, so it can orchestrate a restore from client A to client B without being the server.
+
+**Identity: name ↔ fingerprint.** An admin client is identified by its **SPKI fingerprint** — the SHA-256 of its mTLS certificate's public key (SubjectPublicKeyInfo), shown as 64 lowercase hex characters. This is a stable, key-based identity that does not depend on the certificate's Common Name (every client shares the generic CN "Tergum Client") or on any client-supplied metadata. The `name` you record alongside the fingerprint is a human-readable label only. Authorization is enforced on the server after mTLS verification; it never trusts a name or a client-id value sent by the caller, so a client cannot impersonate an admin by claiming someone else's name.
+
+**Granting admin, with mandatory confirmation.** Add an admin client on the server (role `server` or `hybrid`):
+
+- Read the fingerprint on the client to be promoted with `tergum client fingerprint`, then on the server run `tergum admin-client add <name> --fingerprint <fp>`. The pasted fingerprint is a trusted value and is applied directly.
+- Or add by name: `tergum admin-client add <name>` resolves the fingerprint from the server's registry (the client must have connected at least once). Because resolving a name to a key is a privilege-granting step, the command prints the resolved fingerprint, last-seen time, machine ID, and hostname and **requires an explicit confirmation** — either an interactive `y/N` answer or the `--yes` flag. The Web UI (**Config → Admin Clients**) does the same: a name-based add shows the resolved fingerprint and requires a confirm click before it is written.
+
+Revoke with `tergum admin-client remove <name>` (or `--fingerprint <fp>`), or the remove button in the Web UI. Removal only reduces privilege, so it needs no confirmation.
+
+**Revocation timing.** The admin list lives in `tergum.toml`; the running server re-reads it on a short interval.
+
+- **Web UI** removals (and additions) take effect **immediately** — the handler triggers a synchronous policy reload after writing the file.
+- **CLI** edits take effect within **≤5 seconds** — the server's authorizer reloads the config on a 5-second ticker. (For a CLI edit to be seen at all, its `--config` path must match the config the server was started with.)
+
+**Cert-reissue caveat.** Because the fingerprint is derived from the certificate's key pair, **re-issuing a client's certificate regenerates its key and changes its fingerprint**. A re-issued client therefore **loses admin status** until you add it again with its new fingerprint. After rotating a client's certificate, run `tergum client fingerprint` on it and re-run `tergum admin-client add` on the server.
+
+**Using it.** From the admin client node: `tergum restore --client A --target B --path "..." --dest ...` sends the request to the server, which authorizes it against the admin list and performs the decrypt-and-push. A non-admin caller gets a permission-denied error. See [CLI.md](CLI.md#tergum-admin-client) for full command details.
+
 ### Security
 
 - All communication uses mutual TLS (mTLS) — both sides verify certificates

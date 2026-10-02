@@ -1787,6 +1787,26 @@ GET /health → {"status": "healthy", "version": "3.0.1", "uptime": "4d 2h 15m"}
 | Brute-force web login | Argon2id + rate limiting |
 | Unauthorized backup trigger | Client certificate validation |
 | Replay attacks | gRPC deadline + nonce in file headers |
+| Privilege escalation to cross-client restore | Admin authorization keyed on SPKI fingerprint, enforced server-side after mTLS |
+| Admin impersonation by name/metadata | Identity derives from the certificate key (SPKI), never the shared CN or client-id |
+
+### Admin-Client Authorization Model
+
+By default the server is the only node that can restore across clients; a client can only restore its own data. The admin-client capability grants selected clients a **server-equivalent** scope without making them the server. The model has three parts: a trusted identity, where enforcement happens, and the scope that identity unlocks.
+
+**Trusted identity — SPKI fingerprint.** A caller's identity is the SHA-256 of the mTLS-verified leaf certificate's `RawSubjectPublicKeyInfo` (SPKI), encoded as lowercase hex. This is a property of the certificate's key pair, so it is stable across reconnects and independent of the certificate Common Name. All Tergum clients share the generic CN "Tergum Client", and client-supplied `client-id` gRPC metadata is attacker-controllable; neither is trusted for authorization. The admin set is the list of fingerprints under `[admin]` in `tergum.toml` (`AdminClient{Name, Fingerprint}` — the name is a human label only). The server resolves the caller fingerprint with `clientSPKIFromContext` and tests membership with a `callerIsAdmin` predicate backed by a config-reloading `AdminPolicy` (fail-closed: a nil policy or an empty/unknown fingerprint is never admin; the policy retains last-known-good on reload error and reloads on a 5-second ticker, with a synchronous `Reload()` used by the Web UI for immediate revocation).
+
+**Enforcement point.** Authorization lives inside the `internal/grpc` command handlers (`CommandServer`), applied **after** mTLS has verified the peer certificate. The CLI and Web UI are convenience editors of the shared `tergum.toml` and are never trust boundaries — they cannot grant access that the server-side predicate does not independently confirm. The companion `DataService` is unchanged and remains self-scoped (no admin predicate).
+
+**Server-equivalent scope.** For an authorized admin caller:
+
+- **Cross-client restore** — `RestoreToTarget` pulls files from a source client's backup and pushes them to a target client (A → B). Non-admin callers receive `PermissionDenied`.
+- **All-client listing** — `ListBackups` honors the requested `client_id` (or returns all clients when unset). A non-admin caller is unconditionally force-scoped to its own trusted identity regardless of the requested `client_id`, **including the empty-id case**, so the empty-id path cannot leak other clients' jobs.
+- **Watcher control** — `ControlClientWatcher` starts/stops the file watcher on any target client. Non-admin callers receive `PermissionDenied`.
+- **Delete** — `DeleteFromBackup` over the command service is gated: a non-admin caller receives `PermissionDenied` *before* any other precondition (the hard gate precedes the "deletion engine not configured" check). An admin passes the gate; the delete path itself is otherwise pending the deletion engine being wired on the command service.
+- **Retention** — `GetRetention` is global and ungated for all callers (read-only policy listing); it is not part of the admin-gated surface.
+
+**Cert reissue.** Because the fingerprint is derived from the key pair, re-issuing a client's certificate changes its SPKI and silently drops its admin status until the new fingerprint is re-added — an intentional fail-closed property, documented for operators in MANUAL.md and CLI.md.
 
 ---
 

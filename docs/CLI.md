@@ -12,6 +12,11 @@
 | [`tergum client status`](#tergum-client-status) | ✅ Working | Show detailed status for a specific client |
 | [`tergum client disable`](#tergum-client-disable) | ✅ Working | Disable a client (no backups, restores, or monitoring) |
 | [`tergum client enable`](#tergum-client-enable) | ✅ Working | Re-enable a previously disabled client |
+| [`tergum client fingerprint`](#tergum-client-fingerprint) | ✅ Working | Print this node's TLS SPKI fingerprint (admin identity) |
+| [`tergum admin-client`](#tergum-admin-client) | ✅ Working | Manage admin clients allowed to perform cross-client restores (server-side) |
+| [`tergum admin-client add`](#tergum-admin-client-add) | ✅ Working | Grant admin privilege to a client |
+| [`tergum admin-client remove`](#tergum-admin-client-remove) | ✅ Working | Revoke a client's admin privilege |
+| [`tergum admin-client list`](#tergum-admin-client-list) | ✅ Working | List configured admin clients and their status |
 | [`tergum admin`](#tergum-admin) | ✅ Working | Start Web UI only (lightweight) |
 | [`tergum node`](#tergum-node) | ✅ Working | Manage node role and hostname settings |
 | [`tergum node show`](#tergum-node-show) | ✅ Working | Show current node role and hostname |
@@ -391,6 +396,38 @@ Client "fedora-laptop" enabled.
 
 ---
 
+#### tergum client fingerprint
+
+Print this node's TLS **SPKI fingerprint** — the SHA-256 of its mTLS certificate's SubjectPublicKeyInfo, as lowercase hex. This is the stable, key-based identity the server uses to recognize an admin client. Run it on the client you want to promote, then paste the value into `tergum admin-client add --fingerprint` on the server. Available on **any** node role.
+
+```
+Usage: tergum client fingerprint [flags]
+
+Flags:
+  --json   Output as JSON ({"fingerprint": "..."})
+```
+
+**Linux / macOS:**
+```bash
+tergum client fingerprint
+tergum client fingerprint --json
+```
+
+**PowerShell (Windows):**
+```powershell
+.\tergum.exe client fingerprint
+.\tergum.exe client fingerprint --json
+```
+
+**Example output:**
+```
+3f9a1c0b7d2e4f58a6b9c0d1e2f30415263748596a7b8c9d0e1f2a3b4c5d6e7f
+```
+
+> The fingerprint is derived from the certificate key pair. Re-issuing a client's certificate regenerates its key and therefore changes this fingerprint — see the cert-reissue caveat under [`tergum admin-client`](#tergum-admin-client).
+
+---
+
 ### tergum admin
 
 Start the Web UI only, without gRPC services, scheduler, or watcher. Use this for lightweight browser-based management.
@@ -418,6 +455,133 @@ tergum admin --port 8080
 
 # Start on a custom port
 .\tergum.exe admin --port 8080
+```
+
+---
+
+### tergum admin-client
+
+Manage the list of **admin clients** recorded in `tergum.toml`. An admin client is an ordinary client whose trusted TLS SPKI fingerprint is granted server-equivalent privileges: it may restore files from one client to another (`tergum restore --client A --target B`) and drive cross-client operations without being the server itself. Only available on nodes with role `server` or `hybrid`.
+
+Authorization is keyed on the client's **SPKI fingerprint** (SHA-256 of its mTLS certificate public key), never on its name or any client-supplied metadata. The name in the config is a human-readable label only. Enforcement happens server-side after mTLS verification; the CLI and Web UI are convenience editors for the same `tergum.toml`, not trust boundaries.
+
+> **Config path caveat:** the CLI edits whatever config `--config` resolves to (default `~/.config/tergum/tergum.toml`). For an edit to take effect at the running server's authorizer, the `--config` path must match the config the server was started with. A mismatch writes a file the server never reads. CLI edits are picked up by the server's authorizer within **≤5s** (its config-reload ticker); Web UI edits apply immediately.
+
+```
+Usage: tergum admin-client <subcommand>
+
+Subcommands:
+  add <name>      Grant admin privilege to a client
+  remove <name>   Revoke a client's admin privilege
+  list            List configured admin clients and their status
+```
+
+All subcommands honor the global `--config`, `--json`, and `--dry-run` flags.
+
+---
+
+#### tergum admin-client add
+
+Grant admin privilege to a client by recording its SPKI fingerprint in `tergum.toml`. There are two ways to resolve the fingerprint:
+
+- **Trusted path** — pass `--fingerprint` with the value from `tergum client fingerprint` on that node. The fingerprint is normalized (trimmed, lowercased) and used directly, no prompt.
+- **Registry lookup** — omit `--fingerprint` to resolve by client name. The client must have connected at least once so the server has recorded its fingerprint. The resolved fingerprint, last-seen time, machine ID, and hostname are printed and you must confirm with `--yes` (non-interactive) or an interactive `y/N` prompt before the config is written.
+
+Re-adding an already-present fingerprint reports `status: unchanged` and does not rewrite the config.
+
+```
+Usage: tergum admin-client add <name> [flags]
+
+Flags:
+  --fingerprint string   SPKI fingerprint of the client (trusted; skips registry lookup)
+  --yes                  Skip the confirmation prompt for a registry-resolved fingerprint
+```
+
+**Linux / macOS:**
+```bash
+# Trusted path: paste the fingerprint from the client
+tergum admin-client add ops-laptop --fingerprint 3f9a1c0b7d2e4f58a6b9c0d1e2f30415263748596a7b8c9d0e1f2a3b4c5d6e7f
+
+# Registry lookup by name, with explicit confirmation
+tergum admin-client add ops-laptop --yes
+
+# Preview without writing (global --dry-run)
+tergum admin-client add ops-laptop --fingerprint 3f9a...e7f --dry-run
+
+# JSON output for scripting
+tergum admin-client add ops-laptop --fingerprint 3f9a...e7f --json
+```
+
+**PowerShell (Windows):**
+```powershell
+.\tergum.exe admin-client add ops-laptop --fingerprint 3f9a1c0b7d2e4f58a6b9c0d1e2f30415263748596a7b8c9d0e1f2a3b4c5d6e7f
+.\tergum.exe admin-client add ops-laptop --yes
+```
+
+**Example output:**
+```
+Admin client "ops-laptop" added (3f9a1c0b7d2e4f58a6b9c0d1e2f30415263748596a7b8c9d0e1f2a3b4c5d6e7f).
+```
+
+---
+
+#### tergum admin-client remove
+
+Revoke a client's admin privilege. By default the entry is matched by name; pass `--fingerprint` to match by SPKI fingerprint instead. Removal only reduces privilege, so no confirmation is required. If nothing matches, the command reports `status: unchanged` and makes no change.
+
+```
+Usage: tergum admin-client remove <name> [flags]
+
+Flags:
+  --fingerprint string   Remove by SPKI fingerprint instead of by name
+```
+
+**Linux / macOS:**
+```bash
+tergum admin-client remove ops-laptop
+tergum admin-client remove ops-laptop --fingerprint 3f9a...e7f
+```
+
+**PowerShell (Windows):**
+```powershell
+.\tergum.exe admin-client remove ops-laptop
+```
+
+**Example output:**
+```
+Admin client "ops-laptop" removed.
+```
+
+---
+
+#### tergum admin-client list
+
+List the configured admin clients, cross-referenced with the registry for live online/offline status. The full 64-hex fingerprint is shown (never truncated). An entry whose fingerprint matches no connected client shows `offline`.
+
+```
+Usage: tergum admin-client list [flags]
+
+Flags:
+  --json   Output as JSON (array of {name, fingerprint, status})
+```
+
+**Linux / macOS:**
+```bash
+tergum admin-client list
+tergum admin-client list --json
+```
+
+**PowerShell (Windows):**
+```powershell
+.\tergum.exe admin-client list
+.\tergum.exe admin-client list --json
+```
+
+**Example output:**
+```
+NAME        FINGERPRINT                                                       STATUS
+----        -----------                                                       ------
+ops-laptop  3f9a1c0b7d2e4f58a6b9c0d1e2f30415263748596a7b8c9d0e1f2a3b4c5d6e7f  online
 ```
 
 ---
@@ -1504,6 +1668,9 @@ $env:TERGUM_PASSPHRASE="fedora_passphrase"; .\tergum.exe restore --client fedora
 - The target client must be online (registered in the server's client registry)
 - The server must have TLS configured to connect to the target client
 - The `TERGUM_PASSPHRASE` is the source client's passphrase (for decryption)
+
+**Admin-client cross-client restore (from a client node):**
+Running `tergum restore --client A --target B` from a node whose role is `client` sends the request to the server over gRPC. The server authorizes the call against its admin-client list (keyed on the caller's TLS SPKI fingerprint) and performs the decrypt-and-push itself. This lets a designated admin client orchestrate a restore from client A to client B without being the server. Register the client first with [`tergum admin-client add`](#tergum-admin-client-add); a non-admin caller receives a permission-denied error. `--list` is not supported in this admin cross-client mode.
 
 ---
 
