@@ -47,7 +47,8 @@ import (
 
 // Server holds all subsystems and manages their lifecycle.
 type Server struct {
-	cfg *config.Config
+	cfg        *config.Config
+	configPath string // resolved absolute path to the TOML config file
 
 	// gRPC servers
 	grpcCmd       *grpc.Server
@@ -84,12 +85,20 @@ type Server struct {
 
 // New creates a new Server from the given configuration. It initializes all
 // subsystems but does not start them. Call Start() to begin serving.
-func New(cfg *config.Config) (*Server, error) {
+// configPath is the resolved (absolute) path to the TOML config file; it is
+// threaded to the Web UI, the local backup trigger, and the admin policy so a
+// server started with --config /custom/path drives all of them off that file.
+func New(cfg *config.Config, configPath string) (*Server, error) {
 	logger := observe.Logger("server")
 
+	if configPath == "" {
+		configPath = config.DefaultConfigPath()
+	}
+
 	s := &Server{
-		cfg:    cfg,
-		logger: logger,
+		cfg:        cfg,
+		configPath: configPath,
+		logger:     logger,
 	}
 
 	return s, nil
@@ -180,16 +189,59 @@ func (s *Server) Start(ctx context.Context) error {
 	// Build gRPC servers.
 	clientsDir := clientsDirFromDB(s.cfg.Database.Path)
 	tunnelHub := grpcpkg.NewTunnelHub(observe.Logger("tunnel-hub"))
+
+	// Admin-client authorization: build the admin policy from the resolved config
+	// path with a 5s refresh ticker wired to the server lifecycle ctx. Enforcement
+	// is entirely server-side (inside the command server handlers).
+	adminPolicy := grpcpkg.NewConfigAdminPolicy(ctx, s.configPath, 5*time.Second)
+
+	// Build the remote client connector early so it can serve as both the
+	// cross-client restore transport and the admin watcher controller. It is also
+	// reused by the Web UI below.
+	var connector *webui.RemoteClientConnector
+	if clientTLS != nil {
+		connector = webui.NewRemoteClientConnector(webui.RemoteClientConnectorConfig{
+			Registry:  reg,
+			TLSCfg:    clientTLS,
+			TunnelHub: tunnelHub,
+			Logger:    observe.Logger("client-connector"),
+		})
+	}
+
+	// Build the cross-client restore orchestrator (server-side master key, shared
+	// CAS, source client DB copy). It is only functional when the connector exists.
+	var crossRestorer grpcpkg.CrossRestorer
+	if connector != nil {
+		masterKey, _ := loadMasterKeyFromEnv(s.cfg) // nil if TERGUM_PASSPHRASE unset — fails closed on encrypted data
+		crossRestorer = &crossRestoreAdapter{
+			clientsDir: clientsDir,
+			storageDir: storageDir,
+			masterKey:  masterKey,
+			encEnabled: s.cfg.Encryption.Enabled,
+			connector:  connector,
+		}
+	}
+
+	// The connector already satisfies grpcpkg.ClientWatcherController
+	// (StartClientWatcher/StopClientWatcher).
+	var watcherCtrl grpcpkg.ClientWatcherController
+	if connector != nil {
+		watcherCtrl = connector
+	}
+
 	cmdServer := grpcpkg.NewCommandServer(grpcpkg.CommandServerConfig{
-		BackupEngine:    backupEng,
-		Repo:            repo,
-		DeletionEngine:  nil, // wired separately when deletion adapter is complete
-		RetentionEngine: retEngine,
-		Registry:        reg,
-		TunnelHub:       tunnelHub,
-		MaxBackups:      s.cfg.Backup.MaxConcurrentUploads,
-		Version:         version.Version,
-		ClientsDir:      clientsDir,
+		BackupEngine:      backupEng,
+		Repo:              repo,
+		DeletionEngine:    nil, // wired separately when deletion adapter is complete
+		RetentionEngine:   retEngine,
+		Registry:          reg,
+		TunnelHub:         tunnelHub,
+		MaxBackups:        s.cfg.Backup.MaxConcurrentUploads,
+		Version:           version.Version,
+		ClientsDir:        clientsDir,
+		AdminPolicy:       adminPolicy,
+		CrossRestorer:     crossRestorer,
+		WatcherController: watcherCtrl,
 		OnClientConnect: func(clientID string) {
 			// Refresh last backup time from the server's copy of the client DB.
 			dbPath := filepath.Join(clientsDir, clientID+".db")
@@ -325,7 +377,7 @@ func (s *Server) Start(ctx context.Context) error {
 		var webuiOpts []webui.ServerOption
 		webuiOpts = append(webuiOpts, webui.WithLogger(observe.Logger("webui")))
 		webuiOpts = append(webuiOpts, webui.WithRepository(s.repo))
-		webuiOpts = append(webuiOpts, webui.WithConfigPath(config.DefaultConfigPath()))
+		webuiOpts = append(webuiOpts, webui.WithConfigPath(s.configPath))
 		webuiOpts = append(webuiOpts, webui.WithFullConfig(s.cfg))
 
 		// Enable web-triggered backups if TERGUM_PASSPHRASE is set.
@@ -361,16 +413,14 @@ func (s *Server) Start(ctx context.Context) error {
 
 		// Wire client registry and remote connector for client management.
 		webuiOpts = append(webuiOpts, webui.WithClientRegistry(reg))
-		if clientTLS != nil {
-			connector := webui.NewRemoteClientConnector(webui.RemoteClientConnectorConfig{
-				Registry:  reg,
-				TLSCfg:    clientTLS,
-				TunnelHub: tunnelHub,
-				Logger:    observe.Logger("client-connector"),
-			})
+		if connector != nil {
 			webuiOpts = append(webuiOpts, webui.WithClientConnector(connector))
 			s.logger.Info("remote client connector enabled")
 		}
+
+		// Provide the admin policy so the Web UI can Reload() it after admin-list
+		// mutations (FEAT-003).
+		webuiOpts = append(webuiOpts, webui.WithAdminPolicy(adminPolicy))
 
 		uiServer, err := webui.NewServer(
 			s.cfg.WebUI,
@@ -638,7 +688,7 @@ func (s *Server) startClient(ctx context.Context) error {
 		Repo:           repo,
 		Encryptor:      encryptor,
 		Cfg:            s.cfg,
-		ConfigPath:     config.DefaultConfigPath(),
+		ConfigPath:     s.configPath,
 		MasterKey:      masterKey,
 		Version:        version.Version,
 		WatcherFactory: watcherFactory,

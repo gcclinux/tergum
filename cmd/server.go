@@ -44,7 +44,17 @@ Handles graceful shutdown on SIGTERM/SIGINT (exit code 10).`,
 				return err
 			}
 
-			srv, err := server.New(cfg)
+			// Resolve the config path to an absolute path so the server threads a
+			// single stable path to the Web UI, backup trigger and admin policy.
+			resolvedPath := cfgPath
+			if resolvedPath == "" {
+				resolvedPath = config.DefaultConfigPath()
+			}
+			if abs, err := filepath.Abs(resolvedPath); err == nil {
+				resolvedPath = abs
+			}
+
+			srv, err := server.New(cfg, resolvedPath)
 			if err != nil {
 				return err
 			}

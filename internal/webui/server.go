@@ -16,6 +16,7 @@ import (
 
 	"github.com/gcclinux/tergum/internal/config"
 	"github.com/gcclinux/tergum/internal/db"
+	grpcpkg "github.com/gcclinux/tergum/internal/grpc"
 	"github.com/gcclinux/tergum/internal/model"
 	"github.com/gcclinux/tergum/internal/observe"
 	registryPkg "github.com/gcclinux/tergum/internal/registry"
@@ -45,6 +46,7 @@ type Server struct {
 	watcherController WatcherController
 	clientRegistry    ClientRegistry
 	clientConnector   ClientConnector
+	adminPolicy       grpcpkg.AdminPolicy
 	startTime         time.Time
 }
 
@@ -153,6 +155,14 @@ func WithClientRegistry(reg ClientRegistry) ServerOption {
 func WithClientConnector(cc ClientConnector) ServerOption {
 	return func(s *Server) {
 		s.clientConnector = cc
+	}
+}
+
+// WithAdminPolicy sets the admin policy so the Web UI can trigger a synchronous
+// Reload() after mutating the admin-client list (FEAT-003).
+func WithAdminPolicy(policy grpcpkg.AdminPolicy) ServerOption {
+	return func(s *Server) {
+		s.adminPolicy = policy
 	}
 }
 

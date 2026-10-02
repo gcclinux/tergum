@@ -13,7 +13,7 @@ import (
 
 func TestNew_ReturnsServer(t *testing.T) {
 	cfg := &config.Config{}
-	srv, err := New(cfg)
+	srv, err := New(cfg, "")
 	if err != nil {
 		t.Fatalf("New() error: %v", err)
 	}
@@ -40,7 +40,7 @@ func TestNew_DefaultState(t *testing.T) {
 		},
 	}
 
-	srv, err := New(cfg)
+	srv, err := New(cfg, "")
 	if err != nil {
 		t.Fatalf("New() error: %v", err)
 	}
@@ -62,7 +62,7 @@ func TestNew_DefaultState(t *testing.T) {
 
 func TestStop_Idempotent(t *testing.T) {
 	cfg := &config.Config{}
-	srv, err := New(cfg)
+	srv, err := New(cfg, "")
 	if err != nil {
 		t.Fatalf("New() error: %v", err)
 	}
@@ -142,7 +142,7 @@ func TestVersion(t *testing.T) {
 
 func TestRunRetentionLoop_StopsOnCancel(t *testing.T) {
 	cfg := &config.Config{}
-	srv, _ := New(cfg)
+	srv, _ := New(cfg, "")
 
 	ctx, cancel := context.WithCancel(context.Background())
 

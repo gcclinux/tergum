@@ -2,8 +2,11 @@ package grpc
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"time"
@@ -12,12 +15,15 @@ import (
 	"github.com/gcclinux/tergum/internal/db"
 	"github.com/gcclinux/tergum/internal/grpc/proto"
 	"github.com/gcclinux/tergum/internal/model"
+	"github.com/gcclinux/tergum/internal/observe"
 	"github.com/gcclinux/tergum/internal/registry"
 	versionPkg "github.com/gcclinux/tergum/internal/version"
 	"github.com/google/uuid"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/peer"
+	"google.golang.org/grpc/status"
 )
 
 // DeletionEngine defines the interface for deletion operations.
@@ -28,6 +34,38 @@ type DeletionEngine interface {
 // RetentionEngine defines the interface for retention policy queries.
 type RetentionEngine interface {
 	ListPolicies(ctx context.Context) ([]model.RetentionPolicy, error)
+}
+
+// CrossRestoreRequest describes a server-side cross-client restore push: pull
+// files from the source client's backup and deliver them to the target client.
+type CrossRestoreRequest struct {
+	SourceClientID string
+	TargetClientID string
+	Query          string
+	BackupID       string
+	File           string
+	Dest           string
+}
+
+// CrossRestoreResult reports the per-file outcome of a cross-client restore.
+type CrossRestoreResult struct {
+	FilesSent     int64
+	FilesReceived int64
+	FilesFailed   int64
+}
+
+// CrossRestorer orchestrates a cross-client restore push. The server injects a
+// concrete implementation (internal/restore.CrossClientRestorer); it is nil in
+// local "both" mode (RestoreToTarget then returns Unimplemented).
+type CrossRestorer interface {
+	RestoreToTarget(ctx context.Context, req CrossRestoreRequest) (CrossRestoreResult, error)
+}
+
+// ClientWatcherController starts/stops the file watcher on a remote client. The
+// server injects the existing RemoteClientConnector; nil disables the feature.
+type ClientWatcherController interface {
+	StartClientWatcher(ctx context.Context, clientID string) error
+	StopClientWatcher(ctx context.Context, clientID string) error
 }
 
 // CommandServer implements the CommandServiceServer interface.
@@ -45,6 +83,12 @@ type CommandServer struct {
 	startedAt       time.Time
 	onClientConnect func(clientID string) // called after a tunnel client reconnects
 	clientsDir      string
+
+	// Admin-client authorization (server-side only).
+	adminPolicy       AdminPolicy
+	crossRestorer     CrossRestorer
+	watcherController ClientWatcherController
+	auditLog          *slog.Logger
 }
 
 // CommandServerConfig holds configuration for the CommandServer.
@@ -59,6 +103,12 @@ type CommandServerConfig struct {
 	Version         string
 	OnClientConnect func(clientID string) // called after a tunnel client reconnects
 	ClientsDir      string
+
+	// Admin-client authorization (server-side only). All optional; nil disables
+	// the corresponding capability.
+	AdminPolicy       AdminPolicy
+	CrossRestorer     CrossRestorer
+	WatcherController ClientWatcherController
 }
 
 // NewCommandServer creates a new CommandServer with the given configuration.
@@ -74,17 +124,21 @@ func NewCommandServer(cfg CommandServerConfig) *CommandServer {
 	}
 
 	return &CommandServer{
-		backupEngine:    cfg.BackupEngine,
-		repo:            cfg.Repo,
-		deletionEngine:  cfg.DeletionEngine,
-		retentionEngine: cfg.RetentionEngine,
-		registry:        cfg.Registry,
-		tunnelHub:       cfg.TunnelHub,
-		backupSem:       NewSemaphore(maxBackups),
-		version:         version,
-		startedAt:       time.Now(),
-		onClientConnect: cfg.OnClientConnect,
-		clientsDir:      cfg.ClientsDir,
+		backupEngine:      cfg.BackupEngine,
+		repo:              cfg.Repo,
+		deletionEngine:    cfg.DeletionEngine,
+		retentionEngine:   cfg.RetentionEngine,
+		registry:          cfg.Registry,
+		tunnelHub:         cfg.TunnelHub,
+		backupSem:         NewSemaphore(maxBackups),
+		version:           version,
+		startedAt:         time.Now(),
+		onClientConnect:   cfg.OnClientConnect,
+		clientsDir:        cfg.ClientsDir,
+		adminPolicy:       cfg.AdminPolicy,
+		crossRestorer:     cfg.CrossRestorer,
+		watcherController: cfg.WatcherController,
+		auditLog:          observe.Logger("command-server"),
 	}
 }
 
@@ -224,6 +278,11 @@ func (s *CommandServer) Ping(ctx context.Context, req *proto.PingRequest) (*prot
 					_ = s.registry.SetLastBackup(clientID, t)
 				}
 			}
+
+			// Record the caller's trusted SPKI fingerprint for admin lookups.
+			if fp := clientSPKIFromContext(ctx); fp != "" {
+				_ = s.registry.SetSPKIFingerprint(clientID, fp)
+			}
 		}
 	}
 
@@ -241,9 +300,39 @@ func (s *CommandServer) ListBackups(ctx context.Context, req *proto.ListBackupsR
 	filter := db.JobFilter{
 		Limit: int(req.Limit),
 	}
-	if req.ClientId != "" {
-		filter.ClientID = &req.ClientId
+
+	switch {
+	case s.registry == nil:
+		// Local "both" mode: no registry means no cross-client scoping — behave
+		// exactly as before (honor req.ClientId only when set).
+		if req.ClientId != "" {
+			filter.ClientID = &req.ClientId
+		}
+	case s.callerIsAdmin(ctx):
+		// Admins may list any client's backups (or all when unset).
+		if req.ClientId != "" {
+			filter.ClientID = &req.ClientId
+		}
+	default:
+		// Non-admin callers are unconditionally scoped to their own backups,
+		// regardless of req.ClientId (including empty). Resolve the trusted
+		// identity from the SPKI fingerprint; fall back to the context identity.
+		scope := ""
+		if fp := clientSPKIFromContext(ctx); fp != "" {
+			if ci := s.registry.FindClientBySPKI(fp); ci != nil {
+				scope = ci.ClientID
+			}
+		}
+		if scope == "" {
+			if cn, err := clientIDFromContext(ctx); err == nil {
+				scope = cn
+			}
+			s.auditLog.Warn("list_backups scope fallback: SPKI not found in registry",
+				"event", "scope_fallback", "resolved_client", scope)
+		}
+		filter.ClientID = &scope
 	}
+
 	if filter.Limit <= 0 {
 		filter.Limit = 50
 	}
@@ -282,6 +371,18 @@ func (s *CommandServer) ListBackups(ctx context.Context, req *proto.ListBackupsR
 
 // DeleteFromBackup delegates to the deletion engine.
 func (s *CommandServer) DeleteFromBackup(ctx context.Context, req *proto.DeleteRequest) (*proto.DeleteResponse, error) {
+	// Hard gate: deletion over the server command service is an admin-only
+	// operation. Only enforced when a registry/policy is present (server mode);
+	// local "both" mode (no registry) keeps today's behavior. Per §3.2.4 the
+	// authorization gate precedes the nil-engine precondition so an admin still
+	// receives the existing "not configured" error.
+	if s.registry != nil && !s.callerIsAdmin(ctx) {
+		s.auditLog.Warn("admin-gated delete denied",
+			"event", "admin_denied", "op", "delete_from_backup",
+			"caller_fp", shortFP(clientSPKIFromContext(ctx)))
+		return nil, status.Error(codes.PermissionDenied, "delete over the server command service requires admin-client privilege")
+	}
+
 	if s.deletionEngine == nil {
 		return nil, MapError(&model.ConfigError{Message: "deletion engine not configured"})
 	}
@@ -368,6 +469,11 @@ func (s *CommandServer) RegisterClient(ctx context.Context, req *proto.RegisterR
 	_, err := s.registry.RegisterWithIdentity(clientID, req.Address, req.OsFamily, req.MachineId, req.Hostname)
 	if err != nil {
 		return nil, MapError(err)
+	}
+
+	// Record the caller's trusted SPKI fingerprint for admin lookups.
+	if fp := clientSPKIFromContext(ctx); fp != "" {
+		_ = s.registry.SetSPKIFingerprint(clientID, fp)
 	}
 
 	return &proto.RegisterResponse{
@@ -526,6 +632,170 @@ func (s *CommandServer) RebindClient(ctx context.Context, req *proto.RebindClien
 	}, nil
 }
 
+// shortFP returns the first 12 hex characters of a fingerprint for audit logs,
+// or "" if the fingerprint is empty.
+func shortFP(fp string) string {
+	if len(fp) <= 12 {
+		return fp
+	}
+	return fp[:12]
+}
+
+// RestoreToTarget performs an admin-authorized cross-client restore: it pulls
+// files from the source client's backup and pushes them to the target client.
+// Authorization is enforced server-side via the admin policy.
+func (s *CommandServer) RestoreToTarget(ctx context.Context, req *proto.RestoreToTargetRequest) (*proto.RestoreToTargetResponse, error) {
+	callerFP := clientSPKIFromContext(ctx)
+
+	// 1. Authorize.
+	if !s.callerIsAdmin(ctx) {
+		s.auditLog.Warn("admin-gated restore denied",
+			"event", "admin_denied", "op", "restore_to_target",
+			"caller_fp", shortFP(callerFP), "target", req.TargetClientId)
+		return nil, status.Error(codes.PermissionDenied, "operation requires admin-client privilege")
+	}
+
+	// 2. Validate the request.
+	if req.SourceClientId == "" || req.TargetClientId == "" {
+		return nil, MapError(&model.ConfigError{Message: "source_client_id and target_client_id are required"})
+	}
+	if req.SourceClientId == req.TargetClientId {
+		return nil, MapError(&model.ConfigError{Message: "source_client_id and target_client_id must differ"})
+	}
+	if req.Query == "" && req.BackupId == "" && req.File == "" {
+		return nil, MapError(&model.ConfigError{Message: "one of query, backup_id, or file is required"})
+	}
+	if err := s.requireActiveClient(req.SourceClientId); err != nil {
+		return nil, err
+	}
+	if err := s.requireActiveClient(req.TargetClientId); err != nil {
+		return nil, err
+	}
+
+	// 3. Delegate to the injected cross-client restorer.
+	if s.crossRestorer == nil {
+		return nil, status.Error(codes.Unimplemented, "cross-client restore is not available on this server")
+	}
+
+	result, err := s.crossRestorer.RestoreToTarget(ctx, CrossRestoreRequest{
+		SourceClientID: req.SourceClientId,
+		TargetClientID: req.TargetClientId,
+		Query:          req.Query,
+		BackupID:       req.BackupId,
+		File:           req.File,
+		Dest:           req.Dest,
+	})
+	if err != nil {
+		return nil, MapError(err)
+	}
+
+	s.auditLog.Info("admin cross-client restore",
+		"event", "admin_cross_client_restore",
+		"caller_fp", shortFP(callerFP),
+		"source", req.SourceClientId,
+		"target", req.TargetClientId,
+		"files_sent", result.FilesSent,
+		"files_failed", result.FilesFailed,
+	)
+
+	return &proto.RestoreToTargetResponse{
+		Success:       result.FilesFailed == 0,
+		FilesSent:     result.FilesSent,
+		FilesReceived: result.FilesReceived,
+		FilesFailed:   result.FilesFailed,
+		Message: fmt.Sprintf("restored from %s to %s: %d sent, %d received, %d failed",
+			req.SourceClientId, req.TargetClientId, result.FilesSent, result.FilesReceived, result.FilesFailed),
+	}, nil
+}
+
+// ControlClientWatcher starts or stops the file watcher on a target client.
+// Authorization is enforced server-side via the admin policy.
+func (s *CommandServer) ControlClientWatcher(ctx context.Context, req *proto.ControlWatcherRequest) (*proto.WatcherResponse, error) {
+	callerFP := clientSPKIFromContext(ctx)
+
+	if !s.callerIsAdmin(ctx) {
+		s.auditLog.Warn("admin-gated watcher control denied",
+			"event", "admin_denied", "op", "control_client_watcher",
+			"caller_fp", shortFP(callerFP), "target", req.TargetClientId)
+		return nil, status.Error(codes.PermissionDenied, "operation requires admin-client privilege")
+	}
+
+	if req.TargetClientId == "" {
+		return nil, MapError(&model.ConfigError{Message: "target_client_id is required"})
+	}
+	if err := s.requireActiveClient(req.TargetClientId); err != nil {
+		return nil, err
+	}
+
+	if s.watcherController == nil {
+		return nil, status.Error(codes.Unimplemented, "client watcher control is not available on this server")
+	}
+
+	var err error
+	action := "stop"
+	if req.Start {
+		action = "start"
+		err = s.watcherController.StartClientWatcher(ctx, req.TargetClientId)
+	} else {
+		err = s.watcherController.StopClientWatcher(ctx, req.TargetClientId)
+	}
+	if err != nil {
+		return nil, MapError(err)
+	}
+
+	return &proto.WatcherResponse{
+		Success: true,
+		Message: fmt.Sprintf("watcher %s requested on client %s", action, req.TargetClientId),
+	}, nil
+}
+
+// requireActiveClient returns an error if the client is not registered or is
+// disabled. When no registry is configured the check is skipped.
+func (s *CommandServer) requireActiveClient(clientID string) error {
+	if s.registry == nil {
+		return nil
+	}
+	ci := s.registry.GetClient(clientID)
+	if ci == nil {
+		return MapError(&model.ConfigError{Message: fmt.Sprintf("client %q is not registered", clientID)})
+	}
+	if ci.Disabled {
+		return MapError(&model.ConfigError{Message: fmt.Sprintf("client %q is disabled", clientID)})
+	}
+	return nil
+}
+
+// clientSPKIFromContext returns the SHA-256 fingerprint (lowercase hex) of the
+// verified mTLS peer certificate's SubjectPublicKeyInfo (SPKI). This is the
+// trusted client identity used for admin authorization — distinct from the
+// shared certificate CN and from any client-supplied client-id metadata.
+// Returns "" when there is no verified peer certificate.
+func clientSPKIFromContext(ctx context.Context) string {
+	p, ok := peer.FromContext(ctx)
+	if !ok {
+		return ""
+	}
+	tlsInfo, ok := p.AuthInfo.(credentials.TLSInfo)
+	if !ok || len(tlsInfo.State.PeerCertificates) == 0 {
+		return ""
+	}
+	sum := sha256.Sum256(tlsInfo.State.PeerCertificates[0].RawSubjectPublicKeyInfo)
+	return hex.EncodeToString(sum[:])
+}
+
+// callerIsAdmin reports whether the caller holds admin-client privilege. It is
+// fail-closed: a nil policy or an empty/unknown SPKI fingerprint is not admin.
+func (s *CommandServer) callerIsAdmin(ctx context.Context) bool {
+	if s.adminPolicy == nil {
+		return false
+	}
+	fp := clientSPKIFromContext(ctx)
+	if fp == "" {
+		return false
+	}
+	return s.adminPolicy.IsAdmin(fp)
+}
+
 // clientIDFromContext extracts the client identity from the mTLS peer
 // certificate Common Name (CN) or gRPC metadata. Returns empty string if TLS info is unavailable.
 func clientIDFromContext(ctx context.Context) (string, error) {
@@ -586,6 +856,13 @@ func (s *CommandServer) CommandTunnel(stream proto.CommandService_CommandTunnelS
 
 	if s.tunnelHub == nil {
 		return fmt.Errorf("tunnel: tunnel hub not configured on this server")
+	}
+
+	// Record the caller's trusted SPKI fingerprint for admin lookups.
+	if s.registry != nil {
+		if fp := clientSPKIFromContext(stream.Context()); fp != "" {
+			_ = s.registry.SetSPKIFingerprint(clientID, fp)
+		}
 	}
 
 	// Register the tunnel.

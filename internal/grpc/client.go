@@ -324,6 +324,32 @@ func (c *TergumClient) RebindClient(ctx context.Context, req *proto.RebindClient
 	return resp, err
 }
 
+// RestoreToTarget requests an admin-authorized cross-client restore push from a
+// source client's backup to a target client.
+func (c *TergumClient) RestoreToTarget(ctx context.Context, req *proto.RestoreToTargetRequest) (*proto.RestoreToTargetResponse, error) {
+	ctx = c.contextWithMetadata(ctx)
+	var resp *proto.RestoreToTargetResponse
+	err := c.withRetry(ctx, func() error {
+		var e error
+		resp, e = c.command.RestoreToTarget(ctx, req)
+		return e
+	})
+	return resp, err
+}
+
+// ControlClientWatcher requests starting or stopping the file watcher on a
+// target client (admin-authorized).
+func (c *TergumClient) ControlClientWatcher(ctx context.Context, req *proto.ControlWatcherRequest) (*proto.WatcherResponse, error) {
+	ctx = c.contextWithMetadata(ctx)
+	var resp *proto.WatcherResponse
+	err := c.withRetry(ctx, func() error {
+		var e error
+		resp, e = c.command.ControlClientWatcher(ctx, req)
+		return e
+	})
+	return resp, err
+}
+
 // PushRestore opens a streaming client for pushing restored files to a target client.
 // Streaming RPCs are not retried — the caller manages the stream lifecycle.
 func (c *TergumClient) PushRestore(ctx context.Context) (proto.CommandService_PushRestoreClient, error) {

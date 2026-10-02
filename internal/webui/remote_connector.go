@@ -297,6 +297,21 @@ func (c *RemoteClientConnector) checkNotDisabled(clientID string) error {
 // Ensure RemoteClientConnector satisfies the ClientConnector interface at compile time.
 var _ ClientConnector = (*RemoteClientConnector)(nil)
 
+// OpenPushRestoreStream opens a PushRestore stream to the target client. It
+// performs the same disabled check, registry lookup and mTLS dial as the other
+// connector methods, then returns the raw proto stream so a caller (e.g. the
+// server-side cross-client restorer) can drive the push itself.
+func (c *RemoteClientConnector) OpenPushRestoreStream(ctx context.Context, targetClientID string) (proto.CommandService_PushRestoreClient, error) {
+	if err := c.checkNotDisabled(targetClientID); err != nil {
+		return nil, err
+	}
+	client, err := c.connectToClient(targetClientID)
+	if err != nil {
+		return nil, fmt.Errorf("connect to target client %s: %w", targetClientID, err)
+	}
+	return client.PushRestore(ctx)
+}
+
 // PushRestoreToClient connects to the target client and streams decrypted file data
 // via the PushRestore RPC. It reads each file from CAS, decrypts it with the source
 // client's master key, and pushes it to the target client for writing.
