@@ -97,6 +97,16 @@ func runRestore(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("loading config: %w", err)
 	}
 
+	// Admin cross-client restore: a client node (admin client) asks the server to
+	// restore from source client A to target client B. This path never touches a
+	// local source database or key material — the server performs the restore.
+	if targetClient != "" && clientID != "" && cfg.Node.Role == "client" {
+		if listOnly {
+			return fmt.Errorf("--list is not supported in admin cross-client mode")
+		}
+		return runAdminRemoteRestore(cfg, clientID, targetClient, query, backupID, dest)
+	}
+
 	// Pre-flight check: ask the server if this client is disabled.
 	if err := connection.CheckClientEnabled(cfg); err != nil {
 		return err
@@ -104,7 +114,7 @@ func runRestore(cmd *cobra.Command, args []string) error {
 
 	dbPath := cfg.Database.Path
 	if clientID != "" {
-		if cfg.Node.Role == "client" {
+		if targetClient == "" && cfg.Node.Role == "client" {
 			return fmt.Errorf("the --client flag cannot be used on a client node")
 		}
 		dbPath = filepath.Join(filepath.Dir(cfg.Database.Path), "clients", clientID+".db")
@@ -566,6 +576,52 @@ func runRestorePushToTarget(ctx context.Context, cfg *config.Config, source rest
 		fmt.Sprintf("Push restore complete: %d files sent to %s (%d received, %d failed)", pushed, targetClient, resp.FilesReceived, resp.FilesFailed+int64(failed)),
 	)
 
+	return nil
+}
+
+// runAdminRemoteRestore performs an admin cross-client restore from the client
+// node's perspective: it dials the server command channel and asks the server to
+// restore files from sourceA's backup to targetB. The server enforces admin
+// authorization (by this node's SPKI fingerprint) and does all key handling; no
+// key material is read or sent here.
+func runAdminRemoteRestore(cfg *config.Config, sourceA, targetB, query, backupID, dest string) error {
+	ctx := context.Background()
+
+	tlsCfg, clientID, err := connection.LoadClientTLS(cfg)
+	if err != nil {
+		return fmt.Errorf("loading TLS config: %w", err)
+	}
+
+	client, err := grpcpkg.Connect(ctx, cfg.Server.Address, cfg.Server.CommandPort, cfg.Server.DataPort, tlsCfg)
+	if err != nil {
+		return fmt.Errorf("connecting to server: %w", err)
+	}
+	client.SetClientID(clientID)
+
+	fmt.Printf("Requesting cross-client restore: %s -> %s via server %s...\n", sourceA, targetB, cfg.Server.Address)
+
+	resp, err := client.RestoreToTarget(ctx, &proto.RestoreToTargetRequest{
+		SourceClientId: sourceA,
+		TargetClientId: targetB,
+		Query:          query,
+		BackupId:       backupID,
+		Dest:           dest,
+	})
+	if err != nil {
+		return err
+	}
+
+	printOutput(
+		map[string]interface{}{
+			"source":         sourceA,
+			"target":         targetB,
+			"files_sent":     resp.FilesSent,
+			"files_received": resp.FilesReceived,
+			"files_failed":   resp.FilesFailed,
+		},
+		fmt.Sprintf("Cross-client restore complete: %d files sent from %s to %s (%d received, %d failed)",
+			resp.FilesSent, sourceA, targetB, resp.FilesReceived, resp.FilesFailed),
+	)
 	return nil
 }
 

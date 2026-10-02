@@ -57,6 +57,7 @@ func init() {
 	rootCmd.AddCommand(newServerCmd())
 	rootCmd.AddCommand(newClientCmd())
 	rootCmd.AddCommand(newAdminCmd())
+	rootCmd.AddCommand(newAdminClientCmd())
 	rootCmd.AddCommand(newBackupCmd())
 	rootCmd.AddCommand(newRestoreCmd())
 	rootCmd.AddCommand(newDeleteCmd())

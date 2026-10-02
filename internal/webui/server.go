@@ -319,6 +319,7 @@ func (s *Server) routes() http.Handler {
 	authed.HandleFunc("/api/config/node/role", s.handleAPINodeRole)
 	authed.HandleFunc("/api/config/node/hostname", s.handleAPINodeHostname)
 	authed.HandleFunc("/api/config/settings", s.handleAPIConfigSettings)
+	authed.HandleFunc("/api/admin-clients", s.handleAPIAdminClients)
 
 	// Backup API endpoints.
 	authed.HandleFunc("/api/backups/trigger", s.handleAPIBackupTrigger)

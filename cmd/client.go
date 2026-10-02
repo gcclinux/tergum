@@ -1,7 +1,10 @@
 package cmd
 
 import (
+	"crypto/sha256"
+	"crypto/x509"
 	"database/sql"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -11,6 +14,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/gcclinux/tergum/internal/config"
+	"github.com/gcclinux/tergum/internal/connection"
 	"github.com/gcclinux/tergum/internal/registry"
 
 	_ "modernc.org/sqlite"
@@ -28,8 +32,57 @@ Requires the node role to be "server" or "hybrid".`,
 	cmd.AddCommand(newClientStatusCmd())
 	cmd.AddCommand(newClientDisableCmd())
 	cmd.AddCommand(newClientEnableCmd())
+	cmd.AddCommand(newClientFingerprintCmd())
 
 	return cmd
+}
+
+func newClientFingerprintCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "fingerprint",
+		Short: "Print this node's TLS SPKI fingerprint (its trusted admin identity)",
+		Long: `Prints the SHA-256 of this node's mTLS certificate SubjectPublicKeyInfo
+(SPKI), lowercase hex. This is the stable, key-based identity the server uses to
+recognize an admin client — paste it into 'tergum admin-client add --fingerprint'
+on the server. Available on any node role.`,
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runClientFingerprint()
+		},
+	}
+}
+
+// runClientFingerprint computes and prints this node's SPKI fingerprint. It
+// parses the leaf certificate via x509.ParseCertificate (the loaded
+// tls.Certificate has a nil Leaf) and hashes RawSubjectPublicKeyInfo, producing
+// a value byte-identical to the server's clientSPKIFromContext.
+func runClientFingerprint() error {
+	cfg, err := config.Load(cfgFile)
+	if err != nil {
+		return fmt.Errorf("loading config: %w", err)
+	}
+
+	tlsCfg, _, err := connection.LoadClientTLS(cfg)
+	if err != nil {
+		return fmt.Errorf("loading TLS config: %w", err)
+	}
+	if len(tlsCfg.Certificates) == 0 || len(tlsCfg.Certificates[0].Certificate) == 0 {
+		return fmt.Errorf("no client certificate loaded")
+	}
+
+	leaf, err := x509.ParseCertificate(tlsCfg.Certificates[0].Certificate[0])
+	if err != nil {
+		return fmt.Errorf("parsing client certificate: %w", err)
+	}
+
+	sum := sha256.Sum256(leaf.RawSubjectPublicKeyInfo)
+	fp := hex.EncodeToString(sum[:])
+
+	printOutput(
+		map[string]interface{}{"fingerprint": fp},
+		fp,
+	)
+	return nil
 }
 
 func newClientListCmd() *cobra.Command {
@@ -85,7 +138,7 @@ func newClientEnableCmd() *cobra.Command {
 }
 
 func runClientSetDisabled(clientID string, disabled bool) error {
-	reg, _, cleanup, err := openRegistry()
+	reg, _, cleanup, err := openRegistry("client")
 	if err != nil {
 		return err
 	}
@@ -117,7 +170,7 @@ func runClientSetDisabled(clientID string, disabled bool) error {
 }
 
 func runClientList() error {
-	reg, clientsDir, cleanup, err := openRegistry()
+	reg, clientsDir, cleanup, err := openRegistry("client")
 	if err != nil {
 		return err
 	}
@@ -195,7 +248,7 @@ func runClientList() error {
 }
 
 func runClientStatus(clientID string) error {
-	reg, clientsDir, cleanup, err := openRegistry()
+	reg, clientsDir, cleanup, err := openRegistry("client")
 	if err != nil {
 		return err
 	}
@@ -318,15 +371,17 @@ func runClientStatus(clientID string) error {
 }
 
 // openRegistry opens a read-only connection to the registry database.
-// Returns the registry, the clients dir path, a cleanup function, and any error.
-func openRegistry() (*registry.Registry, string, func(), error) {
+// cmdName names the invoking command group (e.g. "client", "admin-client") so
+// the role-guard error reports the correct command. Returns the registry, the
+// clients dir path, a cleanup function, and any error.
+func openRegistry(cmdName string) (*registry.Registry, string, func(), error) {
 	cfg, err := config.Load(cfgFile)
 	if err != nil {
 		return nil, "", nil, fmt.Errorf("loading config: %w", err)
 	}
 
 	if cfg.Node.Role == "client" {
-		return nil, "", nil, fmt.Errorf("'tergum client' commands are only available on server or hybrid nodes")
+		return nil, "", nil, fmt.Errorf("'tergum %s' commands are only available on server or hybrid nodes", cmdName)
 	}
 
 	dbPath := cfg.Database.Path

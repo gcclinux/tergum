@@ -80,7 +80,159 @@
     </div>
 </div>
 
+<!-- Admin Clients Section -->
+<div class="bg-white rounded shadow p-4 m-4" x-data="adminClientsManager()" x-init="init()">
+    <h2 class="font-bold text-lg mb-2">Admin Clients</h2>
+    <p class="text-sm text-gray-600 mb-4">
+        Clients granted server-equivalent privilege. An admin client may restore files from
+        one client to another. Identity is the client's TLS SPKI fingerprint — get it with
+        <span class="font-mono">tergum client fingerprint</span> on that node.
+    </p>
+
+    <!-- Add admin client -->
+    <div class="flex flex-col gap-2 mb-4">
+        <div class="flex items-center gap-2">
+            <input type="text" x-model="newName" placeholder="Client name (looked up in the registry)"
+                   class="border rounded px-3 py-2 flex-1 text-sm">
+            <input type="text" x-model="newFingerprint" placeholder="SPKI fingerprint (optional, 64 hex)"
+                   class="border rounded px-3 py-2 flex-1 text-sm font-mono">
+            <button @click="add()" :disabled="adding"
+                    class="bg-green-600 text-white px-4 py-2 rounded text-sm hover:bg-green-700 disabled:opacity-50">
+                Add
+            </button>
+        </div>
+        <p class="text-xs text-gray-500">
+            Leave the fingerprint blank to resolve it from the registry by name (requires an explicit confirm).
+        </p>
+    </div>
+
+    <!-- Confirmation prompt for a registry-resolved add -->
+    <div x-show="pending" x-transition class="mb-4 p-3 rounded bg-yellow-50 border border-yellow-200 text-sm">
+        <p class="mb-2">Grant admin privilege to this client?</p>
+        <p>Name: <span class="font-mono" x-text="newName"></span></p>
+        <div class="mt-3 flex gap-2">
+            <button @click="confirmAdd()" class="bg-blue-600 text-white px-3 py-1 rounded text-sm hover:bg-blue-700">
+                Confirm
+            </button>
+            <button @click="pending=false" class="bg-gray-200 text-gray-800 px-3 py-1 rounded text-sm hover:bg-gray-300">
+                Cancel
+            </button>
+        </div>
+    </div>
+
+    <!-- Admin clients list -->
+    <div class="border rounded divide-y" x-show="clients.length > 0">
+        <template x-for="c in clients" :key="c.fingerprint">
+            <div class="flex items-center justify-between px-3 py-2 hover:bg-gray-50">
+                <div class="min-w-0">
+                    <div class="text-sm font-medium" x-text="c.name || '(unnamed)'"></div>
+                    <div class="text-xs font-mono text-gray-500 break-all" x-text="c.fingerprint"></div>
+                    <div class="text-xs text-gray-400" x-text="'status: ' + c.status"></div>
+                </div>
+                <button @click="remove(c)"
+                        class="text-red-600 hover:text-red-800 text-sm px-2 py-1 rounded hover:bg-red-50 shrink-0 ml-2">
+                    Remove
+                </button>
+            </div>
+        </template>
+    </div>
+    <p x-show="clients.length === 0" class="text-gray-500 text-sm italic">No admin clients configured.</p>
+
+    <!-- Status message -->
+    <div x-show="message" x-transition
+         class="mt-4 p-3 rounded text-sm"
+         :class="messageType === 'error' ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'"
+         x-text="message">
+    </div>
+</div>
+
 <script>
+function adminClientsManager() {
+    return {
+        clients: [],
+        newName: '',
+        newFingerprint: '',
+        adding: false,
+        pending: false,
+        message: '',
+        messageType: 'success',
+
+        init() {
+            this.load();
+        },
+
+        showMessage(msg, type) {
+            this.message = msg;
+            this.messageType = type || 'success';
+            setTimeout(() => { this.message = ''; }, 4000);
+        },
+
+        async load() {
+            try {
+                const res = await fetch('/api/admin-clients');
+                if (!res.ok) throw new Error(await res.text());
+                const data = await res.json();
+                this.clients = data.clients || [];
+            } catch (e) {
+                this.showMessage('Failed to load admin clients', 'error');
+            }
+        },
+
+        add() {
+            if (!this.newName.trim() && !this.newFingerprint.trim()) {
+                this.showMessage('Provide a client name or a fingerprint', 'error');
+                return;
+            }
+            // A raw fingerprint is the trusted path and posts directly.
+            // A name-only add must be confirmed first (the UI equivalent of --yes).
+            if (this.newFingerprint.trim()) {
+                this.confirmAdd();
+            } else {
+                this.pending = true;
+            }
+        },
+
+        async confirmAdd() {
+            this.pending = false;
+            this.adding = true;
+            try {
+                const res = await fetch('/api/admin-clients', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        name: this.newName.trim(),
+                        fingerprint: this.newFingerprint.trim()
+                    })
+                });
+                if (!res.ok) throw new Error(await res.text());
+                this.newName = '';
+                this.newFingerprint = '';
+                await this.load();
+                this.showMessage('Admin client added');
+            } catch (e) {
+                this.showMessage('Failed to add admin client: ' + e.message, 'error');
+            } finally {
+                this.adding = false;
+            }
+        },
+
+        async remove(c) {
+            try {
+                const res = await fetch('/api/admin-clients', {
+                    method: 'DELETE',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({name: c.name, fingerprint: c.fingerprint})
+                });
+                if (!res.ok) throw new Error(await res.text());
+                await this.load();
+                this.showMessage('Admin client removed');
+            } catch (e) {
+                this.showMessage('Failed to remove admin client: ' + e.message, 'error');
+            }
+        }
+    };
+}
+
 function pathsManager() {
     return {
         includes: [],
