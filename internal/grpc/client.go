@@ -92,7 +92,13 @@ func Connect(ctx context.Context, address string, commandPort int, dataPort int,
 	creds := credentials.NewTLS(tlsConfig)
 
 	commandAddr := fmt.Sprintf("%s:%d", address, commandPort)
-	commandConn, err := grpc.NewClient(commandAddr, grpc.WithTransportCredentials(creds))
+	commandConn, err := grpc.NewClient(commandAddr,
+		grpc.WithTransportCredentials(creds),
+		grpc.WithDefaultCallOptions(
+			grpc.MaxCallRecvMsgSize(maxMsgSize),
+			grpc.MaxCallSendMsgSize(maxMsgSize),
+		),
+	)
 	if err != nil {
 		return nil, fmt.Errorf("connecting to command service at %s: %w", commandAddr, err)
 	}
@@ -117,7 +123,13 @@ func ConnectWithConfig(ctx context.Context, address string, commandPort int, dat
 	creds := credentials.NewTLS(tlsConfig)
 
 	commandAddr := fmt.Sprintf("%s:%d", address, commandPort)
-	commandConn, err := grpc.NewClient(commandAddr, grpc.WithTransportCredentials(creds))
+	commandConn, err := grpc.NewClient(commandAddr,
+		grpc.WithTransportCredentials(creds),
+		grpc.WithDefaultCallOptions(
+			grpc.MaxCallRecvMsgSize(maxMsgSize),
+			grpc.MaxCallSendMsgSize(maxMsgSize),
+		),
+	)
 	if err != nil {
 		return nil, fmt.Errorf("connecting to command service at %s: %w", commandAddr, err)
 	}
