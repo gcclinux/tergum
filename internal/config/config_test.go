@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/gcclinux/tergum/internal/model"
@@ -398,6 +399,184 @@ func TestValidate_MultipleErrors(t *testing.T) {
 	}
 	if !contains(msg, "logging.format") {
 		t.Errorf("expected error to mention logging.format, got: %s", msg)
+	}
+}
+
+func TestLoadConfigWithoutAdminSection(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "tergum.toml")
+
+	content := `
+[node]
+role = "server"
+`
+	if err := os.WriteFile(cfgPath, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(cfgPath)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(cfg.Admin.Clients) != 0 {
+		t.Errorf("expected empty admin clients, got %d", len(cfg.Admin.Clients))
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Errorf("expected valid config without [admin], got: %v", err)
+	}
+}
+
+func TestAdminClientsRoundTrip(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "tergum.toml")
+
+	cfg := &Config{}
+	applyDefaults(cfg)
+	cfg.Node.Role = "server"
+	fp1 := "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+	fp2 := "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210"
+	if err := cfg.AddAdminClient("alice", fp1); err != nil {
+		t.Fatalf("add alice: %v", err)
+	}
+	if err := cfg.AddAdminClient("bob", fp2); err != nil {
+		t.Fatalf("add bob: %v", err)
+	}
+
+	if err := Save(cfgPath, cfg); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+
+	loaded, err := Load(cfgPath)
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if len(loaded.Admin.Clients) != 2 {
+		t.Fatalf("expected 2 admin clients, got %d", len(loaded.Admin.Clients))
+	}
+	if loaded.Admin.Clients[0].Name != "alice" || loaded.Admin.Clients[0].Fingerprint != fp1 {
+		t.Errorf("unexpected first admin client: %+v", loaded.Admin.Clients[0])
+	}
+	if loaded.Admin.Clients[1].Name != "bob" || loaded.Admin.Clients[1].Fingerprint != fp2 {
+		t.Errorf("unexpected second admin client: %+v", loaded.Admin.Clients[1])
+	}
+}
+
+func TestValidate_AdminBadHex(t *testing.T) {
+	cfg := &Config{}
+	applyDefaults(cfg)
+	cfg.Node.Role = "server"
+	cfg.Admin.Clients = []AdminClient{{Name: "x", Fingerprint: "nothex"}}
+
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("expected validation error for bad hex fingerprint")
+	}
+	if !contains(err.Error(), "admin.clients[0].fingerprint") {
+		t.Errorf("expected error to mention admin.clients[0].fingerprint, got: %s", err.Error())
+	}
+}
+
+func TestValidate_AdminEmptyFingerprint(t *testing.T) {
+	cfg := &Config{}
+	applyDefaults(cfg)
+	cfg.Node.Role = "server"
+	cfg.Admin.Clients = []AdminClient{{Name: "x", Fingerprint: ""}}
+
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("expected validation error for empty fingerprint")
+	}
+}
+
+func TestValidate_AdminDuplicateFingerprint(t *testing.T) {
+	cfg := &Config{}
+	applyDefaults(cfg)
+	cfg.Node.Role = "server"
+	fp := "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+	cfg.Admin.Clients = []AdminClient{
+		{Name: "a", Fingerprint: fp},
+		{Name: "b", Fingerprint: fp},
+	}
+
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("expected validation error for duplicate fingerprint")
+	}
+	if !contains(err.Error(), "duplicates") {
+		t.Errorf("expected duplicate error, got: %s", err.Error())
+	}
+}
+
+func TestAddAdminClient_NormalizesAndDedups(t *testing.T) {
+	cfg := &Config{}
+	applyDefaults(cfg)
+
+	canonical := "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+	pasted := "  0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF  "
+	if err := cfg.AddAdminClient("alice", pasted); err != nil {
+		t.Fatalf("add: %v", err)
+	}
+	if len(cfg.Admin.Clients) != 1 {
+		t.Fatalf("expected 1 client, got %d", len(cfg.Admin.Clients))
+	}
+	if cfg.Admin.Clients[0].Fingerprint != canonical {
+		t.Errorf("expected normalized fingerprint %q, got %q", canonical, cfg.Admin.Clients[0].Fingerprint)
+	}
+
+	// Adding the same fingerprint (differently cased) is a no-op.
+	if err := cfg.AddAdminClient("alice-again", canonical); err != nil {
+		t.Fatalf("dedup add: %v", err)
+	}
+	if len(cfg.Admin.Clients) != 1 {
+		t.Errorf("expected dedup to keep 1 client, got %d", len(cfg.Admin.Clients))
+	}
+}
+
+func TestAddAdminClient_BadFingerprint(t *testing.T) {
+	cfg := &Config{}
+	applyDefaults(cfg)
+	if err := cfg.AddAdminClient("x", "zzzz"); err == nil {
+		t.Fatal("expected error for bad fingerprint")
+	}
+	if _, ok := cfg.AddAdminClient("x", "zzzz").(*model.ConfigError); !ok {
+		t.Error("expected *model.ConfigError for bad fingerprint")
+	}
+}
+
+func TestRemoveAdminClient(t *testing.T) {
+	cfg := &Config{}
+	applyDefaults(cfg)
+	fp1 := "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+	fp2 := "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210"
+	_ = cfg.AddAdminClient("alice", fp1)
+	_ = cfg.AddAdminClient("bob", fp2)
+
+	if !cfg.RemoveAdminClientByName("alice") {
+		t.Error("expected RemoveAdminClientByName to return true")
+	}
+	if cfg.RemoveAdminClientByName("alice") {
+		t.Error("expected second removal by name to return false")
+	}
+
+	// Remove bob by (uppercased, padded) fingerprint.
+	if !cfg.RemoveAdminClientByFingerprint("  " + strings.ToUpper(fp2) + " ") {
+		t.Error("expected RemoveAdminClientByFingerprint to return true")
+	}
+	if len(cfg.Admin.Clients) != 0 {
+		t.Errorf("expected 0 clients after removals, got %d", len(cfg.Admin.Clients))
+	}
+}
+
+func TestIsAdminFingerprint(t *testing.T) {
+	cfg := &Config{}
+	applyDefaults(cfg)
+	fp := "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+	_ = cfg.AddAdminClient("alice", fp)
+
+	if !cfg.IsAdminFingerprint(fp) {
+		t.Error("expected IsAdminFingerprint true for configured fingerprint")
+	}
+	if cfg.IsAdminFingerprint("fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210") {
+		t.Error("expected IsAdminFingerprint false for unknown fingerprint")
 	}
 }
 

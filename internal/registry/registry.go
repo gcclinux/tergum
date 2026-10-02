@@ -50,6 +50,10 @@ type ClientInfo struct {
 	OSFamily      string // "linux", "windows", "darwin"
 	MachineID     string // stable machine hardware/system identifier
 	Hostname      string // client hostname
+	// SPKIFingerprint is the SHA-256 of the client's mTLS leaf certificate's
+	// RawSubjectPublicKeyInfo (SPKI), lowercase hex. Identifies the client's
+	// trusted key independent of the shared certificate CN.
+	SPKIFingerprint string
 }
 
 // Registry tracks connected clients with thread-safe in-memory state
@@ -138,11 +142,12 @@ func (r *Registry) createTables() error {
 		}
 	}
 
-	// Migration: add 'disabled', 'os_family', 'machine_id', 'hostname' columns if they don't exist yet.
+	// Migration: add 'disabled', 'os_family', 'machine_id', 'hostname', 'spki_fingerprint' columns if they don't exist yet.
 	_, _ = r.db.Exec(`ALTER TABLE client_registry ADD COLUMN disabled INTEGER DEFAULT 0`)
 	_, _ = r.db.Exec(`ALTER TABLE client_registry ADD COLUMN os_family TEXT DEFAULT ''`)
 	_, _ = r.db.Exec(`ALTER TABLE client_registry ADD COLUMN machine_id TEXT DEFAULT ''`)
 	_, _ = r.db.Exec(`ALTER TABLE client_registry ADD COLUMN hostname TEXT DEFAULT ''`)
+	_, _ = r.db.Exec(`ALTER TABLE client_registry ADD COLUMN spki_fingerprint TEXT DEFAULT ''`)
 
 	return nil
 }
@@ -155,7 +160,8 @@ func (r *Registry) loadClients() error {
 		        COALESCE(disabled, 0),
 		        COALESCE(os_family, ''),
 		        COALESCE(machine_id, ''),
-		        COALESCE(hostname, '')
+		        COALESCE(hostname, ''),
+		        COALESCE(spki_fingerprint, '')
 		 FROM client_registry`)
 	if err != nil {
 		return err
@@ -168,14 +174,14 @@ func (r *Registry) loadClients() error {
 		var lastSeen, lastBackup, registeredAt *string
 		var watcherActive, disabled int
 		var fullCron, autoCron string
-		var osFamily, machineID, hostname string
+		var osFamily, machineID, hostname, spkiFingerprint string
 
 		if err := rows.Scan(
 			&ci.ClientID, &ci.Address, &ci.Status,
 			&lastSeen, &lastBackup,
 			&watcherActive, &fullCron, &autoCron, &registeredAt,
 			&disabled,
-			&osFamily, &machineID, &hostname,
+			&osFamily, &machineID, &hostname, &spkiFingerprint,
 		); err != nil {
 			rows.Close()
 			return err
@@ -186,6 +192,7 @@ func (r *Registry) loadClients() error {
 		ci.OSFamily = osFamily
 		ci.MachineID = machineID
 		ci.Hostname = hostname
+		ci.SPKIFingerprint = spkiFingerprint
 		// Parse timestamps, handling both legacy local-time and current UTC storage.
 		if lastSeen != nil {
 			ci.LastSeen = parseDBTime(*lastSeen)
@@ -751,8 +758,8 @@ func (r *Registry) persistClientLocked(ci *ClientInfo) error {
 	_, err := r.db.Exec(
 		`INSERT INTO client_registry (client_id, address, status, last_seen, last_backup,
 		                              watcher_active, full_backup_cron, auto_backup_cron, registered_at, disabled,
-		                              os_family, machine_id, hostname)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		                              os_family, machine_id, hostname, spki_fingerprint)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT(client_id) DO UPDATE SET
 		   address = excluded.address,
 		   status = excluded.status,
@@ -764,10 +771,11 @@ func (r *Registry) persistClientLocked(ci *ClientInfo) error {
 		   disabled = excluded.disabled,
 		   os_family = CASE WHEN excluded.os_family != '' THEN excluded.os_family ELSE client_registry.os_family END,
 		   machine_id = CASE WHEN excluded.machine_id != '' THEN excluded.machine_id ELSE client_registry.machine_id END,
-		   hostname = CASE WHEN excluded.hostname != '' THEN excluded.hostname ELSE client_registry.hostname END`,
+		   hostname = CASE WHEN excluded.hostname != '' THEN excluded.hostname ELSE client_registry.hostname END,
+		   spki_fingerprint = CASE WHEN excluded.spki_fingerprint != '' THEN excluded.spki_fingerprint ELSE client_registry.spki_fingerprint END`,
 		ci.ClientID, ci.Address, ci.Status, lastSeen, lastBackup,
 		watcherActive, fullCron, autoCron, registeredAt, disabled,
-		ci.OSFamily, ci.MachineID, ci.Hostname,
+		ci.OSFamily, ci.MachineID, ci.Hostname, ci.SPKIFingerprint,
 	)
 	return err
 }
@@ -830,5 +838,38 @@ func (r *Registry) GetClientOS(clientID string, clientsDir string) string {
 	}
 
 	return ""
+}
+
+// SetSPKIFingerprint records the SPKI fingerprint for a client and persists it.
+// It is a no-op (returns nil) if the client is not present in the registry.
+func (r *Registry) SetSPKIFingerprint(clientID, fp string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	ci, exists := r.clients[clientID]
+	if !exists {
+		return nil
+	}
+	ci.SPKIFingerprint = fp
+	return r.persistClientLocked(ci)
+}
+
+// FindClientBySPKI returns a copy of the client whose SPKI fingerprint matches fp,
+// or nil if no client matches. An empty fp never matches.
+func (r *Registry) FindClientBySPKI(fp string) *ClientInfo {
+	if fp == "" {
+		return nil
+	}
+
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	for _, ci := range r.clients {
+		if ci.SPKIFingerprint == fp {
+			cp := *ci
+			return &cp
+		}
+	}
+	return nil
 }
 

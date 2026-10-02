@@ -222,3 +222,32 @@ type PushRestoreResponse struct {
 	FilesFailed   int64  `json:"files_failed"`
 	Message       string `json:"message"`
 }
+
+// RestoreToTargetRequest asks the server (or an admin client) to restore files
+// from a source client's backup to a target client. This is the cross-client
+// restore primitive used by admin-capable callers.
+type RestoreToTargetRequest struct {
+	SourceClientId string `json:"source_client_id"`
+	TargetClientId string `json:"target_client_id"`
+	Query          string `json:"query"`
+	BackupId       string `json:"backup_id"`
+	File           string `json:"file"`
+	Dest           string `json:"dest"`
+}
+
+// RestoreToTargetResponse reports the outcome of a cross-client restore.
+type RestoreToTargetResponse struct {
+	Success       bool   `json:"success"`
+	FilesSent     int64  `json:"files_sent"`
+	FilesReceived int64  `json:"files_received"`
+	FilesFailed   int64  `json:"files_failed"`
+	Message       string `json:"message"`
+}
+
+// ControlWatcherRequest asks the server (or an admin client) to start or stop
+// the file watcher on a target client. ControlClientWatcher reuses
+// WatcherResponse for its reply.
+type ControlWatcherRequest struct {
+	TargetClientId string `json:"target_client_id"`
+	Start          bool   `json:"start"`
+}

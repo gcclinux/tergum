@@ -409,3 +409,124 @@ func TestRebindClient(t *testing.T) {
 	}
 }
 
+
+func TestMigration_AddsSPKIColumnOnLegacyDB(t *testing.T) {
+	db := openTestDB(t)
+
+	// Create a legacy client_registry table WITHOUT the spki_fingerprint column.
+	_, err := db.Exec(`CREATE TABLE client_registry (
+		client_id        TEXT PRIMARY KEY,
+		address          TEXT NOT NULL,
+		status           TEXT NOT NULL DEFAULT 'offline',
+		last_seen        TEXT,
+		last_backup      TEXT,
+		watcher_active   INTEGER DEFAULT 0,
+		full_backup_cron TEXT DEFAULT '',
+		auto_backup_cron TEXT DEFAULT '',
+		registered_at    TEXT NOT NULL DEFAULT (datetime('now'))
+	)`)
+	if err != nil {
+		t.Fatalf("create legacy table: %v", err)
+	}
+
+	reg, err := New(Config{DB: db})
+	if err != nil {
+		t.Fatalf("new registry on legacy db: %v", err)
+	}
+	_ = reg
+
+	// The spki_fingerprint column must now exist.
+	var hasColumn bool
+	rows, err := db.Query(`PRAGMA table_info(client_registry)`)
+	if err != nil {
+		t.Fatalf("pragma table_info: %v", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var cid int
+		var name, ctype string
+		var notnull, pk int
+		var dflt interface{}
+		if err := rows.Scan(&cid, &name, &ctype, &notnull, &dflt, &pk); err != nil {
+			t.Fatalf("scan column: %v", err)
+		}
+		if name == "spki_fingerprint" {
+			hasColumn = true
+		}
+	}
+	if !hasColumn {
+		t.Error("expected spki_fingerprint column to exist after migration")
+	}
+}
+
+func TestSetAndFindSPKIFingerprint(t *testing.T) {
+	reg := newTestRegistry(t)
+
+	if _, err := reg.Register("node1", "10.0.0.1:7400"); err != nil {
+		t.Fatalf("register: %v", err)
+	}
+
+	fp := "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+	if err := reg.SetSPKIFingerprint("node1", fp); err != nil {
+		t.Fatalf("set spki: %v", err)
+	}
+
+	found := reg.FindClientBySPKI(fp)
+	if found == nil {
+		t.Fatal("expected to find client by SPKI")
+	}
+	if found.ClientID != "node1" {
+		t.Errorf("got client %q, want node1", found.ClientID)
+	}
+	if found.SPKIFingerprint != fp {
+		t.Errorf("got fingerprint %q, want %q", found.SPKIFingerprint, fp)
+	}
+
+	// Mutating the returned copy must not affect the registry.
+	found.SPKIFingerprint = "mutated"
+	if again := reg.FindClientBySPKI(fp); again == nil {
+		t.Error("copy-on-read violated: mutation leaked into registry")
+	}
+
+	if reg.FindClientBySPKI("") != nil {
+		t.Error("empty fingerprint must not match any client")
+	}
+	if reg.FindClientBySPKI("nomatch") != nil {
+		t.Error("unknown fingerprint must not match any client")
+	}
+}
+
+func TestSetSPKIFingerprint_UnknownClientIsNoOp(t *testing.T) {
+	reg := newTestRegistry(t)
+	if err := reg.SetSPKIFingerprint("ghost", "deadbeef"); err != nil {
+		t.Errorf("expected no error for unknown client, got: %v", err)
+	}
+}
+
+func TestSetSPKIFingerprint_EmptyDoesNotErase(t *testing.T) {
+	reg := newTestRegistry(t)
+
+	if _, err := reg.Register("node1", "10.0.0.1:7400"); err != nil {
+		t.Fatalf("register: %v", err)
+	}
+	fp := "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+	if err := reg.SetSPKIFingerprint("node1", fp); err != nil {
+		t.Fatalf("set spki: %v", err)
+	}
+
+	// Persist an empty fingerprint via another registry operation. The upsert
+	// guard must preserve the previously stored value in the database.
+	if err := reg.SetSPKIFingerprint("node1", ""); err != nil {
+		t.Fatalf("set empty spki: %v", err)
+	}
+
+	// In-memory is now empty, but the DB row must still hold the old value.
+	var stored string
+	err := reg.db.QueryRow(`SELECT spki_fingerprint FROM client_registry WHERE client_id = ?`, "node1").Scan(&stored)
+	if err != nil {
+		t.Fatalf("query stored fingerprint: %v", err)
+	}
+	if stored != fp {
+		t.Errorf("expected stored fingerprint preserved as %q, got %q", fp, stored)
+	}
+}

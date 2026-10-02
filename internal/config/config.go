@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strconv"
 	"strings"
@@ -27,6 +28,22 @@ type Config struct {
 	Metrics    MetricsConfig    `toml:"metrics"`
 	Logging    LoggingConfig    `toml:"logging"`
 	Scheduler  SchedulerConfig  `toml:"scheduler"`
+	Admin      AdminConfig      `toml:"admin"`
+}
+
+// AdminConfig lists client nodes granted server-equivalent (admin) capability.
+// An admin client can perform cross-client operations (e.g. restore from
+// client A to client B) that are otherwise reserved for the server itself.
+type AdminConfig struct {
+	Clients []AdminClient `toml:"clients"`
+}
+
+// AdminClient identifies a single admin-capable client by its SPKI fingerprint.
+// Fingerprint is the SHA-256 of the client's mTLS leaf certificate's
+// RawSubjectPublicKeyInfo (SPKI), lowercase hex.
+type AdminClient struct {
+	Name        string `toml:"name"`
+	Fingerprint string `toml:"fingerprint"`
 }
 
 // NodeConfig defines the role and identity of this Tergum instance.
@@ -112,6 +129,9 @@ type SchedulerConfig struct {
 	FullBackupCron string `toml:"full_backup_cron"`
 	AutoBackupCron string `toml:"auto_backup_cron"`
 }
+
+// adminFingerprintRe matches a canonical SPKI fingerprint: 64 lowercase hex characters.
+var adminFingerprintRe = regexp.MustCompile(`^[0-9a-f]{64}$`)
 
 // DefaultConfigDir returns the platform-specific default configuration directory.
 func DefaultConfigDir() string {
@@ -260,10 +280,78 @@ func (c *Config) Validate() error {
 		}
 	}
 
+	// admin.clients[i].fingerprint must be 64 lowercase hex characters and unique.
+	seenFingerprints := make(map[string]int, len(c.Admin.Clients))
+	for i, ac := range c.Admin.Clients {
+		if !adminFingerprintRe.MatchString(ac.Fingerprint) {
+			errs = append(errs, fmt.Sprintf("admin.clients[%d].fingerprint must be 64 hex characters", i))
+			continue
+		}
+		if prev, dup := seenFingerprints[ac.Fingerprint]; dup {
+			errs = append(errs, fmt.Sprintf("admin.clients[%d].fingerprint duplicates admin.clients[%d]", i, prev))
+			continue
+		}
+		seenFingerprints[ac.Fingerprint] = i
+	}
+
 	if len(errs) > 0 {
 		return &model.ConfigError{Message: strings.Join(errs, "; ")}
 	}
 	return nil
+}
+
+// IsAdminFingerprint reports whether fp matches any configured admin client
+// fingerprint. Stored fingerprints are already canonical (lowercase hex), so
+// this is a plain linear scan.
+func (c *Config) IsAdminFingerprint(fp string) bool {
+	for _, ac := range c.Admin.Clients {
+		if ac.Fingerprint == fp {
+			return true
+		}
+	}
+	return false
+}
+
+// AddAdminClient appends an admin client with the given name and fingerprint.
+// The fingerprint is trimmed and lowercased before validation. If a client
+// with the same fingerprint is already present, this is a no-op and returns
+// nil. A malformed fingerprint returns a model.ConfigError.
+func (c *Config) AddAdminClient(name, fp string) error {
+	fp = strings.ToLower(strings.TrimSpace(fp))
+	if !adminFingerprintRe.MatchString(fp) {
+		return &model.ConfigError{Message: "admin client fingerprint must be 64 hex characters"}
+	}
+	if c.IsAdminFingerprint(fp) {
+		return nil
+	}
+	c.Admin.Clients = append(c.Admin.Clients, AdminClient{Name: strings.TrimSpace(name), Fingerprint: fp})
+	return nil
+}
+
+// RemoveAdminClientByName removes the first admin client matching name.
+// It returns true if a client was removed.
+func (c *Config) RemoveAdminClientByName(name string) bool {
+	for i, ac := range c.Admin.Clients {
+		if ac.Name == name {
+			c.Admin.Clients = append(c.Admin.Clients[:i], c.Admin.Clients[i+1:]...)
+			return true
+		}
+	}
+	return false
+}
+
+// RemoveAdminClientByFingerprint removes the admin client matching fp.
+// The fingerprint is normalized (trimmed, lowercased) before comparing.
+// It returns true if a client was removed.
+func (c *Config) RemoveAdminClientByFingerprint(fp string) bool {
+	fp = strings.ToLower(strings.TrimSpace(fp))
+	for i, ac := range c.Admin.Clients {
+		if ac.Fingerprint == fp {
+			c.Admin.Clients = append(c.Admin.Clients[:i], c.Admin.Clients[i+1:]...)
+			return true
+		}
+	}
+	return false
 }
 
 // ParseMaxFileSize parses a human-readable file size string (e.g., "10GB", "500MB")
