@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/gcclinux/tergum/internal/config"
 )
 
 func TestMain(m *testing.M) {
@@ -392,18 +394,9 @@ func TestDefaultStoragePath(t *testing.T) {
 }
 
 // defaultConfigDirForTest returns the config dir used by the test environment.
+// This function uses config.DefaultConfigDir() for platform-appropriate paths.
 func defaultConfigDirForTest() string {
-	// Reuse the same logic as config.DefaultConfigDir()
-	if os.PathSeparator == '\\' {
-		appData := os.Getenv("APPDATA")
-		if appData == "" {
-			home, _ := os.UserHomeDir()
-			appData = filepath.Join(home, "AppData", "Roaming")
-		}
-		return filepath.Join(appData, "tergum")
-	}
-	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".config", "tergum")
+	return config.DefaultConfigDir()
 }
 
 func TestInteractiveSetupExistingConfig(t *testing.T) {

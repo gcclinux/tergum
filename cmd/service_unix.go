@@ -134,6 +134,13 @@ func enableSystemd(p autostartParams) error {
 	b.WriteString("[Install]\n")
 	b.WriteString("WantedBy=default.target\n")
 
+	// Warn if no .env file is configured — the service will need TERGUM_PASSPHRASE
+	// from the shell environment instead.
+	if p.EnvFile == "" && !envFileExists() {
+		fmt.Fprintln(os.Stderr, "Warning: No .env file found. The service will rely on TERGUM_PASSPHRASE")
+		fmt.Fprintln(os.Stderr, "being set in your environment. Run 'tergum setup' to create one.")
+	}
+
 	if err := os.WriteFile(unitPath, []byte(b.String()), 0644); err != nil {
 		return fmt.Errorf("writing systemd unit: %w", err)
 	}

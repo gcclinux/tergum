@@ -268,6 +268,7 @@ func (s *Server) routes() http.Handler {
 	authed.HandleFunc("/backups", s.handleBackups)
 	authed.HandleFunc("/restore", s.handleRestore)
 	authed.HandleFunc("/config", s.handleConfig)
+	authed.HandleFunc("/cli-docs", s.handleCLIDocs)
 	authed.HandleFunc("/paths", s.handlePaths)
 	authed.HandleFunc("/retention", s.handleRetention)
 	authed.HandleFunc("/watchers", s.handleWatchers)
@@ -715,6 +716,16 @@ type metricsView struct {
 	ConnectedClients  int
 }
 
+// cliDocsData holds the template data for the CLI documentation page.
+type cliDocsData struct {
+	Title    string
+	NodeRole string
+	NavItems []NavItem
+	Content  template.HTML // Rendered markdown HTML
+	TOC      []TOCEntry    // Table of contents
+	Error    string        // Error message if file cannot be read
+}
+
 // Handlers — each renders the corresponding template with placeholder data.
 // In production these would query the database/engines for real data.
 
@@ -884,6 +895,40 @@ func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
 		data.Config = &config.Config{}
 	}
 	s.renderFragment(w, r, "config", data)
+}
+
+// handleCLIDocs serves the CLI Documentation page.
+// It reads docs/CLI.md from the filesystem, renders it to HTML using the
+// MarkdownRenderer, and displays it with a table of contents for navigation.
+func (s *Server) handleCLIDocs(w http.ResponseWriter, r *http.Request) {
+	data := cliDocsData{
+		Title:    "CLI Documentation",
+		NodeRole: s.nodeRole(),
+		NavItems: FilterNavItems(s.nodeRole()),
+	}
+
+	// Read CLI.md from the filesystem (docs/ is not embedded).
+	content, err := os.ReadFile("docs/CLI.md")
+	if err != nil {
+		s.logger.Error("failed to read CLI documentation", "error", err)
+		data.Error = "Documentation unavailable: unable to read CLI.md file"
+		s.renderFragment(w, r, "clidocs", data)
+		return
+	}
+
+	// Render markdown to HTML with TOC extraction.
+	renderer := NewMarkdownRenderer()
+	result, err := renderer.Render(content)
+	if err != nil {
+		s.logger.Error("failed to render CLI documentation", "error", err)
+		data.Error = "Failed to render documentation: " + err.Error()
+		s.renderFragment(w, r, "clidocs", data)
+		return
+	}
+
+	data.Content = result.HTML
+	data.TOC = result.TOC
+	s.renderFragment(w, r, "clidocs", data)
 }
 
 func (s *Server) handlePaths(w http.ResponseWriter, r *http.Request) {

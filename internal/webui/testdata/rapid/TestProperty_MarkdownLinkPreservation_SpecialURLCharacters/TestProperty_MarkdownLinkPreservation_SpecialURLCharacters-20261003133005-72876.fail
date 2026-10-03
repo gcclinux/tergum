@@ -1,0 +1,68 @@
+# 2026/10/03 13:30:05.170659 [TestProperty_MarkdownLinkPreservation_SpecialURLCharacters] [rapid] draw linkText: "A"
+# 2026/10/03 13:30:05.170663 [TestProperty_MarkdownLinkPreservation_SpecialURLCharacters] [rapid] draw urlType: 1
+# 2026/10/03 13:30:05.170664 [TestProperty_MarkdownLinkPreservation_SpecialURLCharacters] [rapid] draw path2: "aaa"
+# 2026/10/03 13:30:05.170665 [TestProperty_MarkdownLinkPreservation_SpecialURLCharacters] [rapid] draw p1: "aa"
+# 2026/10/03 13:30:05.170666 [TestProperty_MarkdownLinkPreservation_SpecialURLCharacters] [rapid] draw v1: "00"
+# 2026/10/03 13:30:05.170670 [TestProperty_MarkdownLinkPreservation_SpecialURLCharacters] [rapid] draw p2: "aa"
+# 2026/10/03 13:30:05.170671 [TestProperty_MarkdownLinkPreservation_SpecialURLCharacters] [rapid] draw v2: "00"
+# 2026/10/03 13:30:05.170687 [TestProperty_MarkdownLinkPreservation_SpecialURLCharacters] SPECIAL URL PRESERVATION VIOLATION: markdown link [A](/aaa?aa=00&aa=00) did not produce exact href in HTML.
+# Expected href: href="/aaa?aa=00&aa=00"
+# Generated HTML: <p>Check out <a href="/aaa?aa=00&amp;aa=00">A</a> for more info.</p>
+# 
+v0.4.8#5031870427458613433
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x1
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0

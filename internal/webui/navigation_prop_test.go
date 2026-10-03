@@ -27,7 +27,7 @@ func TestProperty_NavigationRoleFiltering(t *testing.T) {
 		}
 
 		// Common items should always be present regardless of role.
-		commonPaths := []string{"/", "/config", "/retention", "/activity", "/metrics"}
+		commonPaths := []string{"/", "/config", "/cli-docs", "/retention", "/activity", "/metrics"}
 		for _, p := range commonPaths {
 			if !paths[p] {
 				rt.Fatalf("role %q: expected common item %q to be present", role, p)
@@ -66,15 +66,15 @@ func TestProperty_NavigationRoleFiltering(t *testing.T) {
 			}
 
 		case "hybrid":
-			// All items should be present (10 total).
-			allPaths := []string{"/", "/backups", "/restore", "/config", "/paths", "/retention", "/watchers", "/activity", "/clients", "/metrics"}
+			// All items should be present (11 total).
+			allPaths := []string{"/", "/backups", "/restore", "/config", "/cli-docs", "/paths", "/retention", "/watchers", "/activity", "/clients", "/metrics"}
 			for _, p := range allPaths {
 				if !paths[p] {
 					rt.Fatalf("role %q: expected item %q to be present", role, p)
 				}
 			}
-			if len(items) != 10 {
-				rt.Fatalf("role %q: expected 10 items, got %d", role, len(items))
+			if len(items) != 11 {
+				rt.Fatalf("role %q: expected 11 items, got %d", role, len(items))
 			}
 		}
 	})

@@ -10,6 +10,7 @@ func TestFilterNavItems_ClientRole(t *testing.T) {
 	// Common items should be present
 	assertHasItem(t, items, "/")
 	assertHasItem(t, items, "/config")
+	assertHasItem(t, items, "/cli-docs")
 	assertHasItem(t, items, "/retention")
 	assertHasItem(t, items, "/activity")
 	assertHasItem(t, items, "/metrics")
@@ -30,6 +31,7 @@ func TestFilterNavItems_ServerRole(t *testing.T) {
 	// Common items should be present
 	assertHasItem(t, items, "/")
 	assertHasItem(t, items, "/config")
+	assertHasItem(t, items, "/cli-docs")
 	assertHasItem(t, items, "/retention")
 	assertHasItem(t, items, "/activity")
 	assertHasItem(t, items, "/metrics")
@@ -52,6 +54,7 @@ func TestFilterNavItems_HybridRole(t *testing.T) {
 	assertHasItem(t, items, "/backups")
 	assertHasItem(t, items, "/restore")
 	assertHasItem(t, items, "/config")
+	assertHasItem(t, items, "/cli-docs")
 	assertHasItem(t, items, "/paths")
 	assertHasItem(t, items, "/retention")
 	assertHasItem(t, items, "/watchers")
@@ -59,9 +62,9 @@ func TestFilterNavItems_HybridRole(t *testing.T) {
 	assertHasItem(t, items, "/clients")
 	assertHasItem(t, items, "/metrics")
 
-	// Should have all 10 items
-	if len(items) != 10 {
-		t.Errorf("expected 10 items for role 'hybrid', got %d", len(items))
+	// Should have all 11 items
+	if len(items) != 11 {
+		t.Errorf("expected 11 items for role 'hybrid', got %d", len(items))
 	}
 }
 
@@ -86,7 +89,7 @@ func TestFilterNavItems_EmptyRole(t *testing.T) {
 func TestFilterNavItems_PreservesOrder(t *testing.T) {
 	items := FilterNavItems("hybrid")
 
-	expected := []string{"/", "/backups", "/restore", "/config", "/paths", "/retention", "/watchers", "/activity", "/clients", "/metrics"}
+	expected := []string{"/", "/backups", "/restore", "/config", "/cli-docs", "/paths", "/retention", "/watchers", "/activity", "/clients", "/metrics"}
 	if len(items) != len(expected) {
 		t.Fatalf("expected %d items, got %d", len(expected), len(items))
 	}

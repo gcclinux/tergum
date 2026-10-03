@@ -77,6 +77,13 @@ func runServiceEnable(envPath string) error {
 	}
 	command := b.String()
 
+	// Warn if no .env file is configured — the service will need TERGUM_PASSPHRASE
+	// from the shell environment instead.
+	if p.EnvFile == "" && !envFileExists() {
+		fmt.Fprintln(os.Stderr, "Warning: No .env file found. The service will rely on TERGUM_PASSPHRASE")
+		fmt.Fprintln(os.Stderr, "being set in your environment. Run 'tergum setup' to create one.")
+	}
+
 	key, _, err := registry.CreateKey(registry.CURRENT_USER, autostartRunKey, registry.SET_VALUE)
 	if err != nil {
 		return fmt.Errorf("opening HKCU Run key: %w", err)

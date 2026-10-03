@@ -301,6 +301,7 @@ func runInteractiveSetup(wiz *setupWizard) error {
 	var salt []byte
 	var masterKey []byte
 	var finalVerifyData string
+	var passphrase string
 	var err error
 	enc := crypto.NewEncryptor()
 
@@ -329,7 +330,7 @@ func runInteractiveSetup(wiz *setupWizard) error {
 
 			// Prompt for existing passphrase to verify
 			for {
-				passphrase := wiz.prompt("Enter existing encryption passphrase to verify", "")
+				passphrase = wiz.prompt("Enter existing encryption passphrase to verify", "")
 				if passphrase == "" {
 					return fmt.Errorf("encryption passphrase is required")
 				}
@@ -356,7 +357,7 @@ func runInteractiveSetup(wiz *setupWizard) error {
 	}
 
 	if !existingConfigExists {
-		passphrase := wiz.prompt("Encryption passphrase (min 8 characters)", "")
+		passphrase = wiz.prompt("Encryption passphrase (min 8 characters)", "")
 		if passphrase == "" {
 			return fmt.Errorf("encryption passphrase is required")
 		}
@@ -399,6 +400,34 @@ func runInteractiveSetup(wiz *setupWizard) error {
 		if err := os.WriteFile(verifyPath, []byte(verifyData), 0600); err != nil {
 			return fmt.Errorf("cannot write verification file: %w", err)
 		}
+	}
+
+	// 5b. Save passphrase to .env file for service use
+	fmt.Fprintln(wiz.writer)
+	fmt.Fprintln(wiz.writer, "--- Environment File ---")
+	fmt.Fprintln(wiz.writer, "The background service needs access to your encryption passphrase.")
+	fmt.Fprintln(wiz.writer, "This will be stored in a protected .env file in your config directory.")
+
+	saveToEnv := true
+	if envFileExists() {
+		existing, _ := readEnvFilePassphrase()
+		if existing != "" && existing != passphrase {
+			fmt.Fprintln(wiz.writer)
+			fmt.Fprintf(wiz.writer, "An existing .env file was found at: %s\n", envFilePath())
+			saveToEnv = wiz.promptYesNo("Overwrite with current passphrase?", true)
+		}
+	}
+
+	if saveToEnv {
+		envPath, err := writeEnvFile(passphrase)
+		if err != nil {
+			fmt.Fprintf(wiz.writer, "Warning: could not write .env file: %v\n", err)
+			fmt.Fprintln(wiz.writer, "You can create it manually or set TERGUM_PASSPHRASE in your environment.")
+		} else {
+			fmt.Fprintf(wiz.writer, "Passphrase saved to: %s\n", envPath)
+		}
+	} else {
+		fmt.Fprintln(wiz.writer, "Keeping existing .env file.")
 	}
 
 	// 6. Backup paths — what to back up

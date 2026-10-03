@@ -1,0 +1,366 @@
+{{define "content"}}
+<style>
+/* CLI Documentation Styles */
+
+/* Headings with dark theme typography */
+.cli-docs h1 {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: #ffffff;
+    border-bottom: 1px solid #334155;
+    padding-bottom: 1rem;
+    margin-bottom: 1.5rem;
+    scroll-margin-top: 2rem;
+}
+
+.cli-docs h2 {
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: #ffffff;
+    margin-top: 2.5rem;
+    margin-bottom: 1rem;
+    scroll-margin-top: 2rem;
+    position: relative;
+}
+
+.cli-docs h3 {
+    font-size: 1.125rem;
+    font-weight: 500;
+    color: #e2e8f0;
+    margin-top: 1.5rem;
+    margin-bottom: 0.75rem;
+    scroll-margin-top: 2rem;
+    position: relative;
+}
+
+.cli-docs h4 {
+    font-size: 1rem;
+    font-weight: 500;
+    color: #cbd5e1;
+    margin-top: 1.25rem;
+    margin-bottom: 0.5rem;
+    scroll-margin-top: 2rem;
+}
+
+/* Tables with dark theme colors and borders */
+.cli-docs table {
+    width: 100%;
+    border-collapse: collapse;
+    background-color: rgba(30, 41, 59, 0.5);
+    border-radius: 0.5rem;
+    overflow: hidden;
+    margin: 1rem 0;
+}
+
+.cli-docs th {
+    padding: 0.5rem 1rem;
+    text-align: left;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #94a3b8;
+    background-color: rgba(51, 65, 85, 0.5);
+    font-weight: 600;
+}
+
+.cli-docs td {
+    padding: 0.5rem 1rem;
+    font-size: 0.875rem;
+    color: #cbd5e1;
+    border-top: 1px solid #334155;
+}
+
+.cli-docs tr:hover td {
+    background-color: rgba(51, 65, 85, 0.3);
+}
+
+/* Inline code with distinct background */
+.cli-docs code:not(pre code) {
+    padding: 0.125rem 0.375rem;
+    background-color: #334155;
+    color: #93c5fd;
+    border-radius: 0.25rem;
+    font-size: 0.875rem;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+/* Code blocks with dark background and padding */
+.cli-docs pre {
+    background-color: #0f172a;
+    border-radius: 0.5rem;
+    padding: 1rem;
+    overflow-x: auto;
+    border: 1px solid #334155;
+    margin: 1rem 0;
+}
+
+.cli-docs pre code {
+    font-size: 0.875rem;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    color: #e2e8f0;
+    background: transparent;
+    padding: 0;
+}
+
+/* Paragraphs */
+.cli-docs p {
+    color: #cbd5e1;
+    line-height: 1.625;
+    margin: 0.75rem 0;
+}
+
+/* Lists */
+.cli-docs ul, .cli-docs ol {
+    color: #cbd5e1;
+    padding-left: 1.5rem;
+    margin: 0.75rem 0;
+}
+
+.cli-docs li {
+    margin: 0.25rem 0;
+    line-height: 1.625;
+}
+
+.cli-docs ul li {
+    list-style-type: disc;
+}
+
+.cli-docs ol li {
+    list-style-type: decimal;
+}
+
+/* Links */
+.cli-docs a {
+    color: #60a5fa;
+    text-decoration: none;
+}
+
+.cli-docs a:hover {
+    text-decoration: underline;
+    color: #93c5fd;
+}
+
+/* Strong and emphasis */
+.cli-docs strong {
+    font-weight: 600;
+    color: #f1f5f9;
+}
+
+.cli-docs em {
+    font-style: italic;
+    color: #e2e8f0;
+}
+
+/* Blockquotes */
+.cli-docs blockquote {
+    border-left: 4px solid #3b82f6;
+    padding-left: 1rem;
+    margin: 1rem 0;
+    color: #94a3b8;
+    font-style: italic;
+}
+
+/* Horizontal rules */
+.cli-docs hr {
+    border: none;
+    border-top: 1px solid #334155;
+    margin: 2rem 0;
+}
+
+/* Chroma syntax highlighting CSS classes for monokai theme */
+.cli-docs .chroma { background: transparent; color: #f8f8f2; }
+.cli-docs .chroma .err { color: #960050; background-color: #1e0010; }
+.cli-docs .chroma .lntd { vertical-align: top; padding: 0; margin: 0; border: 0; }
+.cli-docs .chroma .lntable { border-spacing: 0; padding: 0; margin: 0; border: 0; width: auto; overflow: auto; display: block; }
+.cli-docs .chroma .hl { display: block; width: 100%; background-color: #3d3d3d; }
+.cli-docs .chroma .lnt { margin-right: 0.4em; padding: 0 0.4em 0 0.4em; color: #7f7f7f; }
+.cli-docs .chroma .ln { margin-right: 0.4em; padding: 0 0.4em 0 0.4em; color: #7f7f7f; }
+.cli-docs .chroma .line { display: flex; }
+.cli-docs .chroma .k { color: #f92672; }
+.cli-docs .chroma .kc { color: #f92672; }
+.cli-docs .chroma .kd { color: #f92672; }
+.cli-docs .chroma .kn { color: #f92672; }
+.cli-docs .chroma .kp { color: #f92672; }
+.cli-docs .chroma .kr { color: #f92672; }
+.cli-docs .chroma .kt { color: #66d9ef; }
+.cli-docs .chroma .n { color: #f8f8f2; }
+.cli-docs .chroma .na { color: #a6e22e; }
+.cli-docs .chroma .nb { color: #f8f8f2; }
+.cli-docs .chroma .nc { color: #a6e22e; }
+.cli-docs .chroma .no { color: #66d9ef; }
+.cli-docs .chroma .nd { color: #a6e22e; }
+.cli-docs .chroma .ni { color: #f8f8f2; }
+.cli-docs .chroma .ne { color: #a6e22e; }
+.cli-docs .chroma .nf { color: #a6e22e; }
+.cli-docs .chroma .nl { color: #f8f8f2; }
+.cli-docs .chroma .nn { color: #f8f8f2; }
+.cli-docs .chroma .nx { color: #a6e22e; }
+.cli-docs .chroma .py { color: #f8f8f2; }
+.cli-docs .chroma .nt { color: #f92672; }
+.cli-docs .chroma .nv { color: #f8f8f2; }
+.cli-docs .chroma .s { color: #e6db74; }
+.cli-docs .chroma .sa { color: #e6db74; }
+.cli-docs .chroma .sb { color: #e6db74; }
+.cli-docs .chroma .sc { color: #e6db74; }
+.cli-docs .chroma .dl { color: #e6db74; }
+.cli-docs .chroma .sd { color: #e6db74; }
+.cli-docs .chroma .s2 { color: #e6db74; }
+.cli-docs .chroma .se { color: #ae81ff; }
+.cli-docs .chroma .sh { color: #e6db74; }
+.cli-docs .chroma .si { color: #e6db74; }
+.cli-docs .chroma .sx { color: #e6db74; }
+.cli-docs .chroma .sr { color: #e6db74; }
+.cli-docs .chroma .s1 { color: #e6db74; }
+.cli-docs .chroma .ss { color: #e6db74; }
+.cli-docs .chroma .bp { color: #f8f8f2; }
+.cli-docs .chroma .fm { color: #a6e22e; }
+.cli-docs .chroma .vc { color: #f8f8f2; }
+.cli-docs .chroma .vg { color: #f8f8f2; }
+.cli-docs .chroma .vi { color: #f8f8f2; }
+.cli-docs .chroma .vm { color: #f8f8f2; }
+.cli-docs .chroma .il { color: #ae81ff; }
+.cli-docs .chroma .m { color: #ae81ff; }
+.cli-docs .chroma .mb { color: #ae81ff; }
+.cli-docs .chroma .mf { color: #ae81ff; }
+.cli-docs .chroma .mh { color: #ae81ff; }
+.cli-docs .chroma .mi { color: #ae81ff; }
+.cli-docs .chroma .mo { color: #ae81ff; }
+.cli-docs .chroma .o { color: #f92672; }
+.cli-docs .chroma .ow { color: #f92672; }
+.cli-docs .chroma .p { color: #f8f8f2; }
+.cli-docs .chroma .c { color: #75715e; }
+.cli-docs .chroma .ch { color: #75715e; }
+.cli-docs .chroma .cm { color: #75715e; }
+.cli-docs .chroma .c1 { color: #75715e; }
+.cli-docs .chroma .cs { color: #75715e; }
+.cli-docs .chroma .cp { color: #75715e; }
+.cli-docs .chroma .cpf { color: #75715e; }
+.cli-docs .chroma .gd { color: #f92672; }
+.cli-docs .chroma .ge { font-style: italic; }
+.cli-docs .chroma .gi { color: #a6e22e; }
+.cli-docs .chroma .gs { font-weight: bold; }
+.cli-docs .chroma .gu { color: #75715e; }
+.cli-docs .chroma .w { color: #f8f8f2; }
+</style>
+
+<div x-data="cliDocsPage()">
+    <!-- Mobile TOC (collapsible) -->
+    <div class="xl:hidden mb-4">
+        <button @click="tocOpen = !tocOpen" 
+                class="flex items-center gap-2 text-sm text-slate-400 hover:text-white">
+            <svg :class="tocOpen ? 'rotate-90' : ''" class="w-4 h-4 transition-transform" 
+                 fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+            </svg>
+            Table of Contents
+        </button>
+        <nav x-show="tocOpen" x-collapse class="mt-2 bg-slate-800 rounded-lg p-4 border border-slate-700">
+            <ul class="space-y-1 text-sm">
+                {{range .TOC}}
+                <li>
+                    <a href="#{{.ID}}" 
+                       class="block py-1 text-slate-400 hover:text-white transition-colors"
+                       @click.prevent="scrollToSection('{{.ID}}'); tocOpen = false">
+                        {{.Text}}
+                    </a>
+                    {{if .Children}}
+                    <ul class="ml-4 space-y-1">
+                        {{range .Children}}
+                        <li>
+                            <a href="#{{.ID}}" 
+                               class="block py-1 text-slate-500 hover:text-slate-300 transition-colors text-xs"
+                               @click.prevent="scrollToSection('{{.ID}}'); tocOpen = false">
+                                {{.Text}}
+                            </a>
+                        </li>
+                        {{end}}
+                    </ul>
+                    {{end}}
+                </li>
+                {{end}}
+            </ul>
+        </nav>
+    </div>
+
+    <div class="flex gap-6">
+        <!-- Main Content (comes first, fills available space) -->
+        <main class="flex-1 min-w-0">
+            {{if .Error}}
+            <div class="bg-red-900/20 border border-red-500/30 rounded-xl p-6 text-red-400">
+                <div class="flex items-center gap-3">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                              d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+                    </svg>
+                    <span>{{.Error}}</span>
+                </div>
+            </div>
+            {{else}}
+            <article class="cli-docs">
+                {{.Content}}
+            </article>
+            {{end}}
+        </main>
+
+        <!-- Table of Contents Sidebar (desktop, on the right) -->
+        <aside class="hidden xl:block w-56 flex-shrink-0 sticky top-4 self-start max-h-[calc(100vh-2rem)] overflow-y-auto">
+            <nav class="bg-slate-800 rounded-xl p-4 border border-slate-700">
+                <h2 class="text-sm font-semibold text-slate-300 uppercase tracking-wider mb-3">Contents</h2>
+                <ul class="space-y-1 text-sm">
+                    {{range .TOC}}
+                    <li>
+                        <a href="#{{.ID}}" 
+                           class="block py-1 text-slate-400 hover:text-white transition-colors"
+                           @click.prevent="scrollToSection('{{.ID}}')">
+                            {{.Text}}
+                        </a>
+                        {{if .Children}}
+                        <ul class="ml-3 space-y-1">
+                            {{range .Children}}
+                            <li>
+                                <a href="#{{.ID}}" 
+                                   class="block py-1 text-slate-500 hover:text-slate-300 transition-colors text-xs"
+                                   @click.prevent="scrollToSection('{{.ID}}')">
+                                    {{.Text}}
+                                </a>
+                            </li>
+                            {{end}}
+                        </ul>
+                        {{end}}
+                    </li>
+                    {{end}}
+                </ul>
+            </nav>
+        </aside>
+    </div>
+</div>
+
+<script>
+function cliDocsPage() {
+    return {
+        tocOpen: false,
+        
+        init() {
+            // Handle URL fragment on initial page load
+            this.$nextTick(() => {
+                const hash = window.location.hash;
+                if (hash) {
+                    const id = hash.substring(1);
+                    this.scrollToSection(id, false);
+                }
+            });
+        },
+        
+        scrollToSection(id, updateUrl = true) {
+            const element = document.getElementById(id);
+            if (element) {
+                element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                if (updateUrl) {
+                    history.pushState(null, null, '#' + id);
+                }
+            }
+        }
+    };
+}
+</script>
+{{end}}

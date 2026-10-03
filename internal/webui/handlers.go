@@ -23,6 +23,7 @@ func parseFragmentTemplates() (fragmentTemplates, error) {
 		"backups",
 		"restore",
 		"config",
+		"clidocs",
 		"paths",
 		"retention",
 		"watchers",

@@ -1,0 +1,27 @@
+# 2026/10/03 17:06:59.890281 [TestProperty_TOCCompletenessForH2H3Headings] [rapid] draw numHeadings: 2
+# 2026/10/03 17:06:59.890284 [TestProperty_TOCCompletenessForH2H3Headings] [rapid] draw level_0: 1
+# 2026/10/03 17:06:59.890286 [TestProperty_TOCCompletenessForH2H3Headings] [rapid] draw text_0: "A"
+# 2026/10/03 17:06:59.890287 [TestProperty_TOCCompletenessForH2H3Headings] [rapid] draw level_1: 2
+# 2026/10/03 17:06:59.890288 [TestProperty_TOCCompletenessForH2H3Headings] [rapid] draw text_1: "A"
+# 2026/10/03 17:06:59.890305 [TestProperty_TOCCompletenessForH2H3Headings] TOC should not contain h1 heading: "A", but found entry with level 2
+# 
+v0.4.8#15724551491160405478
+0x0
+0x0
+0x1
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x1
+0x0
+0x0
+0x0
+0x0
+0x0

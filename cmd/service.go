@@ -352,20 +352,38 @@ func resolveAutostartParams(envPath string) (autostartParams, error) {
 	}
 	p.ConfigTo = cfgPath
 
-	// Resolve the env file to an absolute path if it exists.
-	if envPath != "" {
+	// Resolve the env file: prefer explicit path, fall back to platform default.
+	// Only set EnvFile if the file actually exists (prevents service startup failures).
+	if envPath != "" && envPath != ".env" {
+		// User explicitly provided a non-default path - use it if it exists.
 		if abs, err := filepath.Abs(envPath); err == nil {
 			if _, statErr := os.Stat(abs); statErr == nil {
 				p.EnvFile = abs
 			}
 		}
+	} else {
+		// No explicit path or default ".env" - check platform-specific location first,
+		// then fall back to default ".env" in current directory.
+		platformEnvPath := envFilePath()
+		if _, statErr := os.Stat(platformEnvPath); statErr == nil {
+			p.EnvFile = platformEnvPath
+		} else if envPath != "" {
+			// Fall back to provided path (likely ".env") if it exists
+			if abs, err := filepath.Abs(envPath); err == nil {
+				if _, statErr := os.Stat(abs); statErr == nil {
+					p.EnvFile = abs
+				}
+			}
+		}
 	}
 
-	// Working directory: prefer the directory containing the env file, else cwd.
+	// Working directory: prefer the directory containing the env file,
+	// fall back to config directory for consistency.
 	if p.EnvFile != "" {
 		p.WorkDir = filepath.Dir(p.EnvFile)
-	} else if cwd, err := os.Getwd(); err == nil {
-		p.WorkDir = cwd
+	} else {
+		// Use config directory as working directory even without .env
+		p.WorkDir = config.DefaultConfigDir()
 	}
 
 	return p, nil
